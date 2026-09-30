@@ -300,3 +300,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+### Node (커밋 메시지 검사 도구) ###
+node_modules/

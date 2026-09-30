@@ -1,0 +1,39 @@
+name: commitlint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    name: commitlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install commitlint
+        # package-lock.json 에 고정된 버전 그대로 설치 → 로컬 hook 과 같은 commitlint
+        run: npm ci
+        env:
+          HUSKY: 0 # CI 에서는 git hook 설치 불필요
+      - name: Validate PR commits
+        run: >
+          npx commitlint
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+          --verbose
+      - name: Validate PR title
+        # Squash merge 시 PR 제목이 그대로 커밋 메시지가 되므로 같은 규칙으로 검사
+        # 커밋 검사가 실패해도 제목 검사 결과를 함께 보여주도록 항상 실행
+        if: ${{ !cancelled() }}
+        run: echo "$PR_TITLE" | npx commitlint --verbose
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
