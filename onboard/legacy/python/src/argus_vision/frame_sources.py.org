@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import os
+import select
+import struct
+import subprocess
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+import cv2
+import numpy as np
+
+from .clock import IClock
+from .frame_queue import CapturedFrame
+
+
+class EndOfStream(Exception):
+    """Normal end of a finite replay, distinct from camera failure."""
+
+
+@dataclass(frozen=True, slots=True)
+class FrameTiming:
+    received_unix_ns: int
+    received_monotonic_ns: int
+    exposure_monotonic_ns: int | None = None
+    source_receive_monotonic_ns: int | None = None
+    clock_domain: str = "host_monotonic"
+
+    def __post_init__(self) -> None:
+        if self.received_unix_ns < 0 or self.received_monotonic_ns < 0:
+            raise ValueError("receive timestamps must not be negative")
+        if self.exposure_monotonic_ns is not None:
+            if self.clock_domain != "host_monotonic":
+                raise ValueError("exposure time must first be mapped to the host monotonic clock")
+            if not 0 <= self.exposure_monotonic_ns <= self.received_monotonic_ns:
+                raise ValueError("exposure time must not be negative or later than receipt")
+
+    @property
+    def exposure_time_valid(self) -> bool:
+        return self.exposure_monotonic_ns is not None and self.clock_domain == "host_monotonic"
+
+    def require_exposure_time(self) -> int:
+        if not self.exposure_time_valid:
+            raise ValueError("sensor exposure time unavailable; receive time cannot substitute for it")
+        return self.exposure_monotonic_ns
+
+
+@dataclass(slots=True)
+class SourceFrame(CapturedFrame):
+    timing: FrameTiming | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FrameSourceOptions:
+    camera: str = "/dev/video0"
+    width: int = 640
+    height: int = 480
+    fps: int = 30
+    fourcc: str = "MJPG"
+    ir_capture: str = "/home/user/thessen_raw14_viewer/build/i3_raw14_capture"
+    ir_device: int = 0
+    ir_timeout_s: float = 15.0
+    ir_preprocess: str = "minmax"
+
+
+class IFrameSource(Protocol):
+    kind: str
+    def read(self) -> tuple[bool, SourceFrame | None]: ...
+    def request_stop(self) -> None: ...
+    def release(self) -> None: ...
+
+
+class OpenCvFrameSource:
+    """V4L2 camera or explicit finite replay; no inferred exposure timestamps."""
+
+    def __init__(self, options: FrameSourceOptions, clock: IClock, *, replay: bool = False):
+        self.kind = "replay" if replay else "ir_v4l2"
+        self._clock = clock
+        self._replay = replay
+        self._sequence = 0
+        self._stop = threading.Event()
+        if replay:
+            if not Path(options.camera).is_file():
+                raise ValueError("REPLAY requires an existing video file via --camera")
+            self._capture = cv2.VideoCapture(options.camera)
+        else:
+            if not options.camera.isdecimal() and not options.camera.startswith("/dev/"):
+                raise ValueError("V4L2 input requires a device; use REPLAY for video files")
+            source = int(options.camera) if options.camera.isdecimal() else options.camera
+            self._capture = cv2.VideoCapture(source, cv2.CAP_V4L2)
+            if len(options.fourcc) == 4:
+                self._capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*options.fourcc))
+            self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, options.width)
+            self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, options.height)
+            self._capture.set(cv2.CAP_PROP_FPS, options.fps)
+            self._capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if not self._capture.isOpened():
+            self._capture.release()
+            raise RuntimeError(f"cannot open {self.kind} input {options.camera}")
+
+    def read(self) -> tuple[bool, SourceFrame | None]:
+        if self._stop.is_set():
+            return False, None
+        ok, image = self._capture.read()
+        stamp = self._clock.now()
+        if not ok:
+            if self._replay:
+                raise EndOfStream()
+            return False, None
+        if image is None or image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError("frame source requires BGR uint8; RAW/GRAY inputs need an explicit adapter")
+        frame = SourceFrame(self._sequence, image, stamp.unix_ns, stamp.monotonic_ns,
+                            timing=FrameTiming(stamp.unix_ns, stamp.monotonic_ns))
+        self._sequence += 1
+        return True, frame
+
+    def request_stop(self) -> None:
+        self._stop.set()
+
+    def release(self) -> None:
+        self.request_stop()
+        self._capture.release()
+
+
+RAW14_HEADER = struct.Struct("<4sHHIIHHIQQ")
+
+
+def decode_raw14(header: bytes, payload: bytes) -> tuple[np.ndarray, int, int]:
+    magic, version, length, width, height, bits, flags, size, sequence, stamp = RAW14_HEADER.unpack(header)
+    if (magic != b"I3R4" or version != 1 or length != RAW14_HEADER.size
+            or width != 640 or height != 480 or bits != 14 or flags not in (0, 1)
+            or size != width * height * 2 or sequence < 1 or len(payload) != size):
+        raise ValueError("invalid SDK RAW14 stream header or payload")
+    raw = np.frombuffer(payload, dtype="<u2").reshape(height, width)
+    if int(raw.max()) > 16383:
+        raise ValueError("RAW14 value exceeds 14-bit range; masking is forbidden")
+    return raw, sequence, stamp
+
+
+class Raw14SdkFrameSource:
+    """Read the existing SDK capture executable on this Pi; never start SSH."""
+
+    kind = "ir_sdk"
+
+    def __init__(self, options: FrameSourceOptions, clock: IClock):
+        executable = Path(options.ir_capture)
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise ValueError(f"SDK capture executable unavailable: {executable}")
+        if options.ir_preprocess not in ("minmax", "fixed14"):
+            raise ValueError("IR preprocessing must be minmax or fixed14; match model training")
+        if not 0 <= options.ir_device <= 31 or not 1 <= options.ir_timeout_s <= 300:
+            raise ValueError("invalid SDK device or timeout")
+        self._clock = clock
+        self._options = options
+        self._stop = threading.Event()
+        self._last_sequence = 0
+        self._process = subprocess.Popen(
+            [str(executable), "--device", str(options.ir_device), "--timeout",
+             str(int(options.ir_timeout_s)), "--fps", "0"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0,
+        )
+
+    def _read_exact(self, size: int) -> bytes:
+        data = bytearray()
+        deadline = time.monotonic() + self._options.ir_timeout_s
+        fd = self._process.stdout.fileno()
+        while len(data) < size:
+            if self._stop.is_set():
+                raise EndOfStream()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("SDK frame receive timed out")
+            if not select.select([fd], [], [], min(remaining, 0.1))[0]:
+                continue
+            chunk = os.read(fd, min(size - len(data), 65536))
+            if not chunk:
+                raise RuntimeError(f"SDK stream closed unexpectedly ({len(data)}/{size} bytes)")
+            data.extend(chunk)
+        return bytes(data)
+
+    def read(self) -> tuple[bool, SourceFrame | None]:
+        header = self._read_exact(RAW14_HEADER.size)
+        # Validate header before trusting its length or allocating a payload.
+        fields = RAW14_HEADER.unpack(header)
+        if (fields[0:3] != (b"I3R4", 1, RAW14_HEADER.size)
+                or fields[3:6] != (640, 480, 14) or fields[6] not in (0, 1)
+                or fields[7] != 640 * 480 * 2 or fields[8] < 1):
+            raise ValueError("invalid SDK RAW14 stream header")
+        payload = self._read_exact(640 * 480 * 2)
+        stamp = self._clock.now()
+        raw, sequence, sdk_stamp = decode_raw14(header, payload)
+        if sequence <= self._last_sequence:
+            raise ValueError("SDK frame sequence did not advance")
+        self._last_sequence = sequence
+        if self._options.ir_preprocess == "minmax":
+            low, high = int(raw.min()), int(raw.max())
+            gray = (np.zeros(raw.shape, np.uint8) if low == high else
+                    np.rint((raw.astype(np.float32) - low) * (255.0 / (high - low)))
+                    .clip(0, 255).astype(np.uint8))
+        else:
+            gray = np.rint(raw.astype(np.float32) * (255.0 / 16383)).astype(np.uint8)
+        image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        # The SDK header stamps its host receive callback, not sensor exposure.
+        return True, SourceFrame(
+            sequence, image, stamp.unix_ns, stamp.monotonic_ns,
+            timing=FrameTiming(stamp.unix_ns, stamp.monotonic_ns,
+                               source_receive_monotonic_ns=sdk_stamp * 1000),
+        )
+
+    def request_stop(self) -> None:
+        self._stop.set()
+        if self._process.stdin and not self._process.stdin.closed:
+            self._process.stdin.close()
+
+    def release(self) -> None:
+        self.request_stop()
+        try:
+            self._process.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait()
+        if self._process.stdout:
+            self._process.stdout.close()
+
+
+def unavailable_gazebo_camera(options: FrameSourceOptions, clock: IClock) -> IFrameSource:
+    raise NotImplementedError("Gazebo camera transport adapter is not installed; register a frame source factory")

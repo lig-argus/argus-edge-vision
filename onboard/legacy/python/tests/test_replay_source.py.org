@@ -1,0 +1,35 @@
+import cv2
+import numpy as np
+import pytest
+
+from argus_vision.clock import SystemClock
+from argus_vision.frame_sources import EndOfStream, FrameSourceOptions, OpenCvFrameSource
+
+
+def test_real_video_replay_has_honest_timestamps_and_normal_end(tmp_path):
+    path = tmp_path / "replay.avi"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (32, 32))
+    assert writer.isOpened()
+    try:
+        for value in (20, 40, 60):
+            writer.write(np.full((32, 32, 3), value, dtype=np.uint8))
+    finally:
+        writer.release()
+    source = OpenCvFrameSource(FrameSourceOptions(camera=str(path)), SystemClock(), replay=True)
+    try:
+        for frame_id in range(3):
+            ok, frame = source.read()
+            assert ok and frame.frame_id == frame_id
+            assert frame.image.shape == (32, 32, 3)
+            assert not frame.timing.exposure_time_valid
+        with pytest.raises(EndOfStream):
+            source.read()
+    finally:
+        source.release()
+
+
+def test_camera_profile_does_not_silently_treat_a_file_as_replay(tmp_path):
+    path = tmp_path / "video.avi"
+    path.write_bytes(b"fixture")
+    with pytest.raises(ValueError, match="use REPLAY"):
+        OpenCvFrameSource(FrameSourceOptions(camera=str(path)), SystemClock())

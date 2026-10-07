@@ -1,0 +1,157 @@
+# ARGUS Vision Bus 메시지 규약
+
+`busd`는 ZeroMQ XSUB/XPUB 프록시다. Publisher는 `tcp://127.0.0.1:5555`(Pi 내부 loopback 전용)에 연결하고,
+Subscriber는 `tcp://<Pi-IP>:5556`에 연결한다. 모든 메시지는 ZeroMQ multipart 프레임이다.
+
+```
+frame[0] = topic (UTF-8 string)
+frame[1] = header (MessagePack으로 인코딩된 dict)
+frame[2] = payload (옵션, raw bytes — JPEG 등 바이너리 데이터가 있을 때만 존재)
+```
+
+`Subscriber.receive()`는 `(topic, header_dict, payload_or_None)`을 반환한다. 인증/암호화 없음 — 신뢰된 네트워크에서만 사용.
+
+## 토픽 목록
+
+| 토픽 | 상태 | payload | 생산자 | 용도 |
+|---|---|---|---|---|
+| `perception/observations` | 구현됨 | 없음 | Vision Node | 프레임별 탐지 결과 |
+| `diagnostics/events` | 구현됨 | 없음 | 각 노드 | 헬스/상태 이벤트 |
+| `vision/overlay/jpeg` | 구현됨 (옵션, `--publish-preview`) | JPEG | Vision Node | 박스가 그려진 원본 프레임 미리보기 |
+| `vision/npu_input/jpeg` | **신규** (옵션, `--publish-npu-input`, 기본 꺼짐) | JPEG | Vision Node | NPU에 실제로 들어간 letterbox 입력 |
+| `tracking/tracks` | 계약만 정의, 미구현 | 없음 | Tracker (예정) | 추적 결과 |
+| `command/request`, `command/result` | 계약만 정의, 미구현 | 없음 | CommandGateway / ControlLoop (예정) | 제어 명령 |
+
+## 시각(타임스탬프) 규약
+
+- `_unix_ns` 접미사: 벽시계(wall-clock) 나노초 (`time.time_ns()`). 장치 간 비교 가능(단, NTP 동기화 필요).
+- `_monotonic_ns` 접미사: 단조 시계 나노초 (`time.monotonic_ns()`). 같은 Linux 호스트의 프로세스들이 공유한다. 프로세스 재시작으로 리셋되지 않으며, 재부팅·다른 호스트의 값과 직접 비교하지 않는다.
+- `t_*_us` 접미사(신규): 위와 같은 단조 시계 기준, **마이크로초** 단위. Windows 모니터링 앱에서 두 토픽의 시간을 맞추기 쉽게 하려고 통일한 표기. 값의 의미는 "그 시점의 단조 시계 스냅샷"이며 두 토픽이 같은 프로세스에서 나온 값이라면 서로 빼서 구간 시간을 구할 수 있다.
+
+## 1. `perception/observations`
+
+Schema: `argus.perception.observations.v2`. Payload 없음(frame 2개: topic + header).
+
+### 헤더 필드
+
+| 필드 | 타입 | 단위 | 의미 |
+|---|---|---|---|
+| `schema` | str | – | `"argus.perception.observations.v2"` |
+| `source` | str | – | 예: `"camera:/dev/video0"` |
+| `frame_id` | int | – | 캡처 순서 번호 (0부터 증가). `seq`와 항상 같은 값 |
+| `seq` | int | – | **(신규)** `frame_id`의 별칭. 다른 토픽과 프레임을 대응시키는 공통 키 |
+| `captured_unix_ns` | int | ns (wall) | 호스트 수신 시각의 호환 별칭 (노출 시각 아님) |
+| `captured_monotonic_ns` | int | ns (mono) | 호스트 수신 시각의 호환 별칭 (노출 시각 아님) |
+| `published_monotonic_ns` | int | ns (mono) | 버스에 publish한 시각 (단조) |
+| `t_infer_us` | int | µs (mono) | **(신규)** NPU 추론 완료 시각 |
+| `t_publish_us` | int | µs (mono) | **(신규)** `published_monotonic_ns`와 동일한 시점, µs 단위 |
+| `image_width`, `image_height` | int | px | **원본** 카메라 프레임 크기 (letterbox 이전) |
+| `model` | str | – | 사용된 HEF 파일명 |
+| `inference_ms` | float | ms | NPU 추론 소요 시간 (기존 필드, 유지) |
+| `coordinate_frame` | str | – | 항상 `"camera_pixel"` — 아래 좌표계 설명 참조 |
+| `observation_kind` | str | – | `"IMAGE2D"` |
+| `detections` | list[dict] | – | 아래 Detection 필드 |
+
+현재 관측 schema는 `argus.perception.observations.v2`다. 토픽은 `perception/observations`로 유지했다. 새 수신기는 기존 v1을 노출 시각 미확인으로 읽을 수 있다. 기존 v1 전용 strict 필드 파서는 v2 수신 전에 업데이트해야 한다. 디버그 JPEG와 진단 schema는 변경하지 않았다.
+
+### 수신 시각과 실제 노출 시각
+
+| 필드 | 의미 |
+|---|---|
+| `received_unix_ns`, `received_monotonic_ns` | 소스 어댑터가 영상 수신을 완료한 호스트 시각 |
+| `exposure_monotonic_ns` | 실제 센서 노출 시각을 호스트 단조 시계로 매핑한 값. 없으면 null |
+| `source_receive_monotonic_ns` | SDK 생산자의 호스트 수신 콜백 시각. 센서 노출 시각이 아님 |
+| `exposure_time_valid` | 정밀 프레임/FC 자세 정렬에 노출 시각을 사용할 수 있는지 |
+| `timestamp_source` | `host_receive` 또는 `sensor_exposure` |
+| `clock_domain` | 현재 `host_monotonic`. 다른 호스트의 단조 시계 값과 비교하지 않음 |
+
+현재 OpenCV와 SDK 어댑터는 실제 센서 노출 시각을 제공하지 않으므로 `exposure_time_valid=false`다. CMC 소비자는 `DetectionFrame.require_exposure_time()`을 호출해 유효성을 확인해야 한다. 수신 시각으로 실제 노출 시각을 대체하지 않는다. `captured_*`와 JPEG의 `t_capture_us`는 기존 소비자를 위한 수신 시각 별칭이며, 실제 E2E/노출 지연을 나타내지 않는다.
+
+### 추적 계약과 TTL
+
+`Track.last_real_detection_monotonic_ns`는 ID별 마지막 실제 검출 시각이다. `ttl_ns`는 시험 설정에서 명시하며 기본 0은 만료로 취급한다. `with_prediction()`은 박스·상태만 갱신하고 이 시각을 갱신하지 않는다. `with_real_detection()`만 새 실제 검출 시각으로 갱신하며 역순 시각은 거부한다. 배치 발행 시각이나 배치 만료를 갱신해도 트랙의 TTL은 늘어나지 않는다. `TrackBatch.valid_track(id, now)`는 배치와 개별 트랙을 모두 검사한다. 이는 추적기 구현이 사용하는 계약이며 현재 `tracking/tracks` 발행 워커는 미구현이다.
+
+### Detection 필드 (각 원소)
+
+| 필드 | 타입 | 좌표계 | 의미 |
+|---|---|---|---|
+| `class_id` | int | – | HEF NMS 출력의 클래스 인덱스 |
+| `label` | str | – | `labels.txt` 매핑 (인덱스가 범위 밖이면 숫자 문자열로 대체) |
+| `confidence` | float(0~1) | – | |
+| `x1,y1,x2,y2` | int | **원본 카메라 픽셀** | YOLOX full box, letterbox 역변환 완료 |
+| `track_id` | int \| null | – | 아직 추적기가 없어 항상 `null` |
+
+### 좌표계
+
+`coordinate_frame="camera_pixel"` — **원본 카메라 해상도**(`image_width × image_height`) 기준 픽셀 좌표다. NPU 입력은 640×640 letterbox 공간이지만, `LetterboxTransform.model_normalized_yxyx_to_source_xyxy()`가 스케일/패딩을 역산해 항상 원본 좌표로 돌려놓은 뒤 발행한다. `vision/npu_input/jpeg`(아래)의 letterbox 좌표와 혼동하지 말 것.
+
+### seq / 타임스탬프 유무 (기존 분석 확인)
+
+- 원래는 명시적 `seq` 필드가 없었고 `frame_id`가 그 역할을 했다. 이번 변경으로 `seq`를 추가했지만 `frame_id`는 **제거하지 않았다** (제어팀 호환성 유지).
+- 원래도 3개의 타임스탬프(`captured_unix_ns`, `captured_monotonic_ns`, `published_monotonic_ns`)가 있었다. `t_infer_us`/`t_publish_us`는 **µs 단위로 통일된 표기**를 추가한 것이며, 기존 ns 필드는 그대로 둔다.
+
+> **`seq == frame_id` 항상 성립.** `vision_node.py`가 `DetectionFrame`을 만들 때 `seq=captured.frame_id`로 **같은 값을 그대로 복사**해서 채운다 (별도로 증가하는 카운터가 아니다). 즉 이 두 필드는 이름만 다른 동일한 값이며, 어느 쪽으로 조인해도 결과가 같다. `seq`는 신규 소비자(Windows 모니터링 앱 등)가 `vision/npu_input/jpeg`와 바로 매칭할 수 있게 붙인 별칭이고, `frame_id`는 기존 제어팀 코드가 이미 쓰고 있어서 남겨둔 이름이다.
+
+## 2. `vision/npu_input/jpeg` (신규)
+
+Schema: `argus.vision.npu_input.v1`. Payload 있음(frame 3개: topic + header + JPEG bytes).
+
+기본 꺼짐. `argus-vision --publish-npu-input [--npu-input-max-fps 15] [--npu-input-jpeg-quality 80]`로 켠다.
+
+### Payload
+
+NPU에 **실제로 들어간** letterbox 640×640(모델 입력 해상도) RGB uint8 프레임을 BGR로 변환해 JPEG(기본 품질 80)로 인코딩한 바이트. `cv2.imdecode`로 그대로 디코드하면 NPU가 본 이미지를 그대로 볼 수 있다 (레터박스 패딩 포함).
+
+### 헤더 필드
+
+| 필드 | 타입 | 단위 | 의미 |
+|---|---|---|---|
+| `schema` | str | – | `"argus.vision.npu_input.v1"` |
+| `seq` | int | – | `perception/observations`의 `seq`/`frame_id`와 **동일한 값** (같은 캡처 프레임) |
+| `t_capture_us` | int | µs (mono) | 호스트 수신 시각 (`captured_monotonic_ns`의 호환 별칭, µs; 노출 시각 아님) |
+| `t_pre_us` | int | µs (mono) | letterbox 전처리 완료(=NPU 추론 시작) 시각 |
+| `src_w`, `src_h` | int | px | **원본** 카메라 프레임 크기 (letterbox 이전, `perception/observations.image_width/height`와 동일) |
+| `lb_scale` | float | – | letterbox 리사이즈 배율 (`min(모델w/원본w, 모델h/원본h)`) |
+| `lb_pad_x`, `lb_pad_y` | int | px (letterbox 공간) | letterbox 캔버스에서 좌/상단 패딩 두께 |
+| `source` | str | – | `perception/observations.source`와 동일 |
+| `preprocess` | str | – | 적용된 전처리 태그. 현재 값: `"letterbox_bgr_to_rgb"` |
+| `encoding` | str | – | `"jpeg"` |
+
+JPEG 자체의 width/height(디코드하면 나옴)는 항상 detector의 `input_width × input_height`(현재 HEF 기준 640×640)이며 별도 필드로 중복 저장하지 않는다.
+
+### 발행 동작 (성능 관련)
+
+- 추론 스레드(메인 루프)는 `offer()`만 호출한다 — 최대발행FPS 기준 시각 체크 + `maxsize=1` 큐에 넣기(가득 차면 가장 오래된 것 버림)뿐이라 사실상 O(1)이고 블로킹하지 않는다.
+- 실제 BGR 변환 + JPEG 인코딩 + 버스 publish는 **별도 스레드**(`NpuInputJpegPublisher._run`)가 담당하며, **자신만의 PUB 소켓**을 그 스레드 안에서 만들어 쓴다 (ZeroMQ 소켓은 스레드 간 공유가 안전하지 않으므로 메인 루프의 publisher와 소켓을 공유하지 않는다).
+- 최대 발행 FPS(기본 15)는 `offer()` 호출 시점에서 미리 걸러지므로, 카메라가 30fps로 들어와도 인코딩/발행 자체는 최대 15fps만 실제로 수행된다.
+- 켜져 있으면 인퍼런스 루프 자체 연산 시간이 소폭(약 +1ms) 늘어난다 — 원인 분석은 아래 "성능 영향 분석" 참조.
+
+### 왜 `vision/npu_input/jpeg` 개수가 `perception/observations`보다 적게 나오는가
+
+카메라가 실제로 약 13~15fps만 공급하는 상황(아래 "카메라 병목" 참조)에서 `--npu-input-max-fps 15`를 걸면, 공급 속도와 캡 속도가 거의 같아 타이밍이 살짝만 어긋나도 그 프레임이 캡에 걸려 버려진다. 실측(18초):
+
+| 원인 | 카운터 | 의미 |
+|---|---|---|
+| 최대발행FPS 캡에 걸려 버려짐 | `dropped_rate_limit` | `offer()` 호출 시점에 아직 다음 허용 시각이 안 됨 |
+| 큐 덮어써짐 | `dropped_queue_overwrite` | 워커 스레드가 이전 프레임을 처리하기 전에 새 프레임이 `offer()`됨 (`maxsize=1`) |
+| JPEG 인코딩 실패 | `dropped_encode_fail` | `cv2.imencode`가 실패 (실측에서는 0) |
+
+이 세 카운터 + `offered`/`published`는 **`diagnostics/events`(state=`npu_input_stats`)로 2초마다 자동 발행**되므로, 운영 중에도 "왜 안 나오는지"를 눈으로 볼 수 있다(아래 3장 필드 표 참조). 실측 결과와 수치는 `docs/PERF_NOTES.md`에 남겼다.
+
+## 3. 기존 토픽 (변경 없음, 참고용)
+
+- `diagnostics/events` (`argus.diagnostics.event.v1`): `source, state, detail, unix_ns, monotonic_ns`. `state` 값 중 `"npu_input_stats"`는 **신규** — `NpuInputJpegPublisher`가 2초 간격으로 자신의 카운터를 발행한다. `detail`은 사람이 읽는 요약 문자열이고, 같은 값이 구조화된 정수 필드로도 들어있다: `offered, published, dropped_rate_limit, dropped_queue_overwrite, dropped_encode_fail` (모두 프로세스 시작부터의 누적값). `--publish-npu-input`이 꺼져 있으면 이 state는 아예 발행되지 않는다.
+- `vision/overlay/jpeg` (`argus.vision.overlay.v1`, `--publish-preview`): 원본 해상도에 박스를 그린 JPEG. `frame_id`만 있고 `seq` 별칭은 추가하지 않았다(이 토픽은 사람이 보는 디버그 미리보기 용도라 모니터링 앱 상관관계에 필수적이지 않다고 판단).
+
+## 4. 하위 호환성
+
+- `perception/observations`에 추가된 필드(`seq`, `t_infer_us`, `t_publish_us`)는 **기존 필드를 하나도 지우거나 이름을 바꾸지 않고 덧붙인 것**이다. 기존 구독자가 알려진 키만 읽는다면 영향 없음. 다만 구독자가 "정확히 이 키 집합만 있어야 한다"는 식으로 엄격하게 unpack한다면 그 구독자 코드는 새 키를 무시하도록 손봐야 한다.
+- `vision/npu_input/jpeg`는 완전히 새 토픽이라 기존 구독자에게 영향 없음(구독하지 않으면 아무 것도 안 옴).
+
+## 5. 운용 원칙
+
+- **`vision/npu_input/jpeg` 발행은 디버그/모니터링 전용이다.** 기본값은 꺼짐(`ARGUS_PUBLISH_NPU_INPUT=0` / `--publish-npu-input` 미지정)이며, **실비행·실제 임무 중에는 반드시 꺼둔다.**
+  - 이유 1(성능): 켜면 인퍼런스 루프 연산 시간이 소폭 늘고(약 +1ms, 실측치는 `docs/PERF_NOTES.md`), 인코딩 스레드가 CPU를 추가로 점유한다. 지연시간이 민감한 제어 루프와 같은 보드에서 도는 만큼 여유 마진이 줄어든다.
+  - 이유 2(대역/보안): 이미지 페이로드가 계속 나가면 5556 포트 트래픽이 커지고, 지금 버스에는 인증·암호화가 없다(README에도 명시된 기존 제약). 현장 네트워크에 원본 이미지를 계속 흘리는 것은 불필요한 노출이다.
+  - 켜야 하는 상황: 지상에서 HEF/전처리 디버깅, Windows 모니터링 앱으로 "NPU가 실제로 무엇을 보고 있는지" 눈으로 확인할 때뿐이다. 확인이 끝나면 다시 끈다.
+- 서비스(systemd) 기본 설정도 꺼짐을 유지한다 — `config/runtime.env`의 `ARGUS_PUBLISH_NPU_INPUT`을 1로 바꾸는 것은 사람이 명시적으로 결정할 일이며, `setup_rpi.sh`/`install_autostart.sh`가 자동으로 켜지 않는다.

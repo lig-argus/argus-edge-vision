@@ -1,0 +1,22 @@
+# 입력 어댑터와 모델 설정 — 2026-09-26
+
+## 입력 선택
+
+`CompositionRoot.create_frame_source()`는 `profiles.toml`의 `frame_source`를 실제 입력 생성에 사용한다. `--frame-source`는 입력 시험용 명시적 override다. 기존 REAL_IR 설정은 `ir_v4l2`로 유지했다.
+
+- `ir_v4l2`: `/dev/video*` 또는 장치 인덱스의 BGR uint8 영상. RAW/GRAY 배열을 암묵적으로 uint8로 잘라내지 않고 오류로 거부한다.
+- `replay`: `--profile REPLAY --camera 파일`로 유한 영상 재생. EOF는 정상 종료이며 파일을 V4L2로 조용히 취급하지 않는다.
+- `ir_sdk`: `thessen_raw14_viewer/build/i3_raw14_capture`의 I3R4/RAW14 바이너리 스트림을 직접 받는다. 640×480, 14비트 범위와 전진하는 sequence를 검사한다. 표준 출력은 영상, SDK 로그는 표준 에러다.
+- `gazebo_camera`/`gazebo_pose`: 이 Pi 패키지에는 미구현이며 생성 요청을 명확히 거부한다. 등록된 입력 팩토리를 추가하면 연결할 수 있다.
+
+## IR 전처리
+
+SDK 어댑터는 `minmax` 또는 `fixed14`를 명시적으로 선택하고 8비트 단일 채널을 BGR 3채널로 복제한다. 이 영상에 기존 letterbox와 BGR→RGB 전처리를 적용한다. 기존 별도 열화상 뷰어의 Plateau/CLAHE 처리는 그대로 남아 있으며 이번 어댑터에서 선택하지 않는다. 실제 모델 학습 조건에 맞는 전처리가 필요하다.
+
+## 시각
+
+OpenCV read 반환과 SDK 호스트 콜백 시각은 수신 시각이다. 실제 노출 시각이 아니므로 현재 `exposure_time_valid=false`다. 센서/로그에서 실제 노출 시각을 얻는 어댑터는 해당 시각을 호스트 monotonic으로 매핑한 뒤 `FrameTiming.exposure_monotonic_ns`에 제공해야 한다. 자세 정렬 소비자는 require_exposure_time()으로 확인한다.
+
+## 모델
+
+HEF 입력은 RGB uint8 NHWC이며 NMS 출력의 클래스 수와 라벨 파일이 일치해야 한다. 실행 스크립트의 사전 검사가 이를 확인한다. 저장된 COCO 모델은 경로 시험용이고 실제 IR 대상 검출 성능을 입증하지 않는다.

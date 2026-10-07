@@ -1,0 +1,113 @@
+flowchart TB
+    CONFIG["환경 프로파일<br/>SITL_POSE / SITL_IMAGE / REAL_IR / REPLAY"]
+    ROOT["Composition Root<br/>호환 검사 · 의존성 주입<br/>Factory: Detector / Tracker / Follower / Port"]
+    CONFIG --> ROOT
+
+    IR["실제 IR 카메라"]
+    GZ["Gazebo"]
+    REPLAY["IR + FC 로그 재생"]
+    UI["Windows 통제기"]
+    PX4["PX4 SITL / 실제 FC"]
+
+    subgraph GCS["Windows 통제기 영역"]
+        UI
+        API["CommandGateway<br/>요청 ID · 중복 제거 · 결과 응답"]
+        UI <-->|"선택 / 추종시작 / 중단"| API
+    end
+
+    subgraph ONBOARD["온보드 RPi5 + Hailo-8"]
+        TIME["IClock · FrameTransform<br/>공통 시각 · 카메라 보정<br/>Gazebo world / PX4 local"]
+
+        subgraph PERCEPTION["인지 워커 · 프레임 주기 · 적체 시 오래된 프레임 폐기"]
+            SOURCE["IFrameSource<br/>IR / Gazebo Camera / Replay"]
+            QUEUE["유계 프레임 큐"]
+            PRE["영상 전처리"]
+            DET["IDetector<br/>YOLOX · PC / Hailo-8"]
+            BOX["BoxPostprocessor<br/>전차 전체 박스(full_box)"]
+            POSE["GazeboPoseAdapter<br/>좌표·시간 정규화<br/>SITL_POSE 전용"]
+            MOTION["CameraMotion<br/>프레임 t에 보간한 FC RPY<br/>본선: 자세 워프 CMC"]
+            OBS["Observation<br/>IMAGE2D: full_box + score + t<br/>POSE3D: pose + t + source"]
+            TRACK["ITracker.update(obs, motion)<br/>기본: ByteTrack + FC CMC · ReID 없음<br/>비교: OC-SORT / CMC 없음"]
+            OVLY["OverlayEncoder<br/>저율 프레임 + 박스"]
+
+            SOURCE --> QUEUE --> PRE --> DET --> BOX
+            BOX -->|IMAGE2D| OBS
+            POSE -->|POSE3D| OBS
+            OBS --> TRACK
+            MOTION --> TRACK
+            SOURCE --> OVLY
+            TRACK --> OVLY
+        end
+
+        DATA["Pub/Sub · tracking/tracks<br/>지정 후보 ID · 전차 전체 박스 중심/크기<br/>Confirmed / Predicted / Lost + TTL<br/>시각 · 좌표계 · 출처"]
+        TRACK --> DATA
+
+        subgraph CONTROL["제어 루프 · 독립 주기"]
+            STORE["LatestStateStore<br/>최신 트랙 + TargetState + 기체상태"]
+            LOOP["ControlLoop<br/>이벤트 수집 · ControlContext 스냅샷"]
+            TARGET["TargetSelector<br/>운용자 지정 1ID 고정<br/>겹침 시 새 ID 거부"]
+            GEO["Geometry<br/>픽셀 전차 전체 박스 → 기체 상대기하"]
+            FSM["MissionStateMachine<br/>관측 / 준비 / 추종 / 정지 / 고장"]
+            FOLLOW["IFollower<br/>유효 TargetState만 사용"]
+            GUARD["CommandGuard<br/>제어권 · RC 오버라이드<br/>한도 · 만료 · stale 거부"]
+            PORT["IVehiclePort"]
+            MAV["MavsdkVehicleAdapter<br/>단일 송신자 · 송신 루프<br/>명령 만료 감시"]
+
+            STORE --> LOOP --> TARGET --> GEO --> FSM
+            FSM -->|추종 허용| FOLLOW
+            FOLLOW -->|ControlIntent| GUARD
+            FSM -->|정지 Hover · 고장| GUARD
+            LOOP -->|같은 ControlContext| GUARD
+            GUARD -->|직접 호출| PORT --> MAV
+            MAV -->|텔레메트리| STORE
+        end
+
+        HEALTH["진단 이벤트<br/>카메라 · NPU · 프레임 연령<br/>FC · 배터리 · GCS 링크"]
+        STATUS["Pub/Sub · system/status<br/>임무상태 · TargetState · 기체 · 진단"]
+    end
+
+    IR --> SOURCE
+    GZ -->|가상 영상| SOURCE
+    REPLAY --> SOURCE
+    REPLAY -->|FC RPY 로그| MOTION
+    GZ -->|Gazebo Transport 좌표| POSE
+
+    MAV -->|attitude t| MOTION
+    MAV <-->|"MAVLink · UDP / UART / USB"| PX4
+
+    DATA -->|구독| STORE
+    DATA --> TARGET
+
+    API <-->|"명령 / 처리 결과"| LOOP
+
+    SOURCE --> HEALTH
+    DET --> HEALTH
+    MAV --> HEALTH
+    LOOP --> STATUS
+    HEALTH --> STATUS
+    MAV --> STATUS
+    TARGET --> STATUS
+    FSM --> STATUS
+    STATUS --> UI
+    OVLY -->|열영상 + 선택/비선택 박스| UI
+
+    LOG["비동기 Recorder / Evaluator<br/>mode · t_frame · t_att · t_cmd<br/>FPS · E2E · 유지율"]
+    DATA --> LOG
+    STATUS --> LOG
+    MOTION --> LOG
+    GZ -->|정답 좌표| LOG
+    MAV -->|setpoint / vehicle| LOG
+
+    TIME -.-> SOURCE
+    TIME -.-> POSE
+    TIME -.-> MOTION
+    TIME -.-> TRACK
+    TIME -.-> STORE
+    TIME -.-> LOG
+
+    ROOT -.-> SOURCE
+    ROOT -.-> DET
+    ROOT -.-> BOX
+    ROOT -.-> TRACK
+    ROOT -.-> FOLLOW
+    ROOT -.-> MAV

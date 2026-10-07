@@ -1,0 +1,22 @@
+# NPU 프로젝트 AI 작업 규칙
+
+현행 작업본은 /home/user/npu-test/work/argus_vision_bus다.
+수정 전에 현행 README.md, AGENTS.md, docs/CPP_MIGRATION.md, docs/FLOW_ALIGNMENT.md를 읽는다.
+기준 설계는 현행 docs/design/flow.mmd와 whole-flowchart.mmd다.
+
+- C++ 중심 실행·입력·큐·계약·IPC·발행 결정은 사용자 승인 사항이다.
+- Python 유지 범위는 전처리·YOLOX/Hailo·Pi 박스/JPEG·BusProxy·점검/구독 도구다.
+- teammate, backups, legacy의 과거 Python 전체 실행부를 현행으로 복원하지 않는다.
+- *.py.org는 실행/import 대상이 아니며 사용자 명시적 요청 없이 *.py로 복원하지 않는다.
+- C++ 오류는 현재 경로에서 수정한다. 과거 Python 전체 실행부로 자동 fallback하지 않는다.
+- 모델·SDK·runtime 설정을 성능 향상으로 추정해 임의 교체하지 않는다.
+- 전체 흐름도를 따르며 현재 미구현 추적/제어 기능을 완료된 것으로 표시하지 않는다.
+- 일반 버그 수정은 이 결정 안에서 진행한다. 사용자의 이후 명시적 변경 지시가 우선한다.
+
+## 미구현 표시 파일 추가 승인
+
+사용자가 2026-09-26 승인한 것은 역할별 주석 전용 파일 54개의 배치다. 실제 기능 구현 승인이 아니다.
+현행 docs/UNIMPLEMENTED_FILES.md와 AGENTS.md의 표시 파일 규칙을 따른다.
+`UNIMPLEMENTED_PLACEHOLDER`를 구현 완료로 취급하지 않는다.
+사용자의 명시적 구현 지시 없이 로직/API/타입/수치/Mock을 작성하거나 CMake/팩토리/실행에 연결하지 않는다.
+사용자의 이후 명시적 구현 지시는 그 범위에서 우선한다.

@@ -1,0 +1,183 @@
+# ARGUS 비전 파이프라인 구조 설명서 (입문자용)
+
+이 문서는 라즈베리파이 / 카메라 / NPU를 처음 다루는 사람이 이 코드가 "왜 이렇게 짜여 있는지"와 "코드 어디를 보면 되는지"를 빠르게 파악하도록 쓴 문서다. 나중에 카메라 모듈, YOLO 모델, 전처리 방식이 전부 바뀌어도 **전체 데이터 흐름(카메라→전처리→NPU→후처리→버스)은 그대로**이므로, 이 구조를 한 번 이해해두면 부품만 갈아 끼우는 식으로 따라갈 수 있다.
+
+---
+
+## 1. 큰 그림: 데이터가 흐르는 순서
+
+```
+┌──────────────┐   ①캡처(스레드1)    ┌───────────────────┐
+│  USB 웹캠     │ ──────────────────▶ │ LatestFrameQueue   │  "최신 프레임 1~2개만 유지,
+│ (/dev/video0)│   cv2.VideoCapture   │ (용량 2, 꽉 차면    │   밀리면 오래된 것부터 버림"
+└──────────────┘                      │  가장 오래된 것 버림)│
+                                       └─────────┬──────────┘
+                                                  │ (메인 스레드가 하나씩 꺼냄)
+                                                  ▼
+                                       ②전처리: letterbox
+                                       (640x480 → 640x640,
+                                        여백 채우고 RGB로 변환)
+                                                  │
+                                                  ▼
+                                       ③NPU 추론 (Hailo-8)
+                                       (HEF 모델 실행 → 박스+점수)
+                                                  │
+                                                  ▼
+                                       ④원본 좌표 전체 박스
+                                       (전체 박스를 그대로 보존)
+                                                  │
+                                                  ▼
+                                       ⑤메시지 조립 (DetectionFrame)
+                                                  │
+                                                  ▼
+┌───────────────────┐   ⑥발행(PUB)    ┌───────────────────┐   ⑦구독(SUB)   ┌─────────────┐
+│ Publisher(zmq PUB) │ ──────────────▶ │  busd (프록시)      │ ─────────────▶ │ 구독자들      │
+│ (vision_node 안)    │  tcp:5555      │  XSUB→XPUB 중계    │   tcp:5556     │ (제어팀 코드, │
+└───────────────────┘                 └───────────────────┘                │  모니터링 앱) │
+                                                                            └─────────────┘
+```
+
+핵심만 한 줄로 요약하면: **카메라 스레드가 계속 프레임을 찍어 큐에 넣고, 메인 스레드가 큐에서 하나씩 꺼내 전처리→NPU 추론→후처리를 거쳐 결과를 버스에 뿌린다.** 이 두 스레드 구조(캡처 스레드 / 처리 스레드) 덕분에 카메라가 느려져도 처리 루프가 멈추지 않는다.
+
+---
+
+## 2. 파일 지도 — 뭐가 어디 있는지
+
+`work/argus_vision_bus/src/argus_vision/` 안의 파일들을 **역할별로** 묶으면 이렇다.
+
+| 역할 | 파일 | 한 줄 설명 |
+|---|---|---|
+| **실행 진입점** | `vision_node.py` | 전체 파이프라인을 조립하고 돌리는 메인 스크립트. `argus-vision` 명령이 이걸 실행한다 |
+| **카메라 입력** | `frame_sources.py`, `vision_node.py`의 `capture_loop()` | 카메라를 열고, 별도 스레드에서 계속 프레임을 읽어 큐에 넣음 |
+| **프레임 큐** | `frame_queue.py` | 용량 2의 FIFO, 꽉 차면 오래된 프레임 폐기 (`LatestFrameQueue`) |
+| **전처리** | `preprocess.py` | letterbox 리사이즈 + BGR→RGB 변환 (`letterbox_bgr_to_rgb()`) |
+| **NPU 추론** | `detector.py` | `HailoNmsDetector`(실제 Hailo-8용), `MockDetector`(하드웨어 없이 테스트용) |
+| **메시지 정의** | `messages.py` | 버스에 실어 보내는 메시지들의 모양(필드) 정의 |
+| **메시지 버스** | `bus.py`, `busd.py`, `topics.py` | ZeroMQ 기반 pub/sub 배선과 토픽 이름 상수 |
+| **NPU 입력 미리보기 발행** | `npu_input_publisher.py` | (이번에 추가) NPU가 실제로 보는 이미지를 JPEG로 내보내는 디버그 기능 |
+| **환경 프로파일** | `profile.py`, `config/profiles.toml` | "지금 SITL인지 실기체인지 IR인지" 조합을 검증 |
+| **조립(Composition Root)** | `composition_root.py` | 프로파일별 입력/Detector와 추적기/VehiclePort 등록 팩토리 |
+| **시각(시계)** | `clock.py` | 타임스탬프를 얻는 방법을 하나로 통일(테스트 시 가짜 시계로 교체 가능) |
+| **하드웨어 사전 점검** | `hardware_check.py` | 카메라/HEF/HailoRT가 다 맞는지 실행 전에 검사 (`verify_rpi.sh`가 이걸 호출) |
+| **구독자 예제** | `detection_subscriber.py`, `preview_subscriber.py` | 버스에서 결과를 받아 화면에 찍어주는 간단한 예제 프로그램 |
+
+**실행 스크립트**(`scripts/`)는 이 파이썬 코드를 어떤 순서로 띄울지 감싸주는 셸 스크립트다: `setup_rpi.sh`(최초 설치) → `verify_rpi.sh`(사전 검사) → `run_rpi.sh`(수동 실행, 내부적으로 busd+vision_node를 같이 띄움) → `install_autostart.sh`(systemd 자동실행 등록).
+
+---
+
+## 3. 단계별 상세 설명
+
+### ① 입력 어댑터 — `frame_sources.py`
+
+- `CompositionRoot.create_frame_source()`가 프로파일의 `frame_source` 또는 명시적 `--frame-source` 옵션으로 입력을 선택한다.
+- `ir_v4l2`는 OpenCV BGR uint8 장치, `replay`는 유한 영상 파일, `ir_sdk`는 기존 C++ RAW14 캡처 프로세스를 사용한다.
+- SDK 입력은 검증한 RAW14를 Min-Max 또는 고정 14→8비트 스케일로 변환하고 3채널로 복제한다. 모델 학습과 일치하는 전처리를 선택해야 한다.
+- 각 입력은 `SourceFrame`과 `FrameTiming`을 반환한다. 현재 어댑터의 수신 시각은 실제 노출 시각이 아니며 별도 유효성 필드를 사용한다.
+- `capture_loop()`는 입력을 읽어 기존 유계 큐에 넣는다. 카메라 실패는 fault로 전파하고 유한 Replay EOF는 정상 종료로 처리한다.
+- Gazebo 영상/좌표 어댑터, 실제 추적기와 VehiclePort는 아직 없다. 해당 부품 생성 요청은 미구현 오류를 낸다.
+
+### ② 프레임 큐 — `frame_queue.py`
+
+- `LatestFrameQueue`는 그냥 큐가 아니라 **"항상 최신 것만 유지"**하는 큐다. 용량(기본 2)이 꽉 찬 상태에서 새 프레임이 들어오면 가장 오래된 프레임을 버리고 새 걸 넣는다.
+- 왜 이렇게 하나? 만약 처리 속도가 카메라보다 느려지면, 보통의 큐는 계속 쌓여서 "실시간인데 몇 초 전 화면을 보는" 상황이 된다. 드론 비전에서는 오래된 프레임을 처리하느니 최신 걸 처리하는 게 낫기 때문에 이런 정책을 쓴다.
+
+### ③ 전처리(letterbox) — `preprocess.py: letterbox_bgr_to_rgb()`
+
+- NPU에 넣는 YOLOX 모델은 보통 **정사각형**(예: 640×640) 입력을 받는데, 카메라는 640×480처럼 **직사각형**이다. 그냥 늘려서 넣으면 이미지가 찌그러지므로, **비율을 유지한 채 리사이즈하고 남는 부분을 회색(114)으로 채우는** 방식을 쓴다 — 이걸 "letterbox"(영화관 자막처럼 위아래에 검은/회색 띠가 생기는 것)라고 부른다.
+- 이 함수는 리사이즈 배율(`scale`)과 채운 여백 두께(`pad_x`, `pad_y`)를 `LetterboxTransform`이라는 객체에 담아 같이 돌려준다. 나중에 NPU가 letterbox된 640×640 좌표로 박스를 알려주면, 이 `scale`/`pad`를 거꾸로 계산해서 원본 카메라 좌표로 되돌린다(`LetterboxTransform.model_normalized_yxyx_to_source_xyxy()`).
+- 색 순서도 여기서 바꾼다: OpenCV는 기본이 BGR인데 모델은 RGB를 기대하므로 `cv2.cvtColor`로 변환한다.
+- **나중에 모델 입력 크기가 바뀌어도(예: 320×320) 이 함수는 그대로 쓸 수 있다** — 목표 크기를 인자로 받기 때문이다(`detector.input_width/height`에서 자동으로 가져온다).
+
+### ④ NPU 추론 — `detector.py: HailoNmsDetector`
+
+몇 가지 생소할 용어부터:
+- **NPU(Neural Processing Unit)**: AI 연산 전용 칩. 여기서는 Hailo-8이라는 별도 가속기 보드(PCIe로 연결)가 그 역할을 한다. CPU로 YOLO를 돌리면 느린데, NPU에 미리 컴파일된 모델을 올려서 돌리면 훨씬 빠르다.
+- **HEF(Hailo Executable Format)**: Hailo NPU 전용으로 컴파일된 모델 파일(`.hef`). 일반 `.onnx`/`.pth`는 NPU에서 바로 못 돌리고, Hailo의 컴파일러(Dataflow Compiler)로 변환해야 한다.
+- **NMS(Non-Maximum Suppression)**: 같은 물체에 겹쳐서 나온 여러 박스 중 가장 확실한 것만 남기는 후처理. 이 프로젝트는 이 NMS 연산 자체도 NPU 안에서 끝내도록 컴파일된 HEF만 쓴다(그래서 `hardware_check.py`가 "출력이 NMS 포맷인지" 검사한다).
+- **HailoRT / PyHailoRT**: Hailo NPU를 제어하는 런타임 라이브러리(C++ 코어 + 파이썬 바인딩 `hailo_platform`). 이 프로젝트는 버전 **4.23.x**에 정확히 맞춰야 한다(달라지면 드라이버-라이브러리 불일치로 동작 안 함).
+
+코드 흐름(`detector.py`):
+1. 생성자에서 `VDevice`(NPU 장치 핸들)를 열고 HEF를 로드, 입력 1개/출력 1개(NMS)인지 확인한다.
+2. `infer(model_input, transform)`이 실제 추론 한 번을 수행한다 — 비동기 API(`run_async`)를 쓰고 콜백+`threading.Event`로 완료를 기다리는 방식이라 코드가 좀 복잡해 보이지만, "입력 넣고 → 기다리고 → 출력 받기"가 전부다.
+3. `_parse_nms()`가 NPU가 뱉은 클래스별 박스 배열을 우리가 쓰는 `Detection` 객체 리스트로 바꾸면서, 동시에 letterbox 좌표를 원본 카메라 좌표로 되돌린다.
+4. `MockDetector`는 하드웨어 없이 버스/카메라 파이프라인만 테스트하고 싶을 때 쓰는 가짜 버전 — 움직이는 가짜 박스 하나를 계속 리턴한다.
+5. `Detector`는 파이썬 `Protocol`(다른 언어의 인터페이스와 비슷)로 정의돼 있다 — **모델/NPU가 바뀌어도 `infer()`, `close()`, `model_name`, `input_width/height`만 맞춰 구현하면 나머지 코드(전처리~버스)는 손댈 필요가 없다**는 뜻이다. 이게 이 프로젝트가 말하는 "IDetector 인터페이스"다.
+
+**나중에 YOLO 모델(HEF)이 바뀌면**: `models/`에 새 HEF 넣고 `config/labels.txt`만 바꾸면 된다. 클래스 개수가 코드에 하드코딩된 곳은 없다(라벨 파일 줄 수 = 클래스 수로 자동 처리). 단, 처음 켤 때 `verify_rpi.sh`를 꼭 거쳐야 라벨 개수가 HEF와 안 맞는 실수를 미리 잡아준다(`docs/CAMERA_AND_MODEL_NOTES.md` 3장 참조).
+
+### ⑤ 전체 박스
+
+- Detector가 원본 영상 좌표로 복원한 전체 박스(`x1,y1,x2,y2`)를 그대로 메시지에 전달한다.
+- 표시·추적·선택·기하의 중심과 크기 기준은 전체 박스다. 별도의 하단 ROI 후처리는 없다.
+
+### ⑥⑦ 메시지 버스 — `bus.py`, `busd.py`, `topics.py`, `messages.py`
+
+- **ZeroMQ**는 소켓 기반 메시징 라이브러리다. 여기서는 **PUB/SUB**(발행/구독) 패턴을 쓴다 — 발행자는 "누가 듣든 말든" 토픽에 던지고, 구독자는 관심있는 토픽만 받는다.
+- **busd**는 발행자와 구독자를 직접 연결하지 않고 중간에 두는 **프록시**다(XSUB로 발행자를 받아 XPUB로 구독자에게 중계). 이렇게 하면 발행자/구독자가 서로의 존재나 개수를 몰라도 되고, 여러 프로세스·여러 컴퓨터(Windows 모니터링 앱 포함)가 자유롭게 붙었다 뗄 수 있다.
+- 메시지는 **MessagePack**(JSON과 비슷하지만 더 작고 빠른 바이너리 포맷)으로 인코딩한 "헤더"와, 이미지처럼 큰 바이너리는 별도의 "payload" 프레임으로 나눠 보낸다(`messages.py`의 `pack_message`/`unpack_message`).
+- `topics.py`는 토픽 이름을 문자열 리터럴로 여기저기 흩어놓지 않고 상수로 모아둔 곳이다. 지금 실제로 쓰이는 토픽은 `perception/observations`(탐지 결과), `diagnostics/events`(상태/통계), `vision/overlay/jpeg`(사람이 보는 미리보기, 옵션), `vision/npu_input/jpeg`(NPU 입력 디버그용, 옵션) 네 개다. `tracking/tracks`, `command/*`는 나중을 위해 이름만 정의돼 있고 아직 아무도 안 쓴다.
+
+### 실행 진입점 — `vision_node.py: main() → run()`
+
+실제 코드가 어떤 순서로 호출되는지 알아두면 디버깅할 때 편하다:
+
+```
+main()
+ └ build_parser()로 커맨드라인 인자 파싱 (--hef, --camera, --labels ...)
+ └ run(args) 호출
+     ├ load_labels()            # 라벨 파일 읽기
+     ├ load_profile()           # profiles.toml에서 프로파일 검증
+     ├ CompositionRoot.create_detector()  # HailoNmsDetector 또는 MockDetector 생성
+     ├ CompositionRoot.create_frame_source()  # 프로파일 입력 생성
+     ├ capture_loop() 스레드 시작  # 카메라 → 큐, 이후 계속 백그라운드로 동작
+     ├ (옵션) NpuInputJpegPublisher 생성  # --publish-npu-input일 때만
+     └ 메인 루프 (Publisher가 살아있는 동안 반복):
+         ├ frame_queue.get()                  # 유계 FIFO에서 프레임 꺼내기
+         ├ letterbox_bgr_to_rgb()             # ②전처리
+         ├ detector.infer()                    # ③NPU 추론
+         ├ DetectionFrame 조립 후 publish       # ⑤⑥ 메시지+발행
+         └ (옵션) 로그 출력 / 미리보기 발행 / npu_input 발행
+```
+
+이 반복문 하나가 "카메라 한 프레임 → 탐지 결과 하나"의 전체 사이클이다.
+
+---
+
+## 4. 나중에 통째로 바뀔 부분 — 어디를 고치면 되는가
+
+| 바뀔 대상 | 지금 구현 위치 | 바꿀 때 지켜야 할 "경계"(인터페이스) |
+|---|---|---|
+| **카메라 모듈** | `frame_sources.py`, `CompositionRoot.source_factories` | `IFrameSource.read()`가 `(ok, SourceFrame)`을 반환하고 BGR uint8·명시적 시각 계약을 지키도록 구현 |
+| **YOLO 모델(HEF)** | `detector.py`의 `HailoNmsDetector` (또는 아예 다른 `Detector` 구현체) | `Detector` Protocol(`infer`, `close`, `model_name`, `input_width`, `input_height`)만 지키면 `vision_node.py`의 메인 루프는 한 줄도 안 바뀐다 |
+| **전처리 방식**(letterbox가 아닌 다른 방식으로) | `preprocess.py`의 `letterbox_bgr_to_rgb()` | `(model_input, transform)`을 리턴하고, `transform`이 좌표 역변환 메서드를 제공하기만 하면 됨 |
+| **NPU 종류**(Hailo→다른 칩, 예: DX-M1) | `composition_root.py`, `profile.py` | `profiles.toml`에 이미 `dxm1_yolox`라는 이름이 자리만 잡혀 있다(`NotImplementedError`로 막아둔 상태) — 같은 `Detector` Protocol로 새 어댑터 클래스만 추가하면 됨 |
+
+즉, **이 코드는 "카메라→전처리→NPU→후처리→버스"라는 파이프라인의 각 단계를 별개 파일/클래스로 쪼개놓고, 단계 사이의 "규칙"(Protocol, 함수 시그니처)만 지키면 한 단계씩 갈아끼울 수 있게** 짜여 있다. 지금 당장은 웹캠+COCO YOLOX HEF로 맞춰져 있지만, 카메라나 모델을 바꿔도 나머지 파일은 대부분 그대로 쓸 수 있을 것으로 예상되는 구조다.
+
+---
+
+## 5. 용어 미니 사전
+
+| 용어 | 뜻 |
+|---|---|
+| V4L2 | 리눅스의 표준 카메라 입력 인터페이스. `/dev/video0` 같은 장치 파일로 접근 |
+| FOURCC | 카메라가 보내는 픽셀 포맷 코드(예: MJPG=압축된 JPEG 연속, YUYV=무압축 YUV) |
+| letterbox | 원본 비율을 유지한 채 리사이즈하고 남는 공간을 여백으로 채우는 전처리 방식 |
+| HEF | Hailo NPU 전용으로 컴파일된 모델 실행 파일 |
+| HailoRT / PyHailoRT | Hailo NPU 제어 런타임(C++/Python) |
+| NMS | 겹치는 탐지 박스 중 가장 확실한 것만 남기는 후처리. 이 프로젝트는 NPU 안에서 처리 |
+| ZeroMQ / PUB-SUB | 발행-구독 방식의 메시징 라이브러리/패턴 |
+| XSUB/XPUB 프록시 | 발행자·구독자를 직접 연결하지 않고 중계해주는 중간 노드(`busd`가 이 역할) |
+| MessagePack | JSON과 비슷하지만 더 작고 빠른 바이너리 직렬화 포맷 |
+| monotonic clock | 시스템 시각(벽시계)과 달리 항상 앞으로만 흐르는, 구간 시간 측정에 쓰는 시계. 재부팅하면 리셋됨 |
+| Protocol(파이썬) | 다른 언어의 인터페이스와 비슷 — "이 메서드들만 있으면 이 타입으로 취급"하는 파이썬식 구조적 타이핑 |
+
+---
+
+## 6. 더 자세한 내용은 여기에
+
+- 메시지 필드/토픽 전체 규격: `docs/BUS_CONTRACT.md`
+- 카메라 설정 방법, IR 카메라 교체 시 주의점, 모델 교체 시 확인사항: `docs/CAMERA_AND_MODEL_NOTES.md`
+- 새 모델 받았을 때 실행 체크리스트: `docs/TRAINING_DAY_CHECKLIST.md`
+- 성능(FPS/지연) 실측 데이터와 원인 분석: `docs/PERF_NOTES.md`
+- 설치/실행 원본 안내서: `docs/INSTALL_AND_RUN_RPI5_HAILO8.md`

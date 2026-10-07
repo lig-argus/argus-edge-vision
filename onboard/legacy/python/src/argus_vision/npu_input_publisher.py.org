@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import queue
+import threading
+import time
+
+import cv2
+import numpy as np
+
+from .bus import Publisher
+from .messages import npu_input_jpeg_header, npu_input_stats_message
+from .preprocess import LetterboxTransform
+from .topics import DIAGNOSTIC_EVENTS, NPU_INPUT_JPEG
+
+_STOP = object()
+
+
+class NpuInputJpegPublisher:
+    """Encodes the letterboxed NPU input to JPEG and publishes it on its own thread/socket.
+
+    Rate-limited and non-blocking so a slow encode or a slow bus subscriber never
+    stalls the inference loop: `offer()` only rate-checks and enqueues (maxsize=1,
+    drop-oldest); the actual BGR conversion, JPEG encode and NOBLOCK bus publish
+    happen on a dedicated thread with its own PUB socket.
+
+    Every frame that reaches `offer()` is dropped for exactly one of two reasons
+    if it doesn't get published: the max-fps rate limiter skipped it
+    (`dropped_rate_limit`), or it was still sitting in the maxsize=1 queue when a
+    newer frame displaced it before the worker thread got to it
+    (`dropped_queue_overwrite`). Counters are published periodically on
+    `diagnostics/events` (state=npu_input_stats) so the gap between
+    `perception/observations` throughput and `vision/npu_input/jpeg` throughput
+    is attributable instead of just observed.
+    """
+
+    def __init__(
+        self,
+        endpoint: str,
+        source: str,
+        max_fps: float = 15.0,
+        jpeg_quality: int = 80,
+        stats_interval_s: float = 2.0,
+    ):
+        if max_fps <= 0:
+            raise ValueError("max_fps must be positive")
+        self._endpoint = endpoint
+        self._source = source
+        self._min_interval_ns = int(1_000_000_000 / max_fps)
+        self._jpeg_quality = jpeg_quality
+        self._stats_interval_s = stats_interval_s
+        self._queue: queue.Queue = queue.Queue(maxsize=1)
+        self._next_allowed_ns = 0
+        self._counter_lock = threading.Lock()
+        self._offered = 0
+        self._published = 0
+        self._dropped_rate_limit = 0
+        self._dropped_queue_overwrite = 0
+        self._dropped_encode_fail = 0
+        self._thread = threading.Thread(target=self._run, name="npu-input-publish", daemon=True)
+        self._thread.start()
+
+    def offer(
+        self,
+        seq: int,
+        rgb_model_input: np.ndarray,
+        transform: LetterboxTransform,
+        t_capture_us: int,
+        t_pre_us: int,
+    ) -> None:
+        now_ns = time.monotonic_ns()
+        with self._counter_lock:
+            self._offered += 1
+            if now_ns < self._next_allowed_ns:
+                self._dropped_rate_limit += 1
+                return
+            self._next_allowed_ns = now_ns + self._min_interval_ns
+
+        item = (seq, rgb_model_input, transform, t_capture_us, t_pre_us)
+        try:
+            self._queue.put_nowait(item)
+            return
+        except queue.Full:
+            pass
+        with self._counter_lock:
+            self._dropped_queue_overwrite += 1
+        try:
+            self._queue.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            self._queue.put_nowait(item)
+        except queue.Full:
+            pass
+
+    def _snapshot_counters(self) -> dict[str, int]:
+        with self._counter_lock:
+            return {
+                "offered": self._offered,
+                "published": self._published,
+                "dropped_rate_limit": self._dropped_rate_limit,
+                "dropped_queue_overwrite": self._dropped_queue_overwrite,
+                "dropped_encode_fail": self._dropped_encode_fail,
+            }
+
+    def _run(self) -> None:
+        with Publisher(self._endpoint) as publisher:
+            next_stats_at = time.monotonic() + self._stats_interval_s
+            while True:
+                try:
+                    item = self._queue.get(timeout=self._stats_interval_s)
+                except queue.Empty:
+                    item = None
+
+                if item is _STOP:
+                    return
+                if item is not None:
+                    seq, rgb_model_input, transform, t_capture_us, t_pre_us = item
+                    bgr = cv2.cvtColor(rgb_model_input, cv2.COLOR_RGB2BGR)
+                    encoded_ok, encoded = cv2.imencode(
+                        ".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
+                    )
+                    if encoded_ok:
+                        header = npu_input_jpeg_header(
+                            seq=seq,
+                            t_capture_us=t_capture_us,
+                            t_pre_us=t_pre_us,
+                            src_w=transform.source_width,
+                            src_h=transform.source_height,
+                            lb_scale=transform.scale,
+                            lb_pad_x=transform.pad_x,
+                            lb_pad_y=transform.pad_y,
+                            source=self._source,
+                            preprocess="letterbox_bgr_to_rgb",
+                        )
+                        publisher.publish(NPU_INPUT_JPEG, header, encoded.tobytes())
+                        with self._counter_lock:
+                            self._published += 1
+                    else:
+                        with self._counter_lock:
+                            self._dropped_encode_fail += 1
+
+                now = time.monotonic()
+                if now >= next_stats_at:
+                    publisher.publish(
+                        DIAGNOSTIC_EVENTS, npu_input_stats_message(self._source, **self._snapshot_counters())
+                    )
+                    next_stats_at = now + self._stats_interval_s
+
+    def close(self) -> None:
+        self._queue.put(_STOP)
+        self._thread.join(timeout=2.0)

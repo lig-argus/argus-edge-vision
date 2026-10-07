@@ -1,0 +1,17 @@
+# ARGUS Vision Bus v0.2.0 배포 구성
+
+이 배포본에는 다음 항목이 포함된다.
+
+- Raspberry Pi 5 USB RGB 카메라 입력
+- 640×480 최신 프레임 큐와 640×640 Letterbox 전처리
+- Hailo-8 YOLOX HEF 추론과 HailoRT NMS 출력 처리
+- 원본 좌표 복원과 전체 박스 보존
+- ZeroMQ + MessagePack Publish/Subscribe 버스
+- 탐지 및 선택적 JPEG 미리보기 구독 예제
+- Hailo-8, 카메라, HEF와 라벨 자동 검사
+- 수동 원클릭 실행 스크립트
+- systemd 부팅 자동 실행 설치·상태·제거 스크립트
+- 설치·실행·문제 해결 설명서
+- Python 단위 테스트
+
+HEF 모델 파일은 포함하지 않는다. 사용자가 준비한 Hailo-8용 HEF와 일치하는 라벨 파일을 넣어야 한다.

@@ -1,0 +1,15 @@
+import numpy as np
+
+from argus_vision.preprocess import letterbox_bgr_to_rgb
+
+
+def test_letterbox_and_reverse_mapping():
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    model_input, transform = letterbox_bgr_to_rgb(frame, 640, 640)
+    assert model_input.shape == (640, 640, 3)
+    # Full source image occupies y=140..500 after 0.5 scaling and vertical padding.
+    box = [140 / 640, 0.0, 500 / 640, 1.0]
+    x1, y1, x2, y2 = transform.model_normalized_yxyx_to_source_xyxy(box)
+    assert (x1, y1) == (0, 0)
+    assert (x2, y2) == (1279, 719)
+

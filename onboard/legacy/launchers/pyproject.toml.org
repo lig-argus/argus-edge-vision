@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-vision-bus"
+version = "0.2.0"
+description = "Raspberry Pi 5 + Hailo-8 YOLOX detection with a ZeroMQ message bus"
+requires-python = ">=3.11"
+dependencies = [
+  "msgpack>=1.0,<2",
+  "numpy>=1.24,<2",
+  "opencv-python-headless>=4.8,<=4.10.0.84",
+  "pyzmq>=25,<28",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+argus-busd = "argus_vision.busd:main"
+argus-vision = "argus_vision.vision_node:main"
+argus-detection-sub = "argus_vision.detection_subscriber:main"
+argus-preview-sub = "argus_vision.preview_subscriber:main"
+argus-hardware-check = "argus_vision.hardware_check:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

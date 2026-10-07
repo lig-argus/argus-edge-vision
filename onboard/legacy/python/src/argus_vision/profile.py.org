@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class EnvironmentProfile:
+    name: str
+    frame_source: str
+    detector: str
+    tracker: str
+    vehicle_port: str
+    coordinate_frame: str
+
+
+_ALLOWED = {
+    "SITL_POSE": {
+        "frame_source": {"gazebo_pose"},
+        "detector": {"none"},
+        "vehicle_port": {"mavsdk_udp"},
+    },
+    "SITL_IMAGE": {
+        "frame_source": {"gazebo_camera"},
+        "detector": {"pc_yolox", "hailo_yolox", "dxm1_yolox"},
+        "vehicle_port": {"mavsdk_udp"},
+    },
+    "REAL_IR": {
+        "frame_source": {"ir_v4l2", "ir_sdk"},
+        "detector": {"hailo_yolox", "dxm1_yolox"},
+        "vehicle_port": {"mavsdk_serial", "mavsdk_udp"},
+    },
+    "REPLAY": {
+        "frame_source": {"replay"},
+        "detector": {"pc_yolox", "hailo_yolox", "dxm1_yolox", "none"},
+        "vehicle_port": {"replay"},
+    },
+}
+
+
+def load_profile(path: str | Path, name: str) -> EnvironmentProfile:
+    with Path(path).open("rb") as file:
+        profiles = tomllib.load(file)
+    if name not in profiles:
+        raise ValueError(f"unknown environment profile: {name}")
+    profile = EnvironmentProfile(name=name, **profiles[name])
+    validate_profile(profile)
+    return profile
+
+
+def validate_profile(profile: EnvironmentProfile) -> None:
+    if profile.name not in _ALLOWED:
+        raise ValueError(f"unsupported environment profile: {profile.name}")
+    allowed = _ALLOWED[profile.name]
+    expected_frame = "gazebo_world_enu" if profile.name == "SITL_POSE" else "camera_pixel"
+    if profile.coordinate_frame != expected_frame:
+        raise ValueError(f"incompatible coordinate frame for {profile.name}: {profile.coordinate_frame}")
+    trackers = {"bytetrack_cmc", "ocsort_cmc", "hybridsort_hmiou_off_cmc", "hybridsort_hmiou_on_cmc"}
+    if profile.tracker not in ({"pose"} if profile.name == "SITL_POSE" else trackers):
+        raise ValueError(f"incompatible tracker for {profile.name}: {profile.tracker}")
+    for field_name, values in allowed.items():
+        actual = getattr(profile, field_name)
+        if actual not in values:
+            raise ValueError(
+                f"incompatible {profile.name} profile: {field_name}={actual!r}; "
+                f"allowed={sorted(values)}"
+            )

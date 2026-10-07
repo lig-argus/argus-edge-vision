@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import argparse
+
+from ..transport.MessageBus import DEFAULT_SUBSCRIBE_ENDPOINT, Subscriber
+from .Detection import DetectionFrame
+from ..transport.Topics import DETECTIONS_V1
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Print ARGUS detection messages")
+    parser.add_argument("--endpoint", default=DEFAULT_SUBSCRIBE_ENDPOINT)
+    args = parser.parse_args()
+    with Subscriber([DETECTIONS_V1], args.endpoint) as subscriber:
+        while True:
+            _, header, _ = subscriber.receive()
+            frame = DetectionFrame.from_dict(header)
+            print(
+                f"frame={frame.frame_id} objects={len(frame.detections)} "
+                f"infer={frame.inference_ms:.1f}ms latency={frame.pipeline_latency_ms:.1f}ms"
+            )
+            for detection in frame.detections:
+                print(
+                    f"  {detection.label} {detection.confidence:.2f} "
+                    f"box=({detection.x1},{detection.y1})-({detection.x2},{detection.y2})"
+                )
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,4 @@
+"""ARGUS camera detection and message bus package."""
+
+__version__ = "0.1.0"
+

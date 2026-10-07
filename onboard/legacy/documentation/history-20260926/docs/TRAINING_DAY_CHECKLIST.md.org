@@ -1,0 +1,89 @@
+> 이전 Python 구현/시험 기록입니다. 현행 실행 구조는 [CPP_MIGRATION.md](CPP_MIGRATION.md)와 [FLOW_ALIGNMENT.md](FLOW_ALIGNMENT.md)를 따릅니다. 이 기록을 근거로 Python 전체 실행부를 복원하지 마세요.
+
+# YOLOX 자체 모델 학습 완료 당일 체크리스트
+
+> 2026-09-26 변경: 현재 코드는 전체 박스만 사용한다. 아래 성능 기록은 하단 ROI 후처리가 있던 과거 코드의 측정값이며, 변경 후 재측정값이 아니다.
+
+전제: `work/argus_vision_bus`에 `.venv-rpi`가 이미 구성되어 있고(HailoRT 4.23.0 / PyHailoRT / OpenCV 4.6.0 / msgpack / pyzmq 확인됨),
+웹캠(`/dev/video0`, MJPG 640x480@30fps)으로 이미 한 번 end-to-end 동작을 확인한 상태. 이 문서는 "학습이 끝나고 새 HEF가 나온 날" 반복할 절차다.
+
+## 0. Baseline (2026-09-22 웹캠 + COCO `yolox_s_leaky` 기준, 참고용)
+
+| 항목 | 값 |
+|---|---|
+| NPU 단독 처리량 (`hailortcli run --measure-latency -m hw_only`, 10초) | 1474 frame / 147.4 FPS, HW Latency 6.27ms, Overall Latency 6.75ms |
+| 전체 파이프라인(웹캠→letterbox→NPU→hull→publish) | 약 14~15 FPS (카메라 캡처가 병목, NPU 아님) |
+| 파이프라인 내부 구간(`infer`, NPU 추론만) | 약 9.5~9.9ms/frame (웜업 후 안정) |
+| 파이프라인 레이턴시(`age`, capture→publish) | 약 11.3~11.6ms/frame |
+| 프레임 드랍 | 0 (큐 용량 2, 카메라가 병목이라 쌓이지 않음) |
+
+새 HEF로 교체한 뒤 이 표와 비교해 NPU 추론 시간(`infer`)이 크게 달라지면(모델 크기·해상도 변경) 원인을 먼저 특정한다. `age`/전체 FPS는 카메라 설정을 안 바꾸는 한 baseline과 비슷해야 정상이다.
+
+## 1. HEF/라벨 파일 배치
+
+- [ ] 컴파일된 `.hef`를 `work/argus_vision_bus/models/`에 복사 (파일명 규칙: `yolox_s_640_<dataset>_<version>_hailo8.hef` 권장, `models/README.md` 참조)
+- [ ] 클래스 순서에 맞춘 라벨 파일을 `config/labels.txt`에 작성 (한 줄에 한 클래스, 학습 시 class ID 순서와 동일해야 함)
+- [ ] `hailomz compile` 시 `--hw-arch hailo8`였는지, YAML이 HailoRT NMS를 활성화하는 `yolox_s_leaky.yaml` 계열이었는지 재확인 (Hailo-8L 혼용 금지)
+
+## 2. HEF 자체 검증 (하드웨어 연결 전, 구조만 확인)
+
+```bash
+cd ~/npu-test/work/argus_vision_bus
+hailortcli parse-hef models/<새HEF파일명>.hef
+```
+
+다음을 눈으로 확인한다:
+- [ ] `Architecture HEF was compiled for: HAILO8` (HAILO8L이면 안 됨)
+- [ ] `Input ... UINT8, NHWC(...)` — 입력 1개, RGB 3채널
+- [ ] `Output ... FLOAT32, HAILO NMS BY CLASS(number of classes: N, ...)` — 출력 1개, NMS 포함
+- [ ] `number of classes: N` 이 `config/labels.txt` 줄 수와 일치하는지 (틀리면 3단계에서 자동으로 FAIL 처리됨)
+
+## 3. 설정 변경 (`config/runtime.env`)
+
+```bash
+nano config/runtime.env
+```
+
+- [ ] `ARGUS_HEF=models/<새HEF파일명>.hef`
+- [ ] `ARGUS_LABELS=config/labels.txt` (COCO 기본 테스트가 아니라면 `coco80.txt`에서 변경)
+- [ ] 카메라 관련(`ARGUS_CAMERA`, `ARGUS_WIDTH/HEIGHT/FPS/FOURCC`)은 웹캠을 계속 쓰는 한 **변경 불필요** — IR 카메라로 바꾸는 날에만 손댄다
+
+## 4. 사전 검증 스크립트 (하드웨어 실제 확인)
+
+```bash
+./scripts/verify_rpi.sh /dev/video0 models/<새HEF파일명>.hef config/labels.txt 640 480 MJPG
+```
+
+모두 `[PASS]`가 떠야 다음 단계로 간다. 특히:
+- [ ] `labels: N classes match the HEF output` — 라벨 수 불일치는 여기서 걸러진다 (실제 추론 경로인 `HailoNmsDetector`는 라벨이 모자라도 죽지 않고 숫자로 대체해버리므로, **반드시 이 스크립트를 거쳐서 실행**해야 조용한 오분류를 막을 수 있음)
+
+## 5. (선택) 녹화 영상으로 먼저 드라이런
+
+실제 비행/현장 전에 과거에 녹화해둔 영상 파일이 있으면 하드웨어 없이도 HEF 동작만 먼저 확인할 수 있다 (이번 작업으로 `--camera`에 비디오 파일 경로를 넣는 replay 모드를 `work/`에 추가함, `docs/CAMERA_AND_MODEL_NOTES.md` 참조):
+
+```bash
+.venv-rpi/bin/python -m argus_vision.busd --publish-bind tcp://127.0.0.1:5555 --subscribe-bind 'tcp://*:5556' &
+.venv-rpi/bin/python -m argus_vision.vision_node \
+  --backend hailo --hef models/<새HEF파일명>.hef --labels config/labels.txt \
+  --camera /path/to/recorded_clip.mp4 --publish-preview
+```
+
+파일이 끝나면(EOF) 프로세스가 자동 종료된다. 반복 재생이 필요하면 코드에 `--loop` 옵션을 추가로 넣어야 한다(현재는 미구현, 1회 재생만 지원).
+
+## 6. 실제 실행 및 baseline 비교
+
+```bash
+./scripts/run_rpi.sh models/<새HEF파일명>.hef /dev/video0 config/labels.txt --preview
+```
+
+30프레임마다 찍히는 로그의 `infer=`, `age=`, `dropped=` 값을 0단계 baseline과 비교한다.
+
+## 7. 문제 발생 시 우선 확인 순서
+
+1. `objects=0`이 계속 나오면 → `--score-threshold`를 낮춰서 재시도 (기본 0.35), 그래도 없으면 라벨/클래스 순서 불일치 의심
+2. `dropped>0`이 계속 늘면 → NPU가 아니라 카메라 또는 CPU 전처리가 병목 (baseline의 `infer` 값과 비교해서 NPU 탓이 아님을 먼저 배제)
+3. 서비스가 재시작을 반복하면(`systemctl status argus-vision.service`) → 대부분 HEF 경로, Hailo-8/8L 불일치, 라벨 수 불일치, 카메라 장치 번호 문제 (README 11장과 동일)
+
+## 8. IR 카메라 교체 시 (참고, 오늘 범위 아님)
+
+IR(GRAY8/Y16) 카메라로 바꾸는 날에는 `src/argus_vision/vision_node.py`의 `capture_loop()` 안 `ok, frame = capture.read()` 직후에 8/16bit→3채널 BGR uint8 정규화 어댑터를 끼워 넣는다 (`docs/CAMERA_AND_MODEL_NOTES.md`의 상세 분석 참조). 이 문서의 범위 밖이므로 별도로 다룬다.

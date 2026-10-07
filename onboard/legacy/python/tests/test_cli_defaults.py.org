@@ -1,0 +1,9 @@
+from argus_vision.vision_node import build_parser
+
+
+def test_rpi_camera_defaults_are_640_by_480():
+    args = build_parser().parse_args([])
+    assert args.width == 640
+    assert args.height == 480
+    assert args.fps == 30
+    assert args.fourcc == "MJPG"

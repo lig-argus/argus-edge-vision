@@ -1,0 +1,45 @@
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from argus_vision.clock import SystemClock
+from argus_vision.frame_sources import (FrameSourceOptions, RAW14_HEADER,
+                                       Raw14SdkFrameSource, decode_raw14)
+
+
+def header(size=640 * 480 * 2):
+    return RAW14_HEADER.pack(b"I3R4", 1, 40, 640, 480, 14, 0, size, 1, 1000)
+
+
+def test_sdk_protocol_rejects_bad_length_and_out_of_range_without_masking():
+    raw = np.zeros((480, 640), dtype="<u2")
+    with pytest.raises(ValueError, match="header or payload"):
+        decode_raw14(header(size=0), raw.tobytes())
+    with pytest.raises(ValueError, match="header or payload"):
+        decode_raw14(header(), b"short")
+    raw[0, 0] = 65535
+    with pytest.raises(ValueError, match="14-bit"):
+        decode_raw14(header(), raw.tobytes())
+
+
+def test_actual_sdk_capture_test_pattern_is_adapted_without_camera(tmp_path):
+    binary = Path("/home/user/thessen_raw14_viewer/build/i3_raw14_capture")
+    if not binary.is_file():
+        pytest.skip("Pi SDK capture executable is unavailable")
+    wrapper = tmp_path / "synthetic-capture"
+    wrapper.write_text('#!/bin/sh\nexec ' + str(binary) + ' "$@" --test-pattern --frames 2 --fps 20\n')
+    wrapper.chmod(0o700)
+    source = Raw14SdkFrameSource(FrameSourceOptions(ir_capture=str(wrapper), ir_timeout_s=2), SystemClock())
+    try:
+        for _ in range(2):
+            ok, frame = source.read()
+            assert ok and frame.image.shape == (480, 640, 3)
+            assert frame.image.dtype == np.uint8
+            assert np.array_equal(frame.image[..., 0], frame.image[..., 2])
+            assert not frame.timing.exposure_time_valid
+            assert 0 < frame.timing.source_receive_monotonic_ns <= frame.timing.received_monotonic_ns
+    finally:
+        source.release()
+    assert source._process.poll() is not None

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_DIR="$PROJECT_DIR/.venv-rpi"
+
+find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
+
+if [[ "$(uname -m)" != "aarch64" ]]; then
+  echo "[오류] 이 설치 파일은 64-bit Raspberry Pi OS(aarch64)용입니다." >&2
+  exit 1
+fi
+
+echo "[1/4] Raspberry Pi 및 Hailo 런타임 패키지를 설치합니다."
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  hailo-all \
+  python3-msgpack \
+  python3-numpy \
+  python3-opencv \
+  python3-pip \
+  python3-setuptools \
+  python3-venv \
+  python3-zmq \
+  v4l-utils
+
+TARGET_USER="${SUDO_USER:-$USER}"
+if id "$TARGET_USER" >/dev/null 2>&1; then
+  sudo usermod -aG video "$TARGET_USER"
+fi
+
+echo "[2/4] 시스템 Hailo Python 바인딩을 사용하는 가상환경을 만듭니다."
+python3 -m venv --system-site-packages "$VENV_DIR"
+
+echo "[3/4] ARGUS 실행 명령을 설치합니다."
+"$VENV_DIR/bin/python" -m pip install \
+  --no-build-isolation \
+  --no-deps \
+  --editable "$PROJECT_DIR"
+
+echo "[4/4] Python 모듈을 확인합니다."
+"$VENV_DIR/bin/python" - <<'PY'
+import cv2
+import msgpack
+import numpy
+import zmq
+import hailo_platform
+
+print(f"OpenCV={cv2.__version__}")
+print(f"NumPy={numpy.__version__}")
+print("PyHailoRT import=OK")
+PY
+
+if [[ ! -f "$PROJECT_DIR/config/runtime.env" ]]; then
+  cp "$PROJECT_DIR/config/runtime.env.example" "$PROJECT_DIR/config/runtime.env"
+  echo "기본 실행 설정을 만들었습니다: $PROJECT_DIR/config/runtime.env"
+fi
+
+cat <<EOF
+
+설치가 끝났습니다.
+
+다음 명령으로 장치를 확인하십시오.
+  cd "$PROJECT_DIR"
+  ./scripts/verify_rpi.sh /dev/video0
+
+hailortcli가 장치를 찾지 못하면 Raspberry Pi를 재부팅한 뒤 다시 확인하십시오.
+  sudo reboot
+
+부팅 자동 실행은 모델 경로를 config/runtime.env에 입력한 뒤 설치하십시오.
+  bash scripts/install_autostart.sh
+EOF

@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from .clock import IClock, SystemClock
+from .detector import Detector, HailoNmsDetector, HailoNmsDetectorSync, MockDetector
+from .profile import EnvironmentProfile, validate_profile
+from .frame_sources import (FrameSourceOptions, OpenCvFrameSource, Raw14SdkFrameSource,
+                            unavailable_gazebo_camera)
+
+
+class CompositionRoot:
+    """Validate a profile and construct concrete adapters at the process edge."""
+
+    def __init__(self, profile: EnvironmentProfile, clock: IClock | None = None,
+                 *, source_factories=None, tracker_factories=None, vehicle_factories=None):
+        validate_profile(profile)
+        self.profile = profile
+        self.clock = clock or SystemClock()
+        self.source_factories = {
+            "ir_v4l2": lambda options, clock: OpenCvFrameSource(options, clock),
+            "ir_sdk": Raw14SdkFrameSource,
+            "replay": lambda options, clock: OpenCvFrameSource(options, clock, replay=True),
+            "gazebo_camera": unavailable_gazebo_camera,
+        }
+        self.source_factories.update(source_factories or {})
+        self.tracker_factories = dict(tracker_factories or {})
+        self.vehicle_factories = dict(vehicle_factories or {})
+
+    def create_frame_source(self, options: FrameSourceOptions, override: str = "auto"):
+        kind = self.profile.frame_source if override == "auto" else override
+        factory = self.source_factories.get(kind)
+        if factory is None:
+            raise NotImplementedError(f"frame source adapter is not implemented: {kind}")
+        return factory(options, self.clock)
+
+    def create_tracker(self):
+        factory = self.tracker_factories.get(self.profile.tracker)
+        if factory is None:
+            raise NotImplementedError(f"tracker adapter is not implemented: {self.profile.tracker}")
+        return factory(self.clock)
+
+    def create_vehicle_port(self):
+        factory = self.vehicle_factories.get(self.profile.vehicle_port)
+        if factory is None:
+            raise NotImplementedError(f"vehicle port adapter is not implemented: {self.profile.vehicle_port}")
+        return factory(self.clock)
+
+    def create_detector(
+        self,
+        backend_override: str,
+        hef_path: str | None,
+        labels: Sequence[str],
+        score_threshold: float,
+    ) -> Detector:
+        if backend_override == "mock":
+            return MockDetector(labels)
+
+        if backend_override == "hailo-sync":
+            if not hef_path:
+                raise ValueError("a HEF path is required for the Hailo detector")
+            return HailoNmsDetectorSync(hef_path, labels, score_threshold)
+
+        profile_backend = self.profile.detector
+        if backend_override == "hailo" or profile_backend == "hailo_yolox":
+            if not hef_path:
+                raise ValueError("a HEF path is required for the Hailo detector")
+            return HailoNmsDetector(hef_path, labels, score_threshold)
+
+        if profile_backend == "dxm1_yolox":
+            raise NotImplementedError(
+                "DX-M1 is selected but its SDK adapter is not implemented; add an IDetector adapter"
+            )
+        if profile_backend == "pc_yolox":
+            raise NotImplementedError(
+                "PC YOLOX is selected but its ONNX/PyTorch adapter is not implemented"
+            )
+        if profile_backend == "none":
+            raise ValueError("this IMAGE2D worker cannot run with detector=none")
+        raise ValueError(f"unsupported detector backend: {profile_backend}")

@@ -1,0 +1,18 @@
+[Unit]
+Description=ARGUS ZeroMQ publish/subscribe bus
+After=network.target
+
+[Service]
+Type=simple
+User=@RUN_USER@
+WorkingDirectory=@PROJECT_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart="@PROJECT_DIR@/.venv-rpi/bin/python" -m argus_workers.transport.BusProxy --publish-bind tcp://127.0.0.1:5555 --subscribe-bind tcp://*:5556
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

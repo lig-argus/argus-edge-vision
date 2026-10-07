@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import queue
+from dataclasses import dataclass
+
+import numpy as np
+
+
+@dataclass(slots=True)
+class CapturedFrame:
+    frame_id: int
+    image: np.ndarray
+    captured_unix_ns: int
+    captured_monotonic_ns: int
+    capture_perf_ns: int = 0
+    capture_interval_ns: int = 0
+    queue_put_perf_ns: int = 0
+
+
+class LatestFrameQueue:
+    """Bounded queue that evicts the oldest frame instead of building latency."""
+
+    def __init__(self, capacity: int = 2):
+        if capacity < 1:
+            raise ValueError("capacity must be at least 1")
+        self._queue: queue.Queue[CapturedFrame] = queue.Queue(maxsize=capacity)
+        self.dropped_frames = 0
+
+    def put(self, frame: CapturedFrame) -> None:
+        try:
+            self._queue.put_nowait(frame)
+            return
+        except queue.Full:
+            pass
+        try:
+            self._queue.get_nowait()
+            self._queue.task_done()
+            self.dropped_frames += 1
+        except queue.Empty:
+            pass
+        self._queue.put_nowait(frame)
+
+    def get(self, timeout: float | None = None) -> CapturedFrame:
+        return self._queue.get(timeout=timeout)
+
+    def task_done(self) -> None:
+        self._queue.task_done()
+
+    def empty(self) -> bool:
+        return self._queue.empty()
+

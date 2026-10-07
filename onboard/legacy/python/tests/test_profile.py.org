@@ -1,0 +1,27 @@
+from pathlib import Path
+
+from argus_vision.profile import EnvironmentProfile, load_profile, validate_profile
+
+
+def test_load_real_ir_profile():
+    path = Path(__file__).parents[1] / "config" / "profiles.toml"
+    profile = load_profile(path, "REAL_IR")
+    assert profile.frame_source == "ir_v4l2"
+    assert profile.detector == "hailo_yolox"
+
+
+def test_reject_incompatible_real_profile():
+    profile = EnvironmentProfile(
+        name="REAL_IR",
+        frame_source="gazebo_camera",
+        detector="hailo_yolox",
+        tracker="bytetrack_cmc",
+        vehicle_port="mavsdk_serial",
+        coordinate_frame="camera_pixel",
+    )
+    try:
+        validate_profile(profile)
+    except ValueError as exc:
+        assert "incompatible" in str(exc)
+    else:
+        raise AssertionError("incompatible profile was accepted")

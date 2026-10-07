@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field, replace
+from enum import Enum
+from typing import Any
+
+
+class CoordinateFrame(str, Enum):
+    CAMERA_PIXEL = "camera_pixel"
+    GAZEBO_WORLD_ENU = "gazebo_world_enu"
+    PX4_LOCAL_NED = "px4_local_ned"
+    BODY_FRD = "body_frd"
+
+
+class TrackState(str, Enum):
+    CONFIRMED = "Confirmed"
+    PREDICTED = "Predicted"
+    LOST = "Lost"
+
+
+@dataclass(frozen=True, slots=True)
+class Track:
+    track_id: int
+    class_id: int
+    label: str
+    confidence: float
+    state: TrackState
+    full_box_xyxy: tuple[int, int, int, int]
+    center_xy: tuple[float, float]
+    velocity_xy_px_s: tuple[float, float] | None = None
+    last_real_detection_monotonic_ns: int | None = None
+    ttl_ns: int = 0
+
+    def __post_init__(self) -> None:
+        x1, y1, x2, y2 = self.full_box_xyxy
+        if x2 < x1 or y2 < y1 or not 0 <= self.confidence <= 1:
+            raise ValueError("invalid full box or confidence")
+        if self.ttl_ns < 0 or (self.last_real_detection_monotonic_ns is not None and self.last_real_detection_monotonic_ns < 0):
+            raise ValueError("track TTL and detection timestamp must not be negative")
+
+    def is_stale(self, now_monotonic_ns: int) -> bool:
+        stamp = self.last_real_detection_monotonic_ns
+        return (self.state == TrackState.LOST or stamp is None or self.ttl_ns <= 0
+                or now_monotonic_ns < stamp or now_monotonic_ns >= stamp + self.ttl_ns)
+
+    def with_prediction(self, full_box_xyxy: tuple[int, int, int, int]) -> "Track":
+        x1, y1, x2, y2 = full_box_xyxy
+        return replace(self, state=TrackState.PREDICTED, full_box_xyxy=full_box_xyxy,
+                       center_xy=((x1 + x2) / 2, (y1 + y2) / 2))
+
+    def with_real_detection(self, full_box_xyxy: tuple[int, int, int, int],
+                            confidence: float, detection_monotonic_ns: int) -> "Track":
+        previous = self.last_real_detection_monotonic_ns
+        if previous is not None and detection_monotonic_ns < previous:
+            raise ValueError("out-of-order real detection cannot refresh track TTL")
+        x1, y1, x2, y2 = full_box_xyxy
+        return replace(self, state=TrackState.CONFIRMED, full_box_xyxy=full_box_xyxy,
+                       confidence=confidence, center_xy=((x1 + x2) / 2, (y1 + y2) / 2),
+                       last_real_detection_monotonic_ns=detection_monotonic_ns)
+
+
+@dataclass(frozen=True, slots=True)
+class TrackBatch:
+    source: str
+    sequence: int
+    frame_monotonic_ns: int
+    published_monotonic_ns: int
+    expires_monotonic_ns: int
+    coordinate_frame: CoordinateFrame
+    tracks: tuple[Track, ...] = field(default_factory=tuple)
+    schema: str = "argus.tracking.tracks.v1"
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["coordinate_frame"] = self.coordinate_frame.value
+        data["tracks"] = [
+            {**asdict(track), "state": track.state.value} for track in self.tracks
+        ]
+        return data
+
+    def is_stale(self, now_monotonic_ns: int) -> bool:
+        return now_monotonic_ns >= self.expires_monotonic_ns or now_monotonic_ns < self.frame_monotonic_ns
+
+    def valid_track(self, track_id: int, now_monotonic_ns: int) -> Track | None:
+        if self.is_stale(now_monotonic_ns):
+            return None
+        return next((track for track in self.tracks if track.track_id == track_id
+                     and not track.is_stale(now_monotonic_ns)), None)
+
+
+@dataclass(frozen=True, slots=True)
+class CommandRequest:
+    request_id: str
+    command: str
+    issued_unix_ns: int
+    expires_monotonic_ns: int
+    target_id: int | None = None
+    schema: str = "argus.command.request.v1"
+
+
+@dataclass(frozen=True, slots=True)
+class CommandResult:
+    request_id: str
+    accepted: bool
+    code: str
+    detail: str
+    completed_unix_ns: int
+    schema: str = "argus.command.result.v1"

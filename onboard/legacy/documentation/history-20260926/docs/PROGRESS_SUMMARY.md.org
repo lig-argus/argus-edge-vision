@@ -1,0 +1,71 @@
+> 이전 Python 구현/시험 기록입니다. 현행 실행 구조는 [CPP_MIGRATION.md](CPP_MIGRATION.md)와 [FLOW_ALIGNMENT.md](FLOW_ALIGNMENT.md)를 따릅니다. 이 기록을 근거로 Python 전체 실행부를 복원하지 마세요.
+
+# ARGUS 비전 파이프라인 진행 현황 (2026-09-23)
+
+> 2026-09-26 후속 변경: 입력 팩토리·시각 계약·오류 전달·트랙 TTL 및 버스 종료를 수정했다. 현재 구조는 DESIGN_ALIGNMENT.md와 상위 README를 기준으로 확인한다. 이 문서의 이전 실험 결과는 재측정값이 아니다.
+
+RPi5 + Hailo-8 비전 파이프라인 세팅부터 지금까지 진행한 내용 정리. 상세 근거/실측 수치는 각 절에서 링크한 `docs/*.md`에 있음.
+
+## 1. 환경/하드웨어 — 준비 완료
+
+- 대상 보드: Raspberry Pi 5, **Ubuntu Server 24.04.5 LTS**(Raspberry Pi OS 아님 — apt 저장소 구성이 다름, 아래 참고)
+- NPU: Hailo-8 (AI HAT+), PCIe로 인식됨 (`lspci`에 `Hailo-8 AI Processor` 확인)
+- **HailoRT 4.23.0 설치 완료** — `hailo-all` apt 메타패키지가 아니라 **Hailo 공식 .deb/.whl를 직접 설치**했음(`hailort-pcie-driver_4.23.0_all.deb`, `hailort_4.23.0_arm64.deb`, PyHailoRT wheel). 이유: 이 보드에 Raspberry Pi 공식 apt 저장소가 아예 등록돼 있지 않아서 `hailo-all`을 apt로 설치할 수 없었음.
+- PCIe Gen3 설정 완료 (`/boot/firmware/config.txt`에 `dtparam=pciex1_gen=3`)
+- OpenCV 4.6.0 (apt, `python3-opencv`)
+- 웹캠(APC930) `/dev/video0`, MJPG 640×480@30fps 지원 확인
+- **참고**: `noble-updates` apt suite가 원래 빠져 있었던 이슈, Raspberry Pi 저장소 미등록 이슈는 별도로 다른 세션/작업에서 해결된 상태로 확인됨 (자세한 진단 경위는 최초 조사 시점 기록 참고 필요시 요청)
+
+## 2. 팀원 코드(`argus_vision_bus` v0.2.0) 분석
+
+- ROS2 없이 **ZeroMQ pub/sub 버스**(`busd`가 XSUB/XPUB 프록시) + **MessagePack** 직렬화로 프로세스 간 통신
+- 파이프라인: 웹캠(V4L2) → 최신-프레임 큐 → letterbox 전처리(640×480→640×640) → Hailo-8 YOLOX 추론(HailoRT NMS 내장) → `perception/observations` 발행
+- `Detector`/`profiles.toml`의 `frame_source`·`detector` 필드 덕분에 **카메라/모델을 갈아끼울 수 있는 구조**로 설계돼 있음(단, 카메라 쪽은 실제로는 아직 하드코딩 — 4장 참고)
+- 전체 구조를 처음 보는 사람 기준으로 정리한 문서: **`docs/ARCHITECTURE_OVERVIEW.md`**
+
+## 3. 실기기 동작 검증 — 완료
+
+- Hailo Model Zoo v2.19.0 공식 `yolox_s_leaky` HEF(hailo8, COCO 80클래스, NMS 내장) 다운로드 후 `hailortcli parse-hef`로 스펙 확인, `verify_rpi.sh` 전체 PASS
+- 웹캠 → NPU → 버스 발행까지 실제 동작 확인
+
+| 항목 | 측정값 |
+|---|---|
+| NPU 단독 처리량 (`hailortcli run -m hw_only`) | **147.4 FPS**, HW Latency 6.27ms |
+| 전체 파이프라인 처리량 | **약 12~14 FPS** — NPU가 아니라 **카메라 쪽이 병목** |
+| NPU 추론 시간(파이프라인 내부) | 약 9.6ms/frame (안정화 후) |
+
+- 카메라 병목 원인을 MJPG 코덱 디코드로 추정했었으나, **YUYV로 바꿔도 FPS가 그대로**여서 이 가설은 틀렸음을 확인. `open_camera()`가 저지연을 위해 강제하는 `CAP_PROP_BUFFERSIZE=1`(동기식 단일 버퍼)이 더 유력한 원인 — 아직 직접 검증은 안 함 (다음 단계 후보, 6장 참고)
+- 상세 수치/실험 방법: **`docs/PERF_NOTES.md`**
+
+## 4. `work/`에 추가한 기능 (원본 `teammate/` 코드는 그대로 보존)
+
+모두 **기본값은 기존 동작과 동일**하도록 옵션으로 추가했고, 기존 필드/동작은 하나도 지우거나 바꾸지 않음(제어팀 호환성 유지).
+
+1. **녹화 영상 파일 재생 모드**: `--camera`에 비디오 파일 경로를 주면 하드웨어 없이 HEF만 재검증 가능(회귀 테스트용). 원본은 V4L2 장치만 열 수 있어서 이 기능 자체가 없었음.
+2. **`vision/npu_input/jpeg` 토픽 신규 추가**: NPU에 실제로 들어간 letterbox 이미지를 JPEG로 발행 — Windows 모니터링 앱에서 "NPU가 뭘 보고 있는지" 눈으로 확인하는 용도. 기본 꺼짐(`--publish-npu-input`), 최대 발행 FPS 제한(기본 15), 인코딩/발행은 별도 스레드+별도 소켓이라 추론 루프를 막지 않음.
+3. **`perception/observations`에 `seq`, `t_infer_us`, `t_publish_us` 필드 추가**: 기존 `frame_id`는 그대로 두고 별칭 성격으로 추가(`seq == frame_id`). 새 토픽과 프레임을 맞춰볼 수 있게 마이크로초 단위로 통일.
+4. **드랍 카운터 계측 + `diagnostics/events`로 통계 자동 발행**: `vision/npu_input/jpeg` 발행이 적게 나오는 이유(레이트리밋 vs 큐 오버라이트 vs 인코딩 실패)를 실시간으로 확인 가능.
+5. **`run_rpi.sh`/systemd 서비스에 환경변수 연결**: `ARGUS_PUBLISH_NPU_INPUT`(기본 0) 등 3개 변수로 위 2번 기능을 `runtime.env`에서 켜고 끌 수 있음. 실비행 시에는 반드시 꺼둘 것(성능/보안 이유, `docs/BUS_CONTRACT.md` "운용 원칙" 참고).
+6. **테스트로 확인한 성능 영향**: 위 2번 기능을 켜면 인퍼런스 루프 연산시간이 약 +0.5~1ms 늘어남(인코딩 스레드의 실제 CPU 작업 때문, 스레드 존재 자체의 오버헤드는 무시할 수준). 전체 파이프라인 FPS에는 측정 가능한 영향 없음(카메라가 이미 병목이라).
+
+전체 메시지 규격(토픽/필드/단위/좌표계): **`docs/BUS_CONTRACT.md`**
+
+## 5. 지금까지 만든 문서 (`work/argus_vision_bus/docs/`)
+
+| 파일 | 내용 |
+|---|---|
+| `ARCHITECTURE_OVERVIEW.md` | 코드 구조 전체 설명 (입문자용) |
+| `BUS_CONTRACT.md` | 버스 메시지 규격(토픽/필드/좌표계/운용 원칙) |
+| `CAMERA_AND_MODEL_NOTES.md` | 카메라 설정, IR 교체 시 깨지는 지점, 모델 교체 시 확인사항 |
+| `TRAINING_DAY_CHECKLIST.md` | 새 YOLOX 모델 나온 날 실행 체크리스트 |
+| `PERF_NOTES.md` | FPS/지연 실측 데이터와 원인 분석 |
+
+## 6. 아직 안 된 것 / 다음 단계 후보
+
+- **카메라 FPS 병목(12~14fps) 추가 조사**: `CAP_PROP_BUFFERSIZE` 조정 실험 필요 (저지연 vs 처리량 트레이드오프 판단 필요)
+- **IR 카메라(i3system) 교체**: 실제 카메라 입수 후 출력 포맷(GRAY8/Y16) 확인, `capture_loop()`에 8/16bit→3채널 정규화 어댑터 추가 필요 (위치는 이미 특정해둠, `CAMERA_AND_MODEL_NOTES.md` 참고)
+- **자체 학습 YOLO 모델 교체**: 절차는 `TRAINING_DAY_CHECKLIST.md`로 정리해둠. 학습 완료되면 바로 적용 가능
+- **드론 제어 연동(MAVLink)** — ⚠️ **알고리즘/제어팀과 회의 필요한 부분**
+  - 지금 파이프라인은 `perception/observations`(탐지 결과)까지만 발행. 추적(`tracking/tracks`)과 제어 명령(`command/*`) 토픽은 이름만 정의돼 있고 아직 미구현
+  - 제안하는 방향: 버스에 새 프로세스 2개 추가 — ① Tracker(ByteTrack류, `perception/observations`→`tracking/tracks`), ② MAVLink Control Loop(`tracking/tracks`→pymavlink/MAVSDK로 FC에 명령). 지금 있는 비전 프로세스에 직접 붙이지 않고 분리하는 이유는 한쪽이 느려지거나 죽어도 다른 쪽이 안전하게 유지되게 하기 위함
+  - 회의에서 정해야 할 것: (1) 카메라 픽셀 좌표 → 실제 기체 이동 명령으로 변환하는 방식(카메라 FOV/짐벌 유무/고도 추정 전제), (2) MAVSDK vs pymavlink 선택, (3) 오래된 메시지 차단·heartbeat·수동조종 우선권·failsafe 같은 안전장치 설계(README에도 이미 필요성이 명시돼 있었음)

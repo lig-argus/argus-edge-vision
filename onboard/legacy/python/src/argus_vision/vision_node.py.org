@@ -1,0 +1,360 @@
+from __future__ import annotations
+
+import argparse
+import gc
+from contextlib import ExitStack
+import queue
+import signal
+import threading
+import time
+from pathlib import Path
+
+import cv2
+
+from .bus import DEFAULT_PUBLISH_ENDPOINT, Publisher
+from .composition_root import CompositionRoot
+from .frame_queue import LatestFrameQueue
+from .frame_sources import EndOfStream, FrameSourceOptions
+from .latency_recorder import LatencyRecorder
+from .messages import DetectionFrame, health_message
+from .npu_input_publisher import NpuInputJpegPublisher
+from .profile import load_profile
+from .preprocess import letterbox_bgr_to_rgb
+from .topics import DETECTIONS_V1, HEALTH_V1, PREVIEW_JPEG_V1
+
+
+def load_labels(path: str) -> list[str]:
+    labels = [line.strip() for line in Path(path).read_text(encoding="utf-8").splitlines()]
+    labels = [label for label in labels if label and not label.startswith("#")]
+    if not labels:
+        raise ValueError("labels file is empty")
+    return labels
+
+
+def draw_detections(frame, detections) -> None:
+    for detection in detections:
+        cv2.rectangle(frame, (detection.x1, detection.y1), (detection.x2, detection.y2), (0, 255, 0), 2)
+        text = f"{detection.label} {detection.confidence:.2f}"
+        cv2.putText(
+            frame,
+            text,
+            (detection.x1, max(18, detection.y1 - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def run(args: argparse.Namespace) -> None:
+    if args.disable_gc:
+        gc.disable()
+
+    labels = load_labels(args.labels)
+    profile = load_profile(args.profiles, args.profile)
+    root = CompositionRoot(profile)
+    detector = None
+    capture = None
+    capture_thread = None
+    stop_event = threading.Event()
+    frame_queue = LatestFrameQueue(args.frame_queue_size)
+    capture_errors: list[BaseException] = []
+    captured_total = [0]
+
+    def stop(_signum: int, _frame: object) -> None:
+        stop_event.set()
+
+
+    latency_recorder = LatencyRecorder(args.latency_csv) if args.latency_csv else None
+
+    def capture_loop() -> None:
+        frame_id = 0
+        failures = 0
+        last_capture_perf_ns: int | None = None
+        put_call_count = 0
+        put_call_total_ns = 0
+        put_call_max_ns = 0
+        try:
+            while not stop_event.is_set():
+                ok, captured = capture.read()
+                capture_perf_ns = time.perf_counter_ns()
+                if not ok or captured is None:
+                    failures += 1
+                    if failures >= 10:
+                        raise RuntimeError("camera returned 10 consecutive empty frames")
+                    continue
+                if captured.timing is None:
+                    raise ValueError("frame source must supply explicit receive/exposure timing metadata")
+                failures = 0
+                interval_ns = 0 if last_capture_perf_ns is None else capture_perf_ns - last_capture_perf_ns
+                last_capture_perf_ns = capture_perf_ns
+
+                put_started_ns = time.perf_counter_ns()
+                captured.capture_perf_ns = capture_perf_ns
+                captured.capture_interval_ns = interval_ns
+                captured.queue_put_perf_ns = put_started_ns
+                frame_queue.put(captured)
+                if latency_recorder is not None:
+                    put_call_ns = time.perf_counter_ns() - put_started_ns
+                    put_call_count += 1
+                    put_call_total_ns += put_call_ns
+                    put_call_max_ns = max(put_call_max_ns, put_call_ns)
+
+                frame_id += 1
+        except EndOfStream:
+            stop_event.set()
+        except BaseException as exc:
+            capture_errors.append(exc)
+            stop_event.set()
+        finally:
+            captured_total[0] = frame_id
+            if latency_recorder is not None:
+                latency_recorder.set_put_call_stats(
+                    count=put_call_count, total_ns=put_call_total_ns, max_ns=put_call_max_ns
+                )
+
+    source_kind = profile.frame_source if args.frame_source == "auto" else args.frame_source
+    source_name = f"{source_kind}:{args.camera}"
+    npu_input_publisher = None
+
+    def diagnostic(state: str, detail: str = "") -> dict:
+        stamp = root.clock.now()
+        return health_message(
+            source_name,
+            state,
+            detail,
+            unix_ns=stamp.unix_ns,
+            monotonic_ns=stamp.monotonic_ns,
+        )
+
+    with Publisher(args.publish_endpoint) as publisher:
+        previous_handlers = {sig: signal.signal(sig, stop) for sig in (signal.SIGINT, signal.SIGTERM)}
+        try:
+            publisher.publish(HEALTH_V1, diagnostic("starting"))
+            # This entry point runs perception only; configured trackers/ports are
+            # constructed by their own application entry points when implemented.
+            detector = root.create_detector(args.backend, args.hef, labels, args.score_threshold)
+            capture = root.create_frame_source(FrameSourceOptions(
+                camera=args.camera, width=args.width, height=args.height, fps=args.fps,
+                fourcc=args.fourcc, ir_capture=args.ir_capture, ir_device=args.ir_device,
+                ir_timeout_s=args.ir_timeout, ir_preprocess=args.ir_preprocess,
+            ), args.frame_source)
+            if args.publish_npu_input:
+                npu_input_publisher = NpuInputJpegPublisher(
+                    args.publish_endpoint, source_name,
+                    max_fps=args.npu_input_max_fps, jpeg_quality=args.npu_input_jpeg_quality,
+                )
+            publisher.publish(HEALTH_V1, diagnostic("perception_only", "tracker and vehicle port are not started by this worker"))
+            capture_thread = threading.Thread(target=capture_loop, name="frame-source", daemon=True)
+            capture_thread.start()
+            while not stop_event.is_set() or not frame_queue.empty():
+                if capture_errors:
+                    raise capture_errors[0]
+                get_called_perf_ns = time.perf_counter_ns() if latency_recorder is not None else 0
+                try:
+                    captured = frame_queue.get(timeout=0.5)
+                except queue.Empty:
+                    if capture_errors:
+                        raise capture_errors[0]
+                    continue
+                frame = captured.image
+                loop_start_perf_ns = time.perf_counter_ns() if latency_recorder is not None else 0
+
+                model_input, transform = letterbox_bgr_to_rgb(
+                    frame, detector.input_width, detector.input_height
+                )
+                preprocess_done_perf_ns = time.perf_counter_ns() if latency_recorder is not None else 0
+
+                infer_started = root.clock.monotonic_ns()
+
+                if npu_input_publisher is not None:
+                    npu_input_publisher.offer(
+                        seq=captured.frame_id,
+                        rgb_model_input=model_input,
+                        transform=transform,
+                        t_capture_us=captured.captured_monotonic_ns // 1000,
+                        t_pre_us=infer_started // 1000,
+                    )
+
+                infer_timing: dict[str, int] | None = {} if latency_recorder is not None else None
+                detections = detector.infer(model_input, transform, timing=infer_timing)
+                infer_done_perf_ns = time.perf_counter_ns() if latency_recorder is not None else 0
+
+                infer_done_ns = root.clock.monotonic_ns()
+                inference_ms = (infer_done_ns - infer_started) / 1_000_000
+                postprocess_done_perf_ns = time.perf_counter_ns() if latency_recorder is not None else 0
+
+                if capture_errors:
+                    raise capture_errors[0]
+                timing = captured.timing
+                published_monotonic_ns = root.clock.monotonic_ns()
+                message = DetectionFrame(
+                    source=source_name,
+                    frame_id=captured.frame_id,
+                    captured_unix_ns=captured.captured_unix_ns,
+                    captured_monotonic_ns=captured.captured_monotonic_ns,
+                    published_monotonic_ns=published_monotonic_ns,
+                    image_width=frame.shape[1],
+                    image_height=frame.shape[0],
+                    model=detector.model_name,
+                    inference_ms=inference_ms,
+                    seq=captured.frame_id,
+                    t_infer_us=infer_done_ns // 1000,
+                    t_publish_us=published_monotonic_ns // 1000,
+                    detections=tuple(detections),
+                    received_unix_ns=timing.received_unix_ns,
+                    received_monotonic_ns=timing.received_monotonic_ns,
+                    exposure_monotonic_ns=timing.exposure_monotonic_ns,
+                    source_receive_monotonic_ns=timing.source_receive_monotonic_ns,
+                    clock_domain=timing.clock_domain,
+                    timestamp_source="sensor_exposure" if timing.exposure_time_valid else "host_receive",
+                    exposure_time_valid=timing.exposure_time_valid,
+                )
+                publisher.publish(DETECTIONS_V1, message.to_dict())
+
+                if latency_recorder is not None:
+                    publish_done_perf_ns = time.perf_counter_ns()
+                    assert infer_timing is not None
+                    latency_recorder.record(
+                        capture_perf_ns=captured.capture_perf_ns,
+                        publish_perf_ns=publish_done_perf_ns,
+                        seq=captured.frame_id,
+                        capture_interval_ms=captured.capture_interval_ns / 1_000_000,
+                        queue_get_call_ms=(loop_start_perf_ns - get_called_perf_ns) / 1_000_000,
+                        queue_dwell_ms=(loop_start_perf_ns - captured.queue_put_perf_ns) / 1_000_000,
+                        preprocess_ms=(preprocess_done_perf_ns - loop_start_perf_ns) / 1_000_000,
+                        input_copy_ms=infer_timing["input_copy_ns"] / 1_000_000,
+                        hw_wait_ms=infer_timing["hw_wait_ns"] / 1_000_000,
+                        output_fetch_ms=infer_timing["output_fetch_ns"] / 1_000_000,
+                        nms_parse_ms=infer_timing["nms_parse_ns"] / 1_000_000,
+                        infer_total_ms=(infer_done_perf_ns - preprocess_done_perf_ns) / 1_000_000,
+                        postprocess_ms=(postprocess_done_perf_ns - infer_done_perf_ns) / 1_000_000,
+                        publish_ms=(publish_done_perf_ns - postprocess_done_perf_ns) / 1_000_000,
+                        total_ms=(publish_done_perf_ns - captured.capture_perf_ns) / 1_000_000,
+                        n_detections=len(detections),
+                    )
+
+                if args.log_every > 0 and captured.frame_id % args.log_every == 0:
+                    print(
+                        f"frame={captured.frame_id} objects={len(detections)} "
+                        f"infer={inference_ms:.1f}ms "
+                        f"age={message.pipeline_latency_ms:.1f}ms "
+                        f"dropped={frame_queue.dropped_frames}",
+                        flush=True,
+                    )
+
+                if args.publish_preview:
+                    draw_detections(frame, detections)
+                    encoded_ok, encoded = cv2.imencode(
+                        ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, args.jpeg_quality]
+                    )
+                    if encoded_ok:
+                        publisher.publish(
+                            PREVIEW_JPEG_V1,
+                            {
+                                "schema": "argus.vision.overlay.v1",
+                                "source": source_name,
+                                "frame_id": captured.frame_id,
+                                "unix_ns": captured.captured_unix_ns,
+                                "width": frame.shape[1],
+                                "height": frame.shape[0],
+                                "encoding": "jpeg",
+                            },
+                            encoded.tobytes(),
+                        )
+                frame_queue.task_done()
+            if capture_errors:
+                raise capture_errors[0]
+        except Exception as exc:
+            publisher.publish(HEALTH_V1, diagnostic("fault", str(exc)))
+            raise
+        finally:
+            stop_event.set()
+            for sig, handler in previous_handlers.items():
+                signal.signal(sig, handler)
+            try:
+                with ExitStack() as cleanup:
+                    if latency_recorder is not None:
+                        cleanup.callback(latency_recorder.finalize, captured_total=captured_total[0],
+                                         dropped=frame_queue.dropped_frames)
+                    if detector is not None:
+                        cleanup.callback(detector.close)
+                    if npu_input_publisher is not None:
+                        cleanup.callback(npu_input_publisher.close)
+                    if capture is not None:
+                        cleanup.callback(capture.release)
+                    if capture_thread is not None:
+                        cleanup.callback(capture_thread.join, timeout=2.0)
+                    if capture is not None:
+                        cleanup.callback(capture.request_stop)
+            except Exception as exc:
+                publisher.publish(HEALTH_V1, diagnostic("fault", f"cleanup failed: {exc}"))
+                raise
+            publisher.publish(HEALTH_V1, diagnostic("stopped"))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Webcam + Hailo YOLOX detection publisher")
+    parser.add_argument("--profile", choices=("SITL_POSE", "SITL_IMAGE", "REAL_IR", "REPLAY"), default="REAL_IR")
+    parser.add_argument("--profiles", default="config/profiles.toml")
+    parser.add_argument("--frame-source", choices=("auto", "ir_v4l2", "ir_sdk", "replay", "gazebo_camera"), default="auto",
+                        help="auto uses the profile; explicit override is for input tests")
+    parser.add_argument("--ir-capture", default="/home/user/thessen_raw14_viewer/build/i3_raw14_capture")
+    parser.add_argument("--ir-device", type=int, default=0)
+    parser.add_argument("--ir-timeout", type=float, default=15.0)
+    parser.add_argument("--ir-preprocess", choices=("minmax", "fixed14"), default="minmax")
+    parser.add_argument(
+        "--backend",
+        choices=("auto", "hailo", "hailo-sync", "mock"),
+        default="auto",
+        help="hailo-sync uses ConfiguredInferModel.run() (blocking) instead of "
+        "run_async()+Event, for latency experiments only",
+    )
+    parser.add_argument("--hef", help="YOLOX HEF path; required for the Hailo backend")
+    parser.add_argument("--labels", default="config/labels.txt")
+    parser.add_argument(
+        "--camera",
+        default="/dev/video0",
+        help="V4L2 device path/index, or a recorded video file path for replay",
+    )
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument("--fourcc", default="MJPG", help="USB camera pixel format, e.g. MJPG or YUYV")
+    parser.add_argument("--score-threshold", type=float, default=0.35)
+    parser.add_argument("--frame-queue-size", type=int, default=2)
+    parser.add_argument("--publish-endpoint", default=DEFAULT_PUBLISH_ENDPOINT)
+    parser.add_argument("--publish-preview", action="store_true")
+    parser.add_argument("--jpeg-quality", type=int, default=75)
+    parser.add_argument("--log-every", type=int, default=30)
+    parser.add_argument(
+        "--publish-npu-input",
+        action="store_true",
+        help="Publish the letterboxed NPU input as JPEG on vision/npu_input/jpeg (default: off)",
+    )
+    parser.add_argument("--npu-input-max-fps", type=float, default=15.0)
+    parser.add_argument("--npu-input-jpeg-quality", type=int, default=80)
+    parser.add_argument(
+        "--latency-csv",
+        default=None,
+        help="Write a per-frame latency breakdown CSV to this path and print a summary on exit (default: off)",
+    )
+    parser.add_argument(
+        "--disable-gc",
+        action="store_true",
+        help="Call gc.disable() at startup, for latency comparison experiments (default: off)",
+    )
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.backend in ("hailo", "hailo-sync") and not args.hef:
+        parser.error("--hef is required when --backend hailo or hailo-sync")
+    run(args)
+
+
+if __name__ == "__main__":
+    main()
