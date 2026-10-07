@@ -11,7 +11,7 @@ export default {
     'scope-enum': [
       2,
       'always',
-      ['onboard', 'gcs', 'models', 'datasets', 'docs', 'ci', 'deps'],
+      ['onboard', 'gcs', 'common', 'simulation', 'models', 'tools', 'docs', 'ci', 'deps'],
     ],
     'scope-case': [2, 'always', 'lower-case'],
     // subject 는 한글 — Jetson, GCS 같은 고유명사로 시작할 수 있으므로 대소문자 검사 끔
