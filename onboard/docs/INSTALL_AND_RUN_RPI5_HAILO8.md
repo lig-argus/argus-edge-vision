@@ -44,15 +44,20 @@ editable로 설치한 뒤 C++ 빌드/CTest를 실행한다. Python 의존성을 
 이미 준비된 Hailo Python 환경에서는 의존성을 확인한 뒤 기존 가상환경을 재사용한다.
 기존 HailoRT/PyHailoRT와 SDK를 임의로 교체하지 않는다.
 
-기존 `config/runtime.env`는 유지한다. 새 환경은
-[runtime.env.example](../config/runtime.env.example)을 참고해 실제 HEF·라벨·입력 경로를 설정한다.
-예시 설정 파일은 HEF·라벨을 모두 `models/deployed/`에서 읽는다.
+기존 `config/runtime.env`는 유지한다. 새 Pi에서는 해당 파일을 직접 생성하고
+실제 HEF·라벨·입력 경로를 설정한다. 이 소스 패키지에는 example 설정 파일을 포함하지 않는다.
 검증한 모델 세트를 [실행용 모델 안내](../models/README.md)에 따라 배치한 뒤,
 기존 설정이 없는 새 Pi에서만 다음을 실행한다.
 
 ```bash
-cp config/runtime.env.example config/runtime.env
 nano config/runtime.env
+```
+
+파일에 배포 모델 세트의 경로를 입력한다.
+
+```bash
+ARGUS_HEF=models/deployed/model.hef
+ARGUS_LABELS=models/deployed/labels.txt
 ```
 
 카메라·SDK 경로는 각 Pi의 실제 장치에 맞춘다. 상대 경로는 저장소 루트가 아닌 `onboard/` 기준이다.

@@ -4,7 +4,7 @@ Raspberry Pi 5 + Hailo-8용 인지 패키지다. 실행 진입은 `build/bin/arg
 (OnboardMain → CompositionRoot → PerceptionWorker)이며, 현재 기능 범위는 **perception_only**다.
 
 이 폴더는 Raspberry Pi에 설치하는 독립 실행 패키지다. 저장소의 다른 최상위 폴더 없이
-빌드·실행할 수 있도록 CMake/Python 정의, 실행 코드, 설정 예시, 스크립트와 문서를 함께 둔다.
+빌드·실행할 수 있도록 CMake/Python 정의, 실행 코드, 프로파일·라벨, 스크립트와 문서를 함께 둔다.
 실제 `config/runtime.env`, HEF·배포 라벨, `.venv-rpi`, `build/`는 각 Pi에 생성·배치하며 Git에서 제외한다.
 HailoRT/PyHailoRT와 카메라 SDK는 각 Pi에 별도로 준비해야 한다.
 
@@ -48,7 +48,7 @@ Guard/Watchdog, 기체 연결·명령 송신은 미구현이다. 30개 역할의
 |---|---|
 | `cpp/` | C++17 진입점, 계약·포트, 실행 조립, 입력·IPC·버스와 미구현 표시 파일 |
 | `python/argus_workers/` | 전처리·YOLOX·JPEG, BusProxy, 점검·구독 도구 |
-| `config/` | 프로파일, 라벨, runtime.env 예시 |
+| `config/` | 프로파일·라벨 및 각 Pi에서 생성하는 runtime.env의 위치 |
 | `models/` | 검증한 실행용 HEF·라벨 세트의 배치 위치 |
 | `scripts/`, `deploy/` | 빌드·설치·실행 스크립트와 systemd 템플릿 |
 | `cpp/tests/`, `tests/integration/` | C++ 계약 검사와 C++/Python/Bus 통합 검사 |

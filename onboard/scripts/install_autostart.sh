@@ -18,7 +18,7 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
 fi
 if [[ ! -f "$RUNTIME_ENV" ]]; then
   echo "[오류] $RUNTIME_ENV 파일이 없습니다." >&2
-  echo "cp config/runtime.env.example config/runtime.env 후 모델 경로를 수정하십시오." >&2
+  echo "nano config/runtime.env로 파일을 만들고 ARGUS_HEF와 ARGUS_LABELS를 설정하십시오." >&2
   exit 1
 fi
 if [[ "$PROJECT_DIR" == *$'\n'* ]]; then

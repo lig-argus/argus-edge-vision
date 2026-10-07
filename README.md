@@ -11,7 +11,7 @@ models/           YOLO 학습·평가·ONNX/HEF 변환과 데이터셋 관리
 onboard/          Raspberry Pi에 설치할 C++·Python 실행 패키지
 ```
 
-`onboard/` 안에 CMake/Python 패키지 정의, 코드, 설정 예시, 설치·실행 스크립트,
+`onboard/` 안에 CMake/Python 패키지 정의, 코드, 프로파일·라벨, 설치·실행 스크립트,
 systemd 템플릿, 테스트, 설계·운용 문서와 실행용 모델 배치 위치가 있습니다.
 설치·빌드·실행 시 다른 최상위 폴더를 참조하지 않습니다.
 카메라 SDK, HailoRT/PyHailoRT와 OS 라이브러리는 각 Pi에 준비해야 합니다.
