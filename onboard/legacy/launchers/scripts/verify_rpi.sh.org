@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PYTHON_BIN="$PROJECT_DIR/.venv-rpi/bin/python"
+CAMERA_DEVICE="${1:-/dev/video0}"
+HEF_PATH="${2:-}"
+LABELS_PATH="${3:-}"
+WIDTH="${4:-640}"
+HEIGHT="${5:-480}"
+FOURCC="${6:-MJPG}"
+FRAME_SOURCE="${7:-ir_v4l2}"
+IR_CAPTURE="${8:-/home/user/thessen_raw14_viewer/build/i3_raw14_capture}"
+IR_DEVICE="${9:-0}"
+IR_TIMEOUT="${10:-15}"
+
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "[오류] 먼저 ./scripts/setup_rpi.sh를 실행하십시오." >&2
+  exit 1
+fi
+
+ARGS=(
+  --camera "$CAMERA_DEVICE"
+  --width "$WIDTH"
+  --height "$HEIGHT"
+  --fourcc "$FOURCC"
+  --frame-source "$FRAME_SOURCE"
+  --ir-capture "$IR_CAPTURE"
+  --ir-device "$IR_DEVICE"
+  --ir-timeout "$IR_TIMEOUT"
+)
+if [[ -n "$HEF_PATH" ]]; then
+  ARGS+=(--hef "$HEF_PATH")
+fi
+if [[ -n "$LABELS_PATH" ]]; then
+  ARGS+=(--labels "$LABELS_PATH")
+fi
+
+exec "$PYTHON_BIN" -m argus_vision.hardware_check "${ARGS[@]}"

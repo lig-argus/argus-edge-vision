@@ -1,0 +1,23 @@
+[Unit]
+Description=ARGUS C++ perception with Python YOLOX workers
+Requires=argus-busd.service
+After=argus-busd.service network.target
+
+[Service]
+Type=simple
+User=@RUN_USER@
+SupplementaryGroups=video
+WorkingDirectory=@PROJECT_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/bash "@PROJECT_DIR@/scripts/service_entrypoint.sh" run
+Restart=on-failure
+RestartSec=3
+# Allow the default worker startup/send/response deadlines and owned-process cleanup.
+TimeoutStopSec=75
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

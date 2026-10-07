@@ -86,10 +86,10 @@ hotfix/v0.2.1
 | scope | 대상 |
 |---|---|
 | `onboard` | `onboard/` — 기체 탑재 SW |
-| `gcs` | `ground_control_station/` — 지상 통제 SW |
+| `gcs` | `ground_control/` — 지상 통제 SW |
 | `models` | `models/` — 학습/추론 모델 |
-| `datasets` | `datasets/` — 데이터셋, 전처리 |
-| `docs` | `docs/` |
+| `datasets` | `models/datasets/` — 데이터셋, 전처리 |
+| `docs` | 모듈별 README 및 `onboard/docs/` |
 | `ci` | `.github/` 워크플로 |
 | `deps` | 의존성 버전 변경 |
 

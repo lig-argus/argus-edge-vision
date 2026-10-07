@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import csv
+import gc
+import time
+from dataclasses import dataclass
+
+import numpy as np
+
+_COLUMNS = (
+    "seq",
+    "capture_interval_ms",
+    "queue_get_call_ms",
+    "queue_dwell_ms",
+    "preprocess_ms",
+    "input_copy_ms",
+    "hw_wait_ms",
+    "output_fetch_ms",
+    "nms_parse_ms",
+    "infer_total_ms",
+    "postprocess_ms",
+    "publish_ms",
+    "total_ms",
+    "n_detections",
+)
+
+# total_ms values at/above this percentile are treated as outliers when
+# cross-referencing against GC pauses.
+_OUTLIER_PERCENTILE = 95.0
+
+
+@dataclass(slots=True)
+class _GcEvent:
+    start_ns: int
+    stop_ns: int
+    generation: int
+    collected: int
+
+
+class LatencyRecorder:
+    """Collects per-frame latency breakdowns in memory and writes a CSV +
+    summary table only once, at shutdown (`finalize()`), so measurement
+    never adds file I/O to the per-frame hot path. Only ever constructed
+    when `--latency-csv` is given; the hot path holds no reference to this
+    object otherwise.
+    """
+
+    def __init__(self, csv_path: str):
+        self._csv_path = csv_path
+        self._rows: list[dict[str, float | int]] = []
+        self._spans: list[tuple[int, int]] = []  # (capture_perf_ns, publish_perf_ns) per row
+        self._gc_events: list[_GcEvent] = []
+        self._gc_starts: dict[int, int] = {}
+        self._put_call_count = 0
+        self._put_call_total_ns = 0
+        self._put_call_max_ns = 0
+        gc.callbacks.append(self._on_gc)
+
+    def set_put_call_stats(self, *, count: int, total_ns: int, max_ns: int) -> None:
+        """Producer-thread stats for LatestFrameQueue.put() itself (lock/evict
+        overhead), reported once at shutdown by capture_loop."""
+        self._put_call_count = count
+        self._put_call_total_ns = total_ns
+        self._put_call_max_ns = max_ns
+
+    def _on_gc(self, phase: str, info: dict) -> None:
+        generation = info.get("generation", -1)
+        if phase == "start":
+            self._gc_starts[generation] = time.perf_counter_ns()
+        elif phase == "stop":
+            start_ns = self._gc_starts.pop(generation, None)
+            if start_ns is not None:
+                self._gc_events.append(
+                    _GcEvent(start_ns, time.perf_counter_ns(), generation, info.get("collected", 0))
+                )
+
+    def record(self, *, capture_perf_ns: int, publish_perf_ns: int, **fields: float | int) -> None:
+        self._rows.append(fields)
+        self._spans.append((capture_perf_ns, publish_perf_ns))
+
+    def _unhook_gc(self) -> None:
+        try:
+            gc.callbacks.remove(self._on_gc)
+        except ValueError:
+            pass
+
+    def finalize(self, *, captured_total: int, dropped: int) -> None:
+        self._unhook_gc()
+        self._write_csv()
+        self._print_summary(captured_total=captured_total, dropped=dropped)
+
+    def _write_csv(self) -> None:
+        with open(self._csv_path, "w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=_COLUMNS)
+            writer.writeheader()
+            writer.writerows(self._rows)
+
+    def _print_summary(self, *, captured_total: int, dropped: int) -> None:
+        processed = len(self._rows)
+        print(f"\n=== Latency summary -> {self._csv_path} ===")
+        print(f"captured={captured_total} processed={processed} dropped={dropped}")
+
+        if processed == 0:
+            print("(no frames recorded)")
+            return
+
+        if processed >= 2:
+            span_start = min(start for start, _ in self._spans)
+            span_end = max(end for _, end in self._spans)
+            elapsed_s = (span_end - span_start) / 1_000_000_000
+            measured_fps = processed / elapsed_s if elapsed_s > 0 else float("nan")
+            print(f"measured processing FPS = {measured_fps:.1f} (span {elapsed_s:.2f}s)")
+
+        stat_columns = [c for c in _COLUMNS if c not in ("seq", "n_detections")]
+        header = f"{'column':<20}{'mean':>10}{'p50':>10}{'p95':>10}{'p99':>10}{'max':>10}"
+        print(header)
+        print("-" * len(header))
+        for column in stat_columns:
+            values = np.array([row.get(column, 0.0) for row in self._rows], dtype=np.float64)
+            print(
+                f"{column:<20}"
+                f"{values.mean():>10.3f}"
+                f"{np.percentile(values, 50):>10.3f}"
+                f"{np.percentile(values, 95):>10.3f}"
+                f"{np.percentile(values, 99):>10.3f}"
+                f"{values.max():>10.3f}"
+            )
+
+        self._print_gc_overlap()
+        self._print_queue_diagnosis()
+
+    def _print_queue_diagnosis(self) -> None:
+        put_mean_ms = (
+            (self._put_call_total_ns / self._put_call_count) / 1_000_000 if self._put_call_count else 0.0
+        )
+        put_max_ms = self._put_call_max_ns / 1_000_000
+        get_call = np.array([row.get("queue_get_call_ms", 0.0) for row in self._rows], dtype=np.float64)
+        dwell = np.array([row.get("queue_dwell_ms", 0.0) for row in self._rows], dtype=np.float64)
+        blocked = int(np.sum(get_call > 0.5))  # get() actually had to wait on the queue's condition variable
+        print(
+            f"\nQueue diagnosis: put() call over {self._put_call_count} captured frames: "
+            f"mean={put_mean_ms:.4f}ms max={put_max_ms:.4f}ms (producer-side lock/evict cost)"
+        )
+        print(
+            f"  get() call over {len(self._rows)} processed frames: "
+            f"mean={get_call.mean():.4f}ms p99={np.percentile(get_call, 99):.4f}ms max={get_call.max():.4f}ms "
+            f"(consumer blocked on condition variable in {blocked}/{len(self._rows)} frames)"
+        )
+        print(
+            f"  end-to-end queue dwell (put-call -> get-return): "
+            f"mean={dwell.mean():.4f}ms p50={np.percentile(dwell, 50):.4f}ms "
+            f"p99={np.percentile(dwell, 99):.4f}ms max={dwell.max():.4f}ms"
+        )
+
+    def _print_gc_overlap(self) -> None:
+        total_values = np.array([row.get("total_ms", 0.0) for row in self._rows], dtype=np.float64)
+        threshold = np.percentile(total_values, _OUTLIER_PERCENTILE)
+        outlier_indices = [i for i, value in enumerate(total_values) if value >= threshold]
+
+        overlapping = 0
+        for index in outlier_indices:
+            capture_ns, publish_ns = self._spans[index]
+            if any(event.start_ns <= publish_ns and event.stop_ns >= capture_ns for event in self._gc_events):
+                overlapping += 1
+
+        gc_total_ms = sum((event.stop_ns - event.start_ns) for event in self._gc_events) / 1_000_000
+        print(
+            f"\nGC events: count={len(self._gc_events)} total_pause={gc_total_ms:.2f}ms | "
+            f"total_ms>=p{_OUTLIER_PERCENTILE:.0f}({threshold:.2f}ms) outliers={len(outlier_indices)}, "
+            f"overlapping a GC pause={overlapping}"
+        )

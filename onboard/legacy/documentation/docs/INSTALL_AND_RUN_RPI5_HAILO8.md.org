@@ -1,0 +1,239 @@
+# ARGUS RPi5 + Hailo-8 설치·실행 설명서
+
+이 문서는 Raspberry Pi 5, Hailo-8, USB RGB 카메라에서 YOLOX HEF를 실행하고 ROS 2 없이 ZeroMQ Pub/Sub로 탐지 결과를 전달하는 절차를 설명한다.
+
+## 1. 준비물
+
+- Raspberry Pi 5, 64비트 Raspberry Pi OS
+- Hailo-8 가속기와 안정적인 냉각
+- USB RGB 카메라
+- Hailo-8용으로 컴파일된 YOLOX `.hef`
+- 모델 클래스 순서와 일치하는 라벨 텍스트 파일
+
+> 이 ZIP에는 모델 가중치와 HEF가 포함되어 있지 않다. 라이선스와 모델별 차이 때문에 사용자가 준비한 Hailo-8용 HEF를 `models/`에 넣어야 한다. `.pth`와 `.onnx`는 Raspberry Pi의 Hailo-8에서 직접 실행할 수 없다.
+
+## 2. ZIP 압축 해제
+
+Raspberry Pi로 ZIP을 복사한 뒤 압축을 푼다.
+
+```bash
+sudo apt update
+sudo apt install -y unzip
+unzip argus_vision_bus_rpi5_hailo8_complete_v0.2.0.zip
+cd argus_vision_bus
+```
+
+프로젝트 경로는 나중에 systemd 서비스에 기록되므로 자동 실행을 설치한 뒤 폴더를 이동하지 않는다.
+
+## 3. Hailo-8와 Python 환경 자동 설치
+
+```bash
+bash scripts/setup_rpi.sh
+sudo reboot
+```
+
+재부팅 후 장치를 확인한다.
+
+```bash
+cd ~/argus_vision_bus
+hailortcli fw-control identify
+```
+
+출력에서 장치 아키텍처가 `HAILO8`인지 확인한다. 이 프로젝트는 Hailo-8 전용 HEF를 요구하며 Hailo-8L HEF와 혼용하지 않는다.
+
+## 4. 모델과 라벨 준비
+
+기본 COCO 가중치로 만든 Hailo-8 HEF라면 다음처럼 배치한다.
+
+```text
+models/yolox_s_coco_hailo8.hef
+config/coco80.txt
+```
+
+사용자 학습 모델이라면 다음처럼 배치한다.
+
+```text
+models/yolox_s_target_hailo8.hef
+config/labels.txt
+```
+
+`labels.txt`에는 모델 클래스 순서대로 한 줄에 하나씩 작성한다.
+
+```text
+target
+vehicle
+person
+```
+
+## 5. 실행 설정
+
+최초 설치 시 `config/runtime.env.example`이 `config/runtime.env`로 복사된다. 파일을 연다.
+
+```bash
+nano config/runtime.env
+```
+
+COCO 기본 모델 예:
+
+```bash
+ARGUS_HEF=models/yolox_s_coco_hailo8.hef
+ARGUS_LABELS=config/coco80.txt
+ARGUS_CAMERA=/dev/video0
+ARGUS_WIDTH=640
+ARGUS_HEIGHT=480
+ARGUS_FPS=30
+ARGUS_FOURCC=MJPG
+```
+
+사용자 모델은 `ARGUS_LABELS=config/labels.txt`로 변경한다. 상대 경로는 프로젝트 폴더를 기준으로 해석된다.
+
+## 6. 장치 사전 검사
+
+설정 파일 기준 전체 검사:
+
+```bash
+bash scripts/service_entrypoint.sh check
+```
+
+경로를 직접 지정하는 검사:
+
+```bash
+./scripts/verify_rpi.sh \
+  /dev/video0 \
+  models/yolox_s_coco_hailo8.hef \
+  config/coco80.txt \
+  640 480 MJPG
+```
+
+다음 항목이 모두 `PASS`여야 한다.
+
+- HailoRT 4.23.x와 PyHailoRT 로드
+- 장치가 Hailo-8로 식별됨
+- 카메라에서 640×480 RGB 프레임 수신
+- HEF 입력이 단일 RGB `uint8`
+- HEF 출력이 단일 HailoRT NMS
+- HEF 클래스 수와 라벨 수 일치
+
+## 7. 수동 실행
+
+설정 파일을 사용해 한 명령으로 실행한다.
+
+```bash
+./scripts/run_rpi.sh
+```
+
+터미널에서 박스 미리보기를 띄우려면 Raspberry Pi 데스크톱 세션에서 실행한다.
+
+```bash
+./scripts/run_rpi.sh \
+  models/yolox_s_coco_hailo8.hef \
+  /dev/video0 \
+  config/coco80.txt \
+  --preview
+```
+
+종료는 `Ctrl+C`다. 자동 실행 서비스에서는 화면 미리보기를 사용하지 않고 탐지 메시지만 발행한다.
+
+## 8. 부팅 자동 실행 설치
+
+먼저 6장의 사전 검사를 통과해야 한다.
+
+```bash
+bash scripts/install_autostart.sh
+```
+
+설치되는 서비스:
+
+| 서비스 | 역할 |
+|---|---|
+| `argus-busd.service` | ZeroMQ XSUB/XPUB 메시지 버스 |
+| `argus-vision.service` | 카메라, Hailo-8 YOLOX 추론, Detection 발행 |
+
+서비스 상태:
+
+```bash
+bash scripts/autostart_status.sh
+```
+
+실시간 로그:
+
+```bash
+journalctl -u argus-vision.service -f
+```
+
+중지와 시작:
+
+```bash
+sudo systemctl stop argus-vision.service argus-busd.service
+sudo systemctl start argus-busd.service argus-vision.service
+```
+
+설정 변경 후 재시작:
+
+```bash
+nano config/runtime.env
+sudo systemctl restart argus-vision.service
+```
+
+자동 실행만 제거:
+
+```bash
+bash scripts/uninstall_autostart.sh
+```
+
+제거 스크립트는 systemd 서비스만 제거하며 프로젝트, HEF와 라벨은 삭제하지 않는다.
+
+## 9. Windows 또는 다른 PC에서 구독
+
+Raspberry Pi의 IP가 `192.168.0.20`이라면:
+
+```bash
+argus-detection-sub --endpoint tcp://192.168.0.20:5556
+```
+
+5555 포트는 Raspberry Pi 내부 Publisher 전용이고, 5556 포트는 Subscriber 접속용이다. 현재 버스에는 인증과 암호화가 없으므로 신뢰된 유선망 또는 운용 전용망에서 사용하고 방화벽으로 접속 범위를 제한한다.
+
+## 10. 640×480 카메라와 640×640 YOLOX
+
+카메라 입력은 640×480이고 HEF 입력은 일반적으로 640×640이다. CPU 전처리는 영상 비율을 유지하고 위아래에 각각 80픽셀을 채우는 Letterbox를 수행한다. NPU 출력 좌표는 다시 640×480 원본 좌표로 복원된다.
+
+## 11. 문제 해결
+
+### Hailo 장치가 보이지 않음
+
+```bash
+lspci | grep -i hailo
+hailortcli fw-control identify
+```
+
+전원을 완전히 끈 상태에서 PCIe 케이블과 HAT 장착을 확인한다. M.2 HAT 구성은 `raspi-config`에서 PCIe Gen 3 설정이 필요할 수 있다.
+
+### 카메라가 열리지 않음
+
+```bash
+v4l2-ctl --device /dev/video0 --list-formats-ext
+```
+
+카메라가 MJPG 640×480 30 FPS를 지원하지 않으면 `config/runtime.env`에서 해상도, FPS 또는 `ARGUS_FOURCC=YUYV`를 시험한다.
+
+### 서비스가 계속 재시작됨
+
+```bash
+systemctl status argus-vision.service
+journalctl -u argus-vision.service -n 100 --no-pager
+```
+
+대부분 HEF 경로, Hailo-8/Hailo-8L 불일치, 라벨 수 불일치 또는 카메라 장치 번호 문제다.
+
+### 탐지가 전혀 나오지 않음
+
+- COCO HEF에는 `config/coco80.txt`를 사용한다.
+- 사용자 클래스는 라벨 파일만 변경해서 생기지 않는다. 사용자 데이터로 YOLOX를 미세조정하고 HEF를 다시 만들어야 한다.
+- RGB/BGR, Letterbox, 입력 크기, INT8 보정 데이터와 NMS 포함 여부를 확인한다.
+
+## 12. 공식 참고 자료
+
+- Raspberry Pi AI software: https://www.raspberrypi.com/documentation/computers/ai.html
+- Hailo Raspberry Pi 5 setup: https://github.com/hailo-ai/hailo-rpi5-examples/blob/main/doc/install-raspberry-pi5.md
+- Hailo Raspberry Pi examples: https://github.com/hailo-ai/hailo-rpi5-examples
+

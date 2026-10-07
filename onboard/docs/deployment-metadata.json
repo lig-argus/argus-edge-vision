@@ -1,0 +1,10 @@
+{
+  "stamp": "20260926-213502",
+  "backup_dir": "/home/user/npu-test/backups/argus-before-cpp-20260926-213502",
+  "root": "/home/user/npu-test/work/argus_vision_bus",
+  "preserve_sha256": {
+    "config/runtime.env": "c1d9113c881e80a2c8569ea038dbff06b2e82e78c74f6ed24cab573659bcabaa",
+    "config/profiles.toml": "8f85cecac6e1f2e670f3d2626c13204fa23351fbf982ea770cde831916352015",
+    "models/yolox_s_leaky_hailo8_zoo_v2.19.0.hef": "f51c6c2c6cd1bd73b9171858809177b39230ef98e6ff2de7306d313b013cf9be"
+  }
+}

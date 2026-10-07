@@ -1,0 +1,10 @@
+build/
+.venv-rpi/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+config/runtime.env
+models/deployed/*.hef
+models/deployed/labels.txt
+*.log

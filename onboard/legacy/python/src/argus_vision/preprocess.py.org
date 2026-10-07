@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import cv2
+import numpy as np
+
+
+@dataclass(frozen=True, slots=True)
+class LetterboxTransform:
+    source_width: int
+    source_height: int
+    model_width: int
+    model_height: int
+    scale: float
+    pad_x: int
+    pad_y: int
+
+    def model_normalized_yxyx_to_source_xyxy(
+        self, box: list[float] | tuple[float, ...] | np.ndarray
+    ) -> tuple[int, int, int, int]:
+        ymin, xmin, ymax, xmax = (float(value) for value in box[:4])
+        x1 = (xmin * self.model_width - self.pad_x) / self.scale
+        y1 = (ymin * self.model_height - self.pad_y) / self.scale
+        x2 = (xmax * self.model_width - self.pad_x) / self.scale
+        y2 = (ymax * self.model_height - self.pad_y) / self.scale
+        x1 = int(round(np.clip(x1, 0, self.source_width - 1)))
+        y1 = int(round(np.clip(y1, 0, self.source_height - 1)))
+        x2 = int(round(np.clip(x2, 0, self.source_width - 1)))
+        y2 = int(round(np.clip(y2, 0, self.source_height - 1)))
+        return x1, y1, x2, y2
+
+
+def letterbox_bgr_to_rgb(
+    frame: np.ndarray, model_width: int, model_height: int, pad_value: int = 114
+) -> tuple[np.ndarray, LetterboxTransform]:
+    source_height, source_width = frame.shape[:2]
+    scale = min(model_width / source_width, model_height / source_height)
+    resized_width = max(1, int(source_width * scale))
+    resized_height = max(1, int(source_height * scale))
+    # Match Hailo's official standalone object-detection preprocessing.
+    resized = cv2.resize(frame, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
+    output = np.full((model_height, model_width, 3), pad_value, dtype=np.uint8)
+    pad_x = (model_width - resized_width) // 2
+    pad_y = (model_height - resized_height) // 2
+    output[pad_y : pad_y + resized_height, pad_x : pad_x + resized_width] = resized
+    output = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
+    transform = LetterboxTransform(
+        source_width=source_width,
+        source_height=source_height,
+        model_width=model_width,
+        model_height=model_height,
+        scale=scale,
+        pad_x=pad_x,
+        pad_y=pad_y,
+    )
+    return np.ascontiguousarray(output), transform

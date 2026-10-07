@@ -1,0 +1,207 @@
+# ARGUS Vision Bus
+
+Raspberry Pi 5의 V4L2·SDK RAW14·영상 Replay 입력을 Hailo-8에서 YOLOX로 추론하고, ROS 2 없이 탐지 결과를 publish/subscribe하는 실행 패키지다. 수동 실행과 systemd 부팅 자동 실행을 모두 제공한다.
+
+현재 구현/미구현 경계와 부품 교체 방법은 `docs/DESIGN_ALIGNMENT.md` 및 상위 `/home/user/README.md`에 정리했다.
+
+설치부터 자동 실행까지의 전체 절차는 `docs/INSTALL_AND_RUN_RPI5_HAILO8.md`를 따른다.
+
+```text
+IFrameSource -> bounded frame queue -> preprocess -> IDetector -> full box
+                                                               -> observations
+Gazebo pose ---------------------------------------------------> observations
+observations -> ITracker -> tracking/tracks -> LatestStateStore -> ControlLoop
+                         \\-> overlay/jpeg                    \\-> Recorder
+```
+
+## 설계 원칙
+
+- `busd`는 XSUB/XPUB 프록시다. publisher는 5555번 포트, subscriber는 5556번 포트에 연결한다.
+- 메시지는 MessagePack이며 토픽과 데이터가 분리된 multipart 메시지다.
+- 인지 워커의 유계 큐는 기본 2프레임 FIFO이며, 적체되면 가장 오래된 프레임을 버린다. 큐 정책과 용량은 유지했다.
+- YOLOX 전체 박스의 원본 픽셀 좌표를 보존하고, 표시·추적·선택·기하의 기준으로 사용한다.
+- 카메라 원본 프레임은 기본적으로 publish하지 않는다. 모듈 간 데이터는 박스, 클래스, 신뢰도와 시간 정보다.
+- `--publish-preview`를 준 경우에만 박스가 그려진 JPEG를 별도 토픽으로 publish한다.
+- 버스 큐를 작게 유지하고 non-blocking publish를 사용한다. 느린 구독자가 실시간 추론을 막지 않는다.
+- 제어 명령에는 이 PUB/SUB 채널을 그대로 사용하지 않는다. 추후 별도 명령 채널과 heartbeat/watchdog을 둔다.
+
+## 전제
+
+- Raspberry Pi 5 + 64-bit Raspberry Pi OS + Python 3.11 이상
+- Hailo-8 및 HailoRT/PyHailoRT 4.23.x
+- HailoRT NMS postprocess가 들어간 YOLOX `.hef`
+- HEF 입력 형식은 NHWC RGB `uint8`, 입력은 1개, 출력은 NMS 출력 1개
+
+Hailo 공식 standalone object detection 예제 역시 Hailo-8에 HailoRT 4.23.0을 사용하며 YOLOX와 HailoRT postprocess HEF를 지원한다.
+
+## Raspberry Pi 바로 실행
+
+프로젝트 폴더를 Raspberry Pi에 복사한 뒤 최초 한 번 실행한다. 이 스크립트는 공식 `hailo-all`, OpenCV, ZeroMQ와 Python 환경을 설치하고 `config/runtime.env`를 생성한다.
+
+```bash
+cd argus_vision_bus
+bash scripts/setup_rpi.sh
+```
+
+설치 직후 Hailo 장치가 인식되지 않으면 한 번 재부팅한다.
+
+```bash
+sudo reboot
+```
+
+Hailo-8용 YOLOX HEF를 `models/`에 복사하고 `config/runtime.env`에 모델·라벨·카메라 경로를 입력한다. 기본 COCO HEF는 `config/coco80.txt`, 사용자 모델은 해당 클래스 순서의 `config/labels.txt`를 사용한다. 그다음 한 명령으로 장치 검사, 버스, 카메라 및 추론을 시작한다.
+
+```bash
+cd argus_vision_bus
+nano config/runtime.env
+./scripts/run_rpi.sh
+```
+
+화면에 박스까지 표시하려면 Raspberry Pi 데스크톱 터미널에서 실행한다.
+
+```bash
+./scripts/run_rpi.sh models/yolox_s_640_target_v01_hailo8.hef \
+  /dev/video0 config/labels.txt --preview
+```
+
+COCO 80클래스 사전학습 HEF를 시험할 때는 `config/coco80.txt`를 사용한다.
+
+```bash
+./scripts/run_rpi.sh models/yolox_s_leaky_hailo8.hef \
+  /dev/video0 config/coco80.txt --preview
+```
+
+실행 중 매 30프레임마다 객체 수, NPU 추론시간, 전체 프레임 연령, 폐기 프레임 수가 출력된다. 종료는 `Ctrl+C`다.
+
+USB 웹캠은 기본적으로 `MJPG`, 640×480, 30 FPS를 요청한다. 카메라가 MJPG를 지원하지 않으면 `config/runtime.env`에서 `ARGUS_FOURCC=YUYV`로 바꾼다. 실제 지원 형식은 `v4l2-ctl --device /dev/video0 --list-formats-ext`로 확인한다.
+
+### 부팅 자동 실행
+
+수동 실행과 사전 검사가 성공한 뒤 다음 명령으로 두 systemd 서비스를 설치한다.
+
+```bash
+bash scripts/install_autostart.sh
+bash scripts/autostart_status.sh
+```
+
+자동 실행만 제거하려면 다음을 실행한다.
+
+```bash
+bash scripts/uninstall_autostart.sh
+```
+
+### 개별 장치 검사
+
+```bash
+./scripts/verify_rpi.sh /dev/video0
+./scripts/verify_rpi.sh /dev/video0 \
+  models/yolox_s_640_target_v01_hailo8.hef config/labels.txt
+```
+
+검사 항목은 HailoRT 4.23.x, Hailo-8 식별, `hailo_platform` import, RGB 프레임 수신, HEF 입력, HailoRT NMS 출력 및 라벨 클래스 수 일치 여부다.
+
+## Hailo 없이 버스부터 확인
+
+터미널 세 개에서 다음을 순서대로 실행한다.
+
+```bash
+# 터미널 1: 버스
+argus-busd
+
+# 터미널 2: 구독자
+argus-detection-sub
+
+# 터미널 3: 웹캠 + 가짜 이동 박스
+argus-vision --backend mock --camera /dev/video0 --labels config/labels.txt
+```
+
+개발 PC에서 미리보기도 확인하려면 GUI 지원 `opencv-python`을 설치하고 다음처럼 실행한다.
+
+```bash
+argus-preview-sub
+argus-vision --backend mock --camera /dev/video0 \
+  --labels config/labels.txt --publish-preview
+```
+
+## 프로세스별 수동 실행
+
+클래스 이름을 `config/labels.txt`에 모델 클래스 순서대로 한 줄씩 작성한다.
+
+```bash
+argus-busd
+argus-detection-sub
+argus-vision \
+  --profile REAL_IR \
+  --backend hailo \
+  --hef models/yolox_s_640_vehicle_v01_hailo8.hef \
+  --labels config/labels.txt \
+  --camera /dev/video0 \
+  --width 640 --height 480 --fps 30 \
+  --score-threshold 0.35
+```
+
+다른 컴퓨터에서 구독할 때는 Pi의 주소를 사용한다.
+
+```bash
+argus-detection-sub --endpoint tcp://192.168.0.20:5556
+```
+
+publisher 입력 포트 5555는 기본적으로 Pi 내부 loopback에만 열린다. subscriber 출력 포트 5556은 Windows 통제기 접속을 위해 외부에 열린다. 현재 버스에는 인증과 암호화가 없으므로 운용 네트워크 방화벽에서 접근 대역을 제한한다.
+
+## 토픽 계약
+
+| 토픽 | schema | 생산자 | 소비자 |
+|---|---|---|---|
+| `perception/observations` | `argus.perception.observations.v2` | Perception Worker | Tracker |
+| `tracking/tracks` | `argus.tracking.tracks.v1` | Tracker | LatestStateStore, UI, Recorder |
+| `system/status` | `argus.system.status.v1` | Control/Health | UI, Recorder |
+| `command/request` | `argus.command.request.v1` | CommandGateway | ControlLoop |
+| `command/result` | `argus.command.result.v1` | ControlLoop | CommandGateway |
+| `diagnostics/events` | `argus.diagnostics.event.v1` | 각 어댑터 | Health/Status |
+| `vision/overlay/jpeg` | `argus.vision.overlay.v1` | OverlayEncoder | UI |
+
+현재 실행 코드는 `perception/observations`, `diagnostics/events`, `vision/overlay/jpeg`까지 구현한다. `tracking/tracks` 계약은 코드에 정의되어 있고 ByteTrack+FC CMC 워커는 다음 단계다.
+
+## Observation 메시지
+
+토픽은 `perception/observations`다. 주요 필드는 다음과 같다.
+
+```json
+{
+  "schema": "argus.perception.observations.v2",
+  "source": "camera:/dev/video0",
+  "frame_id": 42,
+  "captured_unix_ns": 0,
+  "captured_monotonic_ns": 0,
+  "published_monotonic_ns": 0,
+  "image_width": 640,
+  "image_height": 480,
+  "model": "yolox_s_640_vehicle_v01_hailo8.hef",
+  "inference_ms": 3.4,
+  "detections": [
+    {"class_id": 0, "label": "target", "confidence": 0.91,
+     "x1": 100, "y1": 120, "x2": 360, "y2": 410,
+     "track_id": null}
+  ]
+}
+```
+
+박스 좌표는 원본 카메라 영상 기준 픽셀 `x1,y1,x2,y2`다. `captured_monotonic_ns`는 지연시간 계산용이며 다른 장치와 직접 비교하지 않는다.
+
+## 시험
+
+```bash
+python -m pip install -e '.[dev]'
+pytest -q
+```
+
+## 다음 단계
+
+1. 실제 사용자 HEF의 `hailortcli parse-hef` 출력과 NMS 텐서 형식을 확인한다.
+2. 탐지 구독 뒤 ByteTrack 추적 노드를 추가해 `track_id`, 중심점, 속도 추정값을 publish한다.
+3. 추적 결과와 MAVLink 제어 사이에 stale-message 차단, heartbeat, 수동 우선권, failsafe를 구현한다.
+4. 지연시간, 프레임 유실률, NPU 온도와 카메라 재연결 시험을 추가한다.
+
+## 환경 프로파일
+
+`config/profiles.toml`에 `SITL_POSE`, `SITL_IMAGE`, `REAL_IR`, `REPLAY` 조합을 정의했다. Composition Root는 프로파일을 읽고 호환되지 않는 Source/Detector/VehiclePort 조합을 시작 전에 거부한다. 현재 `REAL_IR.detector`는 최초 요구에 맞춰 `hailo_yolox`다. 최종 하드웨어가 흐름도의 DX-M1이면 이를 `dxm1_yolox`로 바꾸고 동일한 Detector 인터페이스의 어댑터를 추가한다.

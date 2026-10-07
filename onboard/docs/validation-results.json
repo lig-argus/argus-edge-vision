@@ -1,0 +1,82 @@
+[
+  {
+    "check": "ctest",
+    "command": [
+      "ctest",
+      "--test-dir",
+      "/home/user/npu-test/work/argus_vision_bus/build",
+      "--output-on-failure"
+    ],
+    "exit_code": 0,
+    "stdout": "Internal ctest changing into directory: /home/user/npu-test/work/argus_vision_bus/build\nTest project /home/user/npu-test/work/argus_vision_bus/build\n    Start 1: flow-contracts\n1/1 Test #1: flow-contracts ...................   Passed    0.01 sec\n\n100% tests passed, 0 tests failed out of 1\n\nTotal Test time (real) =   0.01 sec\n",
+    "stderr": ""
+  },
+  {
+    "check": "integration_hailo",
+    "command": [
+      "/home/user/npu-test/work/argus_vision_bus/.venv-rpi/bin/python",
+      "-m",
+      "pytest",
+      "tests/integration",
+      "-q",
+      "-p",
+      "no:cacheprovider"
+    ],
+    "exit_code": 0,
+    "stdout": "..............                                                           [100%]\n14 passed in 19.29s\n",
+    "stderr": ""
+  },
+  {
+    "check": "service_config",
+    "command": [
+      "bash",
+      "scripts/service_entrypoint.sh",
+      "check"
+    ],
+    "exit_code": 0,
+    "stdout": "orchestrator=C++ profile=REAL_IR frame_source=ir_v4l2 queue_capacity=2 detector=hailo capability=perception_only exposure_time=unavailable tracker=unimplemented vehicle_port=unimplemented\n",
+    "stderr": ""
+  },
+  {
+    "check": "installed_cli",
+    "command": [
+      "/home/user/npu-test/work/argus_vision_bus/.venv-rpi/bin/argus-vision",
+      "--backend",
+      "mock",
+      "--check-config"
+    ],
+    "exit_code": 0,
+    "stdout": "orchestrator=C++ profile=REAL_IR frame_source=ir_v4l2 queue_capacity=2 detector=mock capability=perception_only exposure_time=unavailable tracker=unimplemented vehicle_port=unimplemented\n",
+    "stderr": ""
+  },
+  {
+    "check": "current_package",
+    "command": [
+      "/home/user/npu-test/work/argus_vision_bus/.venv-rpi/bin/python",
+      "-c",
+      "import importlib.util,importlib.metadata; from argus_workers.perception import Preprocessor; assert importlib.util.find_spec(\"argus_vision\") is None; print(\"distribution=\"+importlib.metadata.version(\"argus-vision-bus\")); print(\"preprocessor=\"+Preprocessor.__file__); print(\"old argus_vision namespace unavailable\")"
+    ],
+    "exit_code": 0,
+    "stdout": "distribution=0.3.0\npreprocessor=/home/user/npu-test/work/argus_vision_bus/python/argus_workers/perception/Preprocessor.py\nold argus_vision namespace unavailable\n",
+    "stderr": ""
+  },
+  {
+    "check": "systemd_templates_before_fix",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "/tmp/argus-unit-check-1oivaxkl/argus-busd.service:8: WorkingDirectory= path is not absolute: \"/home/user/npu-test/work/argus_vision_bus\"\nargus-busd.service: Unit configuration has fatal error, unit will not be started.\nUnit argus-busd.service has a bad unit file setting.\n/tmp/argus-unit-check-1oivaxkl/argus-vision.service:10: WorkingDirectory= path is not absolute: \"/home/user/npu-test/work/argus_vision_bus\"\nargus-vision.service: Unit configuration has fatal error, unit will not be started.\nUnit argus-vision.service has a bad unit file setting.\n",
+    "resolved_by": "systemd_templates_final"
+  },
+  {
+    "check": "systemd_templates_final",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "check": "canonical_entry_after_service_fix",
+    "exit_code": 0,
+    "stdout": ".                                                                        [100%]\n1 passed in 0.47s\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,65 @@
+# Raspberry Pi 코드 지도 — C++ 전환 완료 구조
+
+현행 작업본은 `/home/user/npu-test/work/argus_vision_bus`다.
+2026-09-26 사용자 승인으로 실행 뼈대·입력·큐·계약·IPC·발행을 C++로 전환했다.
+전처리, YOLOX/Hailo, Pi에서 박스/JPEG 합성, BusProxy와 점검·구독 도구는 Python이다.
+다른 AI는 [현행 AGENTS.md](npu-test/work/argus_vision_bus/AGENTS.md)와
+[전환 결정](npu-test/work/argus_vision_bus/docs/CPP_MIGRATION.md)을 먼저 읽는다.
+과거 Python 전체 실행부의 자동 원복은 금지하며 사용자의 이후 명시적 지시가 우선한다.
+
+```text
+/home/user/
+├── README.md                       이 코드 지도
+├── npu-test/
+│   ├── AGENTS.md                   작업본 지정 / 자동 원복 방지 규칙
+│   ├── work/argus_vision_bus/       현행 실행 코드
+│   │   ├── AGENTS.md               흐름도 불변 조건 / 언어 경계
+│   │   ├── cpp/apps/               OnboardMain / FrameSourceCapture
+│   │   ├── cpp/include/argus/      contracts / ports / application / adapters
+│   │   ├── cpp/src/                역할별 C++ 구현
+│   │   ├── python/argus_workers/   perception / transport / tools
+│   │   ├── config/                기존 프로파일·라벨·런타임 설정
+│   │   ├── models/                기존 YOLOX HEF
+│   │   ├── scripts/               setup / build / run / service
+│   │   ├── tests/integration/      C++ ↔ Python 전달·실패·종료 검사
+│   │   ├── docs/design/            전체 흐름도 원문 사본
+│   │   └── legacy/                .py.org 원본 / 과거 문서 / 실행 대상 아님
+│   ├── teammate/argus_vision_bus/  과거 원본: 현행 구현의 근거 아님
+│   └── backups/                   변경 전 백업: 자동 복원 대상 아님
+├── thessen_raw14_viewer/           기존 i3system C++ SDK 캡처 / 재사용
+│   └── build/i3_raw14_capture
+└── bbox-udp/                       기존 Gazebo 시험 수신기 / 별도 프로토콜
+```
+
+```mermaid
+flowchart LR
+    SRC[C++ IFrameSource] --> Q[C++ FrameQueue / 2 FIFO]
+    Q --> IPC[C++ PythonVisionAdapter]
+    IPC --> PRE[Python Preprocessor]
+    PRE --> YOLO[Python YOLOXDetector / Hailo]
+    YOLO --> BOX[C++ BoxPostprocessor / Observation]
+    BOX --> BUS[C++ MessageBus → Python BusProxy]
+    PRE --> OVER[Pi Python OverlayEncoder]
+    YOLO --> OVER
+    OVER -->|박스 포함 JPEG| BUS
+    BUS -->|Wi-Fi| PC[PC 구독자]
+    BOX -. 미구현 .-> TRACK[ITracker / CameraMotion]
+    TRACK -. 미구현 .-> CONTROL[최신 상태 / 독립 제어 / Guard / VehiclePort]
+```
+
+현재는 `perception_only`다. 실제 Tracker·CMC·기체 제어 구현이 완료됐다는 뜻이 아니다.
+전체 박스만 사용하고 hull ROI는 폐기했다. 인지 큐는 기존 용량 2 FIFO다.
+노출 시각과 수신 시각, 예측 결과와 마지막 실제 검출 TTL은 각각 구분한다.
+
+빌드/실행 방법은 [작업본 README](npu-test/work/argus_vision_bus/README.md),
+흐름도 이름별 파일은 [FILE_MAP](npu-test/work/argus_vision_bus/docs/FILE_MAP.md),
+구현/미구현 구분은 [FLOW_ALIGNMENT](npu-test/work/argus_vision_bus/docs/FLOW_ALIGNMENT.md),
+검증 결과는 [VALIDATION](npu-test/work/argus_vision_bus/docs/VALIDATION.md)에 있다.
+
+## 미구현 역할 파일 — 2026-09-26
+
+사용자 승인으로 현행 작업본에 30개 역할/54개의 주석 전용 C++ 표시 파일을 배치했다.
+`/*미구현 임의 생성 금지*/`와 설계 조건만 있으며 새 헤더도 타입 선언이 없다.
+기능 구현·CMake·팩토리·실행 연결은 추가하지 않았다. 현재는 perception_only다.
+[미구현 파일 지도](npu-test/work/argus_vision_bus/docs/UNIMPLEMENTED_FILES.md)와
+[검증](npu-test/work/argus_vision_bus/docs/SCAFFOLD_VALIDATION.md)을 참고한다.

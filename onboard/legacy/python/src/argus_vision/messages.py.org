@@ -1,0 +1,177 @@
+from __future__ import annotations
+
+import time
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+import msgpack
+
+
+@dataclass(frozen=True, slots=True)
+class Detection:
+    class_id: int
+    label: str
+    confidence: float
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    track_id: int | None = None
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+        if self.x2 < self.x1 or self.y2 < self.y1:
+            raise ValueError("invalid bounding box")
+
+
+@dataclass(frozen=True, slots=True)
+class DetectionFrame:
+    source: str
+    frame_id: int
+    captured_unix_ns: int
+    captured_monotonic_ns: int
+    published_monotonic_ns: int
+    image_width: int
+    image_height: int
+    model: str
+    inference_ms: float
+    seq: int = 0
+    t_infer_us: int = 0
+    t_publish_us: int = 0
+    detections: tuple[Detection, ...] = field(default_factory=tuple)
+    coordinate_frame: str = "camera_pixel"
+    observation_kind: str = "IMAGE2D"
+    schema: str = "argus.perception.observations.v2"
+    received_unix_ns: int | None = None
+    received_monotonic_ns: int | None = None
+    exposure_monotonic_ns: int | None = None
+    source_receive_monotonic_ns: int | None = None
+    clock_domain: str = "host_monotonic"
+    timestamp_source: str = "host_receive"
+    exposure_time_valid: bool = False
+
+    def __post_init__(self) -> None:
+        if self.schema not in ("argus.perception.observations.v1", "argus.perception.observations.v2"):
+            raise ValueError(f"unsupported observation schema: {self.schema}")
+        if self.exposure_time_valid and (self.exposure_monotonic_ns is None or self.clock_domain != "host_monotonic"):
+            raise ValueError("valid exposure timestamp requires a mapped host monotonic timestamp")
+        received = self.received_monotonic_ns if self.received_monotonic_ns is not None else self.captured_monotonic_ns
+        if self.exposure_time_valid and not 0 <= self.exposure_monotonic_ns <= received:
+            raise ValueError("exposure timestamp must not be later than receipt")
+
+    def require_exposure_time(self) -> int:
+        if not self.exposure_time_valid:
+            raise ValueError("observation has no valid exposure time for frame-aligned CMC")
+        return self.exposure_monotonic_ns
+
+    @property
+    def pipeline_latency_ms(self) -> float:
+        received = self.received_monotonic_ns if self.received_monotonic_ns is not None else self.captured_monotonic_ns
+        return (self.published_monotonic_ns - received) / 1_000_000
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["detections"] = [asdict(item) for item in self.detections]
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DetectionFrame":
+        copied = dict(data)
+        legacy_roi_fields = {"hull_x1", "hull_y1", "hull_x2", "hull_y2"}
+        legacy = copied.get("schema") == "argus.perception.observations.v1"
+        copied["detections"] = tuple(
+            Detection(**({key: value for key, value in item.items() if key not in legacy_roi_fields}
+                         if legacy else item)) for item in copied.get("detections", [])
+        )
+        return cls(**copied)
+
+
+def pack_message(data: dict[str, Any]) -> bytes:
+    return msgpack.packb(data, use_bin_type=True)
+
+
+def unpack_message(payload: bytes) -> dict[str, Any]:
+    result = msgpack.unpackb(payload, raw=False)
+    if not isinstance(result, dict):
+        raise ValueError("message payload must be a map")
+    return result
+
+
+def npu_input_jpeg_header(
+    *,
+    seq: int,
+    t_capture_us: int,
+    t_pre_us: int,
+    src_w: int,
+    src_h: int,
+    lb_scale: float,
+    lb_pad_x: int,
+    lb_pad_y: int,
+    source: str,
+    preprocess: str,
+) -> dict[str, Any]:
+    return {
+        "schema": "argus.vision.npu_input.v1",
+        "seq": seq,
+        "t_capture_us": t_capture_us,
+        "t_pre_us": t_pre_us,
+        "src_w": src_w,
+        "src_h": src_h,
+        "lb_scale": lb_scale,
+        "lb_pad_x": lb_pad_x,
+        "lb_pad_y": lb_pad_y,
+        "source": source,
+        "preprocess": preprocess,
+        "encoding": "jpeg",
+    }
+
+
+def npu_input_stats_message(
+    source: str,
+    *,
+    offered: int,
+    published: int,
+    dropped_rate_limit: int,
+    dropped_queue_overwrite: int,
+    dropped_encode_fail: int,
+    unix_ns: int | None = None,
+    monotonic_ns: int | None = None,
+) -> dict[str, Any]:
+    """diagnostics/events snapshot of NpuInputJpegPublisher counters (state=npu_input_stats)."""
+    return {
+        "schema": "argus.diagnostics.event.v1",
+        "source": source,
+        "state": "npu_input_stats",
+        "detail": (
+            f"offered={offered} published={published} "
+            f"dropped_rate_limit={dropped_rate_limit} "
+            f"dropped_queue_overwrite={dropped_queue_overwrite} "
+            f"dropped_encode_fail={dropped_encode_fail}"
+        ),
+        "offered": offered,
+        "published": published,
+        "dropped_rate_limit": dropped_rate_limit,
+        "dropped_queue_overwrite": dropped_queue_overwrite,
+        "dropped_encode_fail": dropped_encode_fail,
+        "unix_ns": time.time_ns() if unix_ns is None else unix_ns,
+        "monotonic_ns": time.monotonic_ns() if monotonic_ns is None else monotonic_ns,
+    }
+
+
+def health_message(
+    source: str,
+    state: str,
+    detail: str = "",
+    *,
+    unix_ns: int | None = None,
+    monotonic_ns: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema": "argus.diagnostics.event.v1",
+        "source": source,
+        "state": state,
+        "detail": detail,
+        "unix_ns": time.time_ns() if unix_ns is None else unix_ns,
+        "monotonic_ns": time.monotonic_ns() if monotonic_ns is None else monotonic_ns,
+    }

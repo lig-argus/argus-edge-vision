@@ -1,0 +1,58 @@
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from argus_vision.composition_root import CompositionRoot
+from argus_vision.frame_sources import FrameSourceOptions
+from argus_vision.profile import load_profile, validate_profile
+
+
+def profile(name):
+    return load_profile(Path(__file__).parents[1] / "config/profiles.toml", name)
+
+
+@pytest.mark.parametrize("name,kind", [("REAL_IR", "ir_v4l2"), ("REPLAY", "replay"),
+                                       ("SITL_IMAGE", "gazebo_camera")])
+def test_profile_selects_its_registered_frame_source(name, kind):
+    result = object()
+    calls = []
+    def factory(options, clock):
+        calls.append(options.camera)
+        return result
+    root = CompositionRoot(profile(name), source_factories={kind: factory})
+    assert root.create_frame_source(FrameSourceOptions(camera="fixture")) is result
+    assert calls == ["fixture"]
+
+
+def test_sdk_and_tracker_vehicle_factories_are_replaceable():
+    configured = replace(profile("REAL_IR"), frame_source="ir_sdk")
+    source, tracker, port = object(), object(), object()
+    root = CompositionRoot(configured, source_factories={"ir_sdk": lambda *_: source},
+                           tracker_factories={configured.tracker: lambda _: tracker},
+                           vehicle_factories={configured.vehicle_port: lambda _: port})
+    assert root.create_frame_source(FrameSourceOptions()) is source
+    assert root.create_tracker() is tracker
+    assert root.create_vehicle_port() is port
+
+
+def test_unimplemented_adapters_fail_explicitly():
+    root = CompositionRoot(profile("REAL_IR"))
+    with pytest.raises(NotImplementedError, match="tracker adapter"):
+        root.create_tracker()
+    with pytest.raises(NotImplementedError, match="vehicle port"):
+        root.create_vehicle_port()
+    root = CompositionRoot(profile("SITL_IMAGE"))
+    with pytest.raises(NotImplementedError, match="Gazebo camera"):
+        root.create_frame_source(FrameSourceOptions())
+    root = CompositionRoot(profile("SITL_POSE"))
+    with pytest.raises(NotImplementedError, match="gazebo_pose"):
+        root.create_frame_source(FrameSourceOptions())
+
+
+def test_profile_rejects_wrong_coordinate_system_or_tracker():
+    real = profile("REAL_IR")
+    with pytest.raises(ValueError, match="coordinate"):
+        validate_profile(replace(real, coordinate_frame="gazebo_world_enu"))
+    with pytest.raises(ValueError, match="tracker"):
+        validate_profile(replace(real, tracker="unknown"))

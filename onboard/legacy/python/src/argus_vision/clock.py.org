@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from typing import Protocol
+
+
+@dataclass(frozen=True, slots=True)
+class ClockStamp:
+    unix_ns: int
+    monotonic_ns: int
+
+
+class IClock(Protocol):
+    def now(self) -> ClockStamp: ...
+    def monotonic_ns(self) -> int: ...
+
+
+class SystemClock:
+    """One injectable clock boundary for capture, tracking, control and logging."""
+
+    def now(self) -> ClockStamp:
+        return ClockStamp(unix_ns=time.time_ns(), monotonic_ns=time.monotonic_ns())
+
+    def monotonic_ns(self) -> int:
+        return time.monotonic_ns()
+

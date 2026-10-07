@@ -1,0 +1,28 @@
+[SITL_POSE]
+frame_source = "gazebo_pose"
+detector = "none"
+tracker = "pose"
+vehicle_port = "mavsdk_udp"
+coordinate_frame = "gazebo_world_enu"
+
+[SITL_IMAGE]
+frame_source = "gazebo_camera"
+detector = "pc_yolox"
+tracker = "bytetrack_cmc"
+vehicle_port = "mavsdk_udp"
+coordinate_frame = "camera_pixel"
+
+[REAL_IR]
+frame_source = "ir_v4l2"
+detector = "hailo_yolox"
+tracker = "bytetrack_cmc"
+vehicle_port = "mavsdk_serial"
+coordinate_frame = "camera_pixel"
+
+[REPLAY]
+frame_source = "replay"
+detector = "hailo_yolox"
+tracker = "bytetrack_cmc"
+vehicle_port = "replay"
+coordinate_frame = "camera_pixel"
+

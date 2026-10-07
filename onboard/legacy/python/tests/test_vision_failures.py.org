@@ -1,0 +1,104 @@
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from argus_vision import vision_node as node
+from argus_vision.frame_sources import EndOfStream, FrameTiming, SourceFrame
+from argus_vision.messages import Detection
+
+
+class Detector:
+    input_width = 16
+    input_height = 16
+    model_name = "test"
+    closed = False
+    def infer(self, *_args, **_kwargs):
+        return [Detection(0, "target", 0.9, 1, 2, 11, 12)]
+    def close(self):
+        self.closed = True
+
+
+class Source:
+    kind = "fixture"
+    released = False
+    def __init__(self, frames):
+        self.frames = list(frames)
+    def read(self):
+        if not self.frames:
+            raise EndOfStream()
+        return self.frames.pop(0)
+    def request_stop(self):
+        pass
+    def release(self):
+        self.released = True
+
+
+def run_fixture(monkeypatch, source_factory):
+    sent = []
+    class Publisher:
+        def __init__(self, *_args): pass
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def publish(self, topic, message, *_args):
+            sent.append((topic, message))
+            return True
+    detector = Detector()
+    monkeypatch.setattr(node, "Publisher", Publisher)
+    monkeypatch.setattr(node.CompositionRoot, "create_detector", lambda *_args: detector)
+    monkeypatch.setattr(node.CompositionRoot, "create_frame_source", source_factory)
+    base = Path(__file__).parents[1]
+    args = node.build_parser().parse_args(["--backend", "mock", "--labels", str(base / "config/labels.txt"),
+                                         "--profiles", str(base / "config/profiles.toml"), "--log-every", "0"])
+    return args, sent, detector
+
+
+def test_capture_failure_with_empty_queue_emits_fault_and_raises(monkeypatch):
+    source = Source([(False, None)] * 10)
+    args, sent, detector = run_fixture(monkeypatch, lambda *_args: source)
+    with pytest.raises(RuntimeError, match="10 consecutive"):
+        node.run(args)
+    assert any(topic == node.HEALTH_V1 and msg["state"] == "fault" for topic, msg in sent)
+    assert source.released and detector.closed
+    assert not any(topic == node.DETECTIONS_V1 for topic, _ in sent)
+
+
+def test_source_initialization_failure_emits_fault_and_closes_detector(monkeypatch):
+    def fail(*_args):
+        raise RuntimeError("cannot initialize camera")
+    args, sent, detector = run_fixture(monkeypatch, fail)
+    with pytest.raises(RuntimeError, match="initialize camera"):
+        node.run(args)
+    assert any(msg.get("state") == "fault" for _, msg in sent)
+    assert detector.closed
+
+
+def test_failed_source_cleanup_still_closes_detector(monkeypatch):
+    class BadCloseSource(Source):
+        def release(self):
+            raise RuntimeError("cleanup failure")
+    source = BadCloseSource([(False, None)] * 10)
+    args, sent, detector = run_fixture(monkeypatch, lambda *_args: source)
+    with pytest.raises(RuntimeError, match="cleanup failure"):
+        node.run(args)
+    assert detector.closed
+    assert any(msg.get("state") == "fault" and "cleanup failed" in msg["detail"] for _, msg in sent)
+
+
+@pytest.mark.parametrize("exposure", [None, 900])
+def test_normal_finite_source_publishes_full_box_and_honest_timing(monkeypatch, exposure):
+    timing = FrameTiming(2000, 1000, exposure_monotonic_ns=exposure)
+    frame = SourceFrame(3, np.zeros((16, 16, 3), np.uint8), 2000, 1000, timing=timing)
+    source = Source([(True, frame)])
+    args, sent, detector = run_fixture(monkeypatch, lambda *_args: source)
+    node.run(args)
+    observation = next(msg for topic, msg in sent if topic == node.DETECTIONS_V1)
+    assert observation["received_monotonic_ns"] == 1000
+    assert observation["exposure_monotonic_ns"] == exposure
+    assert observation["exposure_time_valid"] == (exposure is not None)
+    assert observation["timestamp_source"] == ("sensor_exposure" if exposure is not None else "host_receive")
+    box = observation["detections"][0]
+    assert (box["x1"], box["y1"], box["x2"], box["y2"]) == (1, 2, 11, 12)
+    assert not any(key.startswith("hull_") for key in box)
+    assert args.frame_queue_size == 2
+    assert source.released and detector.closed

@@ -1,0 +1,48 @@
+from dataclasses import replace
+
+import pytest
+
+from argus_vision.contracts import CoordinateFrame, Track, TrackBatch, TrackState
+from argus_vision.frame_sources import FrameTiming
+
+
+def test_receive_timestamp_cannot_be_used_as_exposure_timestamp():
+    timing = FrameTiming(2000, 1000)
+    assert not timing.exposure_time_valid
+    with pytest.raises(ValueError, match="exposure time unavailable"):
+        timing.require_exposure_time()
+
+
+def test_mapped_exposure_timestamp_is_separate_and_validated():
+    timing = FrameTiming(2000, 1000, exposure_monotonic_ns=900)
+    assert timing.require_exposure_time() == 900
+    with pytest.raises(ValueError, match="mapped"):
+        FrameTiming(2000, 1000, exposure_monotonic_ns=900, clock_domain="sensor_clock")
+    with pytest.raises(ValueError, match="later"):
+        FrameTiming(2000, 1000, exposure_monotonic_ns=1100)
+
+
+def make_track():
+    return Track(7, 0, "target", 0.9, TrackState.CONFIRMED, (0, 0, 10, 20), (5, 10),
+                 last_real_detection_monotonic_ns=1000, ttl_ns=100)
+
+
+def test_predictions_and_fresh_batch_cannot_extend_selected_track_ttl():
+    predicted = make_track().with_prediction((1, 0, 11, 20)).with_prediction((2, 0, 12, 20))
+    batch = TrackBatch("test", 1, 1090, 1090, 2000, CoordinateFrame.CAMERA_PIXEL, (predicted,))
+    assert not batch.is_stale(1100)
+    assert batch.valid_track(7, 1099) == predicted
+    assert batch.valid_track(7, 1100) is None
+    assert predicted.last_real_detection_monotonic_ns == 1000
+    assert predicted.center_xy == (7, 10)
+
+
+def test_only_new_real_detection_refreshes_ttl():
+    original = make_track()
+    refreshed = original.with_real_detection((2, 0, 12, 20), 0.8, 1090)
+    assert not refreshed.is_stale(1189)
+    assert refreshed.is_stale(1190)
+    with pytest.raises(ValueError, match="out-of-order"):
+        refreshed.with_real_detection((2, 0, 12, 20), 0.8, 1000)
+    assert replace(original, state=TrackState.LOST).is_stale(1000)
+    assert replace(original, last_real_detection_monotonic_ns=None).is_stale(1000)

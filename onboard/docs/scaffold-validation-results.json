@@ -1,0 +1,58 @@
+{
+  "state": {
+    "before_binary_sha256": {
+      "build/bin/argus-onboard": "7ad94c3f1624f83af6edab25caa0b2d937c3fba80b5dc5a98e31c0e488e60af2",
+      "build/bin/argus-frame-source": "fe96bffad197d33f870ef1885240fdeb33cac388eef5fa58f966229a11245066"
+    },
+    "new_file_count": 54,
+    "module_count": 30,
+    "source_hashes_preserved": 141,
+    "comment_only_verified": true,
+    "diagram_nodes_verified": true,
+    "all_placeholder_files_comment_only": true,
+    "placeholder_count": 54,
+    "binaries_byte_identical": true,
+    "existing_source_sha256_preserved": true,
+    "protected_runtime_assets_preserved": true,
+    "archived_python_originals_verified": 31,
+    "scope": "file placement and documentation only; no runtime feature implemented"
+  },
+  "checks": [
+    {
+      "check": "existing_cpp_build_and_ctest",
+      "command": [
+        "bash",
+        "scripts/build.sh"
+      ],
+      "exit_code": 0,
+      "stdout": "-- Configuring done (0.0s)\n-- Generating done (0.0s)\n-- Build files have been written to: /home/user/npu-test/work/argus_vision_bus/build\n[ 16%] Built target argus-frame-source\n[ 77%] Built target argus_core\n[ 94%] Built target contract-tests\n[100%] Built target argus-onboard\nInternal ctest changing into directory: /home/user/npu-test/work/argus_vision_bus/build\nTest project /home/user/npu-test/work/argus_vision_bus/build\n    Start 1: flow-contracts\n1/1 Test #1: flow-contracts ...................   Passed    0.01 sec\n\n100% tests passed, 0 tests failed out of 1\n\nTotal Test time (real) =   0.01 sec\n",
+      "stderr": ""
+    },
+    {
+      "check": "existing_integration_suite",
+      "command": [
+        "/home/user/npu-test/work/argus_vision_bus/.venv-rpi/bin/python",
+        "-m",
+        "pytest",
+        "tests/integration",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit_code": 0,
+      "stdout": ".........s....                                                           [100%]\n13 passed, 1 skipped in 18.02s\n",
+      "stderr": ""
+    },
+    {
+      "check": "current_runtime_config",
+      "command": [
+        "bash",
+        "scripts/service_entrypoint.sh",
+        "check"
+      ],
+      "exit_code": 0,
+      "stdout": "orchestrator=C++ profile=REAL_IR frame_source=ir_v4l2 queue_capacity=2 detector=hailo capability=perception_only exposure_time=unavailable tracker=unimplemented vehicle_port=unimplemented\n",
+      "stderr": ""
+    }
+  ]
+}

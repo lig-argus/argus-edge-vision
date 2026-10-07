@@ -303,3 +303,20 @@ $RECYCLE.BIN/
 
 ### Node (커밋 메시지 검사 도구) ###
 node_modules/
+
+### ARGUS Pi local runtime and model artifacts ###
+.venv-rpi/
+/onboard/config/runtime.env
+/onboard/models/deployed/*.hef
+/onboard/models/deployed/labels.txt
+/onboard/logs/
+
+### Training data and model binaries ###
+*.hef
+*.onnx
+*.pt
+*.pth
+*.ckpt
+/models/datasets/*
+!/models/datasets/.gitkeep
+!/models/datasets/README.md

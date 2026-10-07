@@ -1,0 +1,54 @@
+import time
+
+from argus_vision.messages import Detection, DetectionFrame, pack_message, unpack_message
+
+
+def test_detection_message_round_trip():
+    now = time.monotonic_ns()
+    expected = DetectionFrame(
+        source="camera:/dev/video0",
+        frame_id=7,
+        captured_unix_ns=time.time_ns(),
+        captured_monotonic_ns=now,
+        published_monotonic_ns=now + 2_500_000,
+        image_width=1280,
+        image_height=720,
+        model="test.hef",
+        inference_ms=2.1,
+        detections=(Detection(0, "target", 0.9, 10, 20, 30, 40),),
+    )
+    decoded = unpack_message(pack_message(expected.to_dict()))
+    actual = DetectionFrame.from_dict(decoded)
+    assert actual == expected
+    assert actual.pipeline_latency_ms == 2.5
+
+
+def test_rejects_invalid_box():
+    try:
+        Detection(0, "target", 0.9, 10, 10, 5, 20)
+    except ValueError as exc:
+        assert "bounding box" in str(exc)
+    else:
+        raise AssertionError("invalid box was accepted")
+
+
+def test_legacy_observation_does_not_claim_valid_exposure_time():
+    legacy = {
+        "schema": "argus.perception.observations.v1", "source": "legacy",
+        "frame_id": 1, "captured_unix_ns": 2000, "captured_monotonic_ns": 1000,
+        "published_monotonic_ns": 1100, "image_width": 32, "image_height": 32,
+        "model": "legacy", "inference_ms": 0.1,
+        "detections": [{"class_id": 0, "label": "target", "confidence": 0.9,
+                        "x1": 1, "y1": 2, "x2": 11, "y2": 12,
+                        "hull_x1": 1, "hull_y1": 6, "hull_x2": 11, "hull_y2": 12}],
+    }
+    frame = DetectionFrame.from_dict(legacy)
+    assert frame.schema.endswith("v1")
+    assert not frame.exposure_time_valid
+    assert not any(key.startswith("hull_") for key in frame.to_dict()["detections"][0])
+    try:
+        frame.require_exposure_time()
+    except ValueError as exc:
+        assert "exposure" in str(exc)
+    else:
+        raise AssertionError("legacy receive time was accepted as sensor exposure")

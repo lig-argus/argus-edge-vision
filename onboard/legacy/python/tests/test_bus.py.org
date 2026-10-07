@@ -1,0 +1,52 @@
+import threading
+import time
+
+import zmq
+
+from argus_vision.bus import Publisher, Subscriber
+
+
+def test_publish_subscribe_through_proxy():
+    context = zmq.Context()
+    xsub = context.socket(zmq.XSUB)
+    xpub = context.socket(zmq.XPUB)
+    publish_port = xsub.bind_to_random_port("tcp://127.0.0.1")
+    subscribe_port = xpub.bind_to_random_port("tcp://127.0.0.1")
+    stop = threading.Event()
+
+    def proxy_loop():
+        poller = zmq.Poller()
+        poller.register(xsub, zmq.POLLIN)
+        poller.register(xpub, zmq.POLLIN)
+        while not stop.is_set():
+            events = dict(poller.poll(20))
+            if xsub in events:
+                xpub.send_multipart(xsub.recv_multipart())
+            if xpub in events:
+                xsub.send_multipart(xpub.recv_multipart())
+
+    thread = threading.Thread(target=proxy_loop, daemon=True)
+    thread.start()
+    publisher = Publisher(f"tcp://127.0.0.1:{publish_port}")
+    subscriber = Subscriber(["test/topic"], f"tcp://127.0.0.1:{subscribe_port}")
+    try:
+        # Allow the subscription to propagate across XPUB -> XSUB -> PUB.
+        time.sleep(0.1)
+        received = None
+        for sequence in range(10):
+            publisher.publish("test/topic", {"sequence": sequence}, b"payload")
+            try:
+                received = subscriber.receive(timeout_ms=100)
+                break
+            except TimeoutError:
+                continue
+        assert received == ("test/topic", {"sequence": sequence}, b"payload")
+    finally:
+        publisher.close()
+        subscriber.close()
+        stop.set()
+        thread.join(timeout=1.0)
+        xsub.close(linger=0)
+        xpub.close(linger=0)
+        context.term()
+

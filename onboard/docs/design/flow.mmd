@@ -1,0 +1,276 @@
+flowchart TD
+    %% 2026-09-23 · 고정 IR 카메라 추적·추종 가이던스 설계안
+    %% 연구·교육용 시험 대상: 원격조종 테스트 차량 또는 이동형 더미
+    %% 시험마다 추적기 1개 선택. 모두 ReID 없음, 같은 FC 자세 기반 회전 CMC 사용.
+    %% Hybrid-SORT HMIoU OFF/ON은 HMIoU 외 TCM·ROCM·연결 단계와 설정을 동일하게 둠.
+    %% 영상 루프, 제어 루프, Watchdog은 독립 실행. 명령은 VehiclePort 한 곳에서 직렬화.
+    %% TTL·시야 판정·예측 구간·주기·속도 제한 값은 미정 또는 미시험.
+
+    subgraph PERCEPTION["A. 영상·추적 루프 · 명령 생성 없음"]
+        FRAME["IR 프레임<br/>노출 시각 · 프레임 ID"]
+        DET["YOLOX<br/>시험 대상 전체 박스"]
+        CMC["FC 회전 CMC<br/>이전·현재 프레임 자세 시각 정렬<br/>병진 시차는 미보상"]
+        CHOICE{"시험 설정 1개"}
+        BYTE["1 ByteTrack"]
+        OC["2 OC-SORT"]
+        HOFF["3 Hybrid-SORT<br/>HMIoU OFF · 일반 IoU"]
+        HON["4 Hybrid-SORT<br/>HMIoU ON"]
+        OBS[("관측 저장<br/>ID · full_box · score · 실제/예측<br/>last_real_detection_time · 시각")]
+
+        FRAME --> DET --> CHOICE
+        FRAME --> CMC
+        CHOICE -->|1| BYTE --> OBS
+        CHOICE -->|2| OC --> OBS
+        CHOICE -->|3| HOFF --> OBS
+        CHOICE -->|4| HON --> OBS
+        CMC -.-> BYTE
+        CMC -.-> OC
+        CMC -.-> HOFF
+        CMC -.-> HON
+    end
+
+    subgraph CONTROL["B. 독립 제어 주기 · 단일 ControlContext"]
+        TICK["주기 Timer<br/>영상 도착과 독립"]
+        SNAP["원자적 상태 스냅샷<br/>임무 상태 · 선택 ID · 차단 · 관측 · FC<br/>상태 세대번호 epoch"]
+        MSTATE{"임무 상태?"}
+        TICK --> SNAP --> MSTATE
+    end
+    OBS -. "최신 관측" .-> SNAP
+    FC["FC 자세·위치·속도·모드<br/>시각과 유효성"] -.-> SNAP
+
+    subgraph STARTUP["C. 최초 시작·명시적 재시작"]
+        IDLE["운용자 시작 대기<br/>재개차단 ON"]
+        PREP["운용자 대상 선택·동일성 확인<br/>최신 실제 검출 필요<br/>ID는 pending으로만 저장"]
+        PREP_CHECK{"같은 후보의 최신 실제 검출<br/>시각·동일성 유효?"}
+        READY{"이륙·안정화 완료?<br/>FC 추정·시각·카메라 유효?<br/>Offboard 진입 가능?"}
+        ENTER["정지 setpoint 사전 송신<br/>Offboard 진입 요청"]
+        ACK{"실제 Offboard 모드 확인?"}
+        STARTING["Offboard 진입 확인<br/>재개차단 ON 유지<br/>새 Hold 전환 사건: hold_attempted=false"]
+        FINAL_DET{"승인한 ID의 최신 실제 검출<br/>지금도 신선·동일성 유효?"}
+        ENTRY_MODE{"실제 모드 분류<br/>차단은 ON 유지"}
+        COMMIT["원자적 추종 시작<br/>선택 ID·실제 검출 시각 등록<br/>TTL·적분기 초기화<br/>임무=FOLLOW_ACTIVE<br/>재개차단 OFF · hold_attempted=false"]
+
+        IDLE -->|운용자 시작| PREP
+        PREP --> PREP_CHECK
+        PREP_CHECK -->|아니오| PREP
+        PREP_CHECK -->|예| READY
+        READY -->|아니오| PREP
+        READY -->|예| ENTER --> ACK
+        ACK -->|예| STARTING --> FINAL_DET
+        FINAL_DET -->|예| COMMIT --> TICK
+        FINAL_DET -->|아니오| HOLD_REQ
+        ACK -->|아니오| ENTRY_MODE
+        ENTRY_MODE -->|Hold·추정 유효| WAIT
+        ENTRY_MODE -->|RC·수동 모드| MANUAL
+        ENTRY_MODE -->|Offboard 불명·기타| FAULT
+    end
+    MSTATE -->|IDLE| IDLE
+
+    subgraph FOLLOWING["D. FOLLOW_ACTIVE · 선택 ID 전체 상태 게이트"]
+        FGATE{"임무=FOLLOW_ACTIVE<br/>AND 재개차단 OFF<br/>AND 선택 ID 고정?"}
+        FHEALTH{"프레임 신선·FC 유효<br/>실제 Offboard·RC 미개입?"}
+        FEXIT{"Offboard 이탈 후 실제 모드?"}
+        TRACK{"선택 ID의 현재 상태?<br/>예측으로 TTL 연장 금지"}
+        TTL{"마지막 유효 실제 검출부터<br/>TTL 이내?"}
+        PRED_INTENT["Predicted 의도<br/>전진·횡·yaw 각속도 0<br/>독립 고도 유지 · 거리 적분 정지"]
+        CONF["Confirmed<br/>최신 실제 검출과 선택 ID 연결 유효"]
+
+        FGATE -->|아니오| HOLD_REQ
+        FGATE -->|예| FHEALTH
+        FHEALTH -->|정상| TRACK
+        FHEALTH -->|영상 stale| HOLD_REQ
+        FHEALTH -->|FC·추정 이상| FAULT
+        FHEALTH -->|RC 개입| MANUAL
+        FHEALTH -->|Offboard 이탈| FEXIT
+        FEXIT -->|실제 Hold·추정 유효| BLOCK_WAIT
+        FEXIT -->|RC·수동 모드| MANUAL
+        FEXIT -->|기타·모드 불명| FAULT
+        TRACK -->|Confirmed| CONF
+        TRACK -->|Predicted| TTL
+        TRACK -->|Lost·ID 불확실| HOLD_REQ
+        TTL -->|예| PRED_INTENT
+        TTL -->|아니오| HOLD_REQ
+    end
+    MSTATE -->|FOLLOW_ACTIVE| FGATE
+
+    subgraph GUIDANCE["E. Confirmed 가이던스 · 거리와 방향 분리"]
+        RAY["원 영상 픽셀 광선<br/>장착 보정·프레임 시각 FC 자세"]
+        DIR{"방향 관측 유효?"}
+        FOV{"시야 이탈 확정?<br/>현재 여유·이력·예측 사용"}
+        RISK{"시야 위험 증가?"}
+        RECOVER["시야 회복 의도<br/>전진 setpoint 0<br/>유효한 방향으로 yaw · 고도 유지"]
+        RANGE{"거리 품질?"}
+        NO_RANGE["SCALE_ONLY 또는 INVALID<br/>전진 setpoint 0 · 횡 0<br/>yaw·고도 유지 · 거리 적분 정지"]
+        METRIC["METRIC만<br/>접점/특징점·카메라 높이·지면 모델<br/>기하·시각 유효성 확인"]
+        DIST{"미터 거리 상태?"}
+        YAW_OK{"yaw 오차 작고<br/>시야 안전?"}
+        TURN["회전 우선<br/>전진 setpoint 0"]
+        APPROACH["원거리 완만 접근<br/>속도·가속·저크 제한"]
+        FUTURE_RISK{"접근 중 예측 시야 위험?"}
+        BRAKE["전진 setpoint 0<br/>yaw 우선"]
+        SETTLE["중거리 감속·정렬<br/>시야 불안전하면 전진 0"]
+        FOLLOW_PI["목표거리 추종<br/>yaw P · 거리 P/PI · 독립 고도 P<br/>적분 포화 방지"]
+
+        CONF --> RAY --> DIR
+        DIR -->|아니오| HOLD_REQ
+        DIR -->|예| FOV
+        FOV -->|이탈 확정| HOLD_REQ
+        FOV -->|시야 안| RISK
+        RISK -->|위험| RECOVER
+        RISK -->|안전| RANGE
+        RANGE -->|SCALE_ONLY·INVALID| NO_RANGE
+        RANGE -->|METRIC| METRIC --> DIST
+        DIST -->|원거리| YAW_OK
+        DIST -->|중거리| SETTLE
+        DIST -->|목표거리| FOLLOW_PI
+        YAW_OK -->|아니오| TURN
+        YAW_OK -->|예| APPROACH --> FUTURE_RISK
+        FUTURE_RISK -->|예| BRAKE
+        FUTURE_RISK -->|아니오| FOLLOW_INTENT
+    end
+    RECOVER --> FOLLOW_INTENT
+    NO_RANGE --> FOLLOW_INTENT
+    TURN --> FOLLOW_INTENT
+    BRAKE --> FOLLOW_INTENT
+    SETTLE --> FOLLOW_INTENT
+    FOLLOW_PI --> FOLLOW_INTENT
+    PRED_INTENT --> ARBITER
+
+    subgraph HOLD_TRANSITION["F. Lost·Scan 종료 · Hold 요청은 사건당 1회"]
+        HOLD_REQ["재개차단 ON<br/>임무=HOLD_TRANSITION<br/>기존 의도 폐기 · epoch 증가<br/>거리 적분 리셋"]
+        HCLASS{"현재 모드·추정·요청 이력?"}
+        HZERO["hold_attempted=true<br/>Offboard 최종 0속도 setpoint"]
+        HSTOP["VehiclePort<br/>Offboard::stop · Hold 요청 1회"]
+        HACK{"응답·텔레메트리 기한 안에<br/>실제 Hold 모드 확인?<br/>Hold에 필요한 추정 유효?"}
+        HFAILED["Hold 전환 실패 기록<br/>자동 재요청 금지"]
+        BLOCK_WAIT["재개차단 ON · 의도 폐기<br/>임무=HOLD_WAIT"]
+
+        HOLD_REQ --> HCLASS
+        HCLASS -->|이미 Hold·추정 유효| BLOCK_WAIT
+        HCLASS -->|Offboard·추정 유효·미시도| HZERO --> HSTOP --> HACK
+        HCLASS -->|RC·수동 모드| MANUAL
+        HCLASS -->|추정 무효·모드 불명| FAULT
+        HCLASS -->|이미 시도함| NO_RETRY
+        HACK -->|예| BLOCK_WAIT
+        HACK -->|아니오| HFAILED --> NO_RETRY
+        BLOCK_WAIT --> WAIT
+    end
+
+    subgraph WAITING["G. HOLD_WAIT · 관측은 후보 표시만"]
+        WAIT["실제 Hold 모드·추정 감시<br/>Offboard 명령·Hold 재요청 없음"]
+        WCHECK{"실제 Hold·추정 유효?<br/>RC 개입 여부 확인"}
+        WEVENT{"운용자 명령 또는 새 관측?"}
+        WAIT_CAND["후보만 표시·기록<br/>모드 변경 없음"]
+        OP_SCAN{"운용자 Scan 허용?<br/>Hold·추정·장착 조건 유효?"}
+        SCAN_ENTER["정지 setpoint 사전 송신<br/>Offboard 재진입 요청"]
+        SCAN_ACK{"응답·텔레메트리 기한 안에<br/>실제 Offboard?"}
+        SCAN_ENTRY_MODE{"실제 모드 분류<br/>재개차단 ON 유지"}
+        SCAN_COMMIT["임무=SCAN_ACTIVE<br/>재개차단 ON<br/>hold_attempted=false"]
+
+        WAIT --> WCHECK
+        WCHECK -->|Hold·추정 정상| WEVENT
+        WCHECK -->|RC·수동 전환| MANUAL
+        WCHECK -->|Hold 이탈·모드 불명·추정 이상| FAULT
+        WEVENT -->|없음| WAIT
+        WEVENT -->|새 후보 검출| WAIT_CAND --> WAIT
+        WEVENT -->|재탐색 명령| OP_SCAN
+        WEVENT -->|재시작 명령| PREP
+        OP_SCAN -->|아니오| WAIT
+        OP_SCAN -->|예| SCAN_ENTER --> SCAN_ACK
+        SCAN_ACK -->|예| SCAN_COMMIT --> TICK
+        SCAN_ACK -->|아니오| SCAN_ENTRY_MODE
+        SCAN_ENTRY_MODE -->|Hold·추정 유효| WAIT
+        SCAN_ENTRY_MODE -->|RC·수동 모드| MANUAL
+        SCAN_ENTRY_MODE -->|기타·모드 불명| FAULT
+    end
+    MSTATE -->|HOLD_WAIT| WCHECK
+
+    subgraph SCANNING["H. SCAN_ACTIVE · 후보는 재추종 명령이 아님"]
+        SCHECK{"FC·추정·Offboard·RC<br/>영상 신선도·Scan 제한시간?"}
+        SMODE{"Offboard 이탈 후 실제 모드?"}
+        SOBS{"동일 계열 실제 검출 후보?"}
+        SCAN_CAND["후보 표시·기록<br/>추종 ID 잠금·명령 생성 금지"]
+        SCAN_INTENT["제한 yaw Scan 의도<br/>전진·횡 0 · 독립 고도 유지"]
+
+        SCHECK -->|정상| SOBS
+        SCHECK -->|영상 stale·시간 초과<br/>Offboard·추정 유효| HOLD_REQ
+        SCHECK -->|RC 개입| MANUAL
+        SCHECK -->|FC·추정 이상| FAULT
+        SCHECK -->|Offboard 이탈| SMODE
+        SMODE -->|실제 Hold·추정 유효| BLOCK_WAIT
+        SMODE -->|RC·수동 모드| MANUAL
+        SMODE -->|기타·모드 불명| FAULT
+        SOBS -->|예| SCAN_CAND --> HOLD_REQ
+        SOBS -->|아니오| SCAN_INTENT
+    end
+    MSTATE -->|SCAN_ACTIVE| SCHECK
+    SCAN_INTENT --> ARBITER
+
+    subgraph WATCHDOG["I. 독립 Watchdog · 주기 후보 20~50 Hz · 미시험"]
+        WTICK["영상 프레임과 독립된 Timer"]
+        WSTATE{"임무 상태별 감시"}
+        WF{"FOLLOW_ACTIVE<br/>프레임·TTL·FC·Offboard·RC"}
+        WS{"SCAN_ACTIVE<br/>프레임·시간·FC·Offboard·RC"}
+        WW{"HOLD_WAIT<br/>실제 Hold·추정·RC"}
+        WP{"준비/전환<br/>시도 결과·실제 모드"}
+        WTERMINAL["FAULT/MANUAL<br/>명령 생성 금지 · 상태 관측"]
+        WOK["이상 없음 · 다음 주기"]
+        SAFETY[("우선 안전 이벤트<br/>명령 epoch 무효화")]
+
+        WTICK --> WSTATE
+        WSTATE -->|추종| WF
+        WSTATE -->|Scan| WS
+        WSTATE -->|Hold 대기| WW
+        WSTATE -->|준비·전환| WP
+        WSTATE -->|FAULT/MANUAL| WTERMINAL
+        WF -->|영상 stale·TTL 초과| SAFETY --> HOLD_REQ
+        WF -->|FC·추정 이상| FAULT
+        WF -->|RC·수동 전환| MANUAL
+        WF -->|Offboard 이탈| FEXIT
+        WS -->|영상 stale·시간 초과<br/>Offboard·추정 유효| HOLD_REQ
+        WS -->|FC·추정 이상| FAULT
+        WS -->|RC·수동 전환| MANUAL
+        WS -->|Offboard 이탈| SMODE
+        WW -->|실제 Hold 이탈·모드 불명| FAULT
+        WW -->|FC·추정 이상| FAULT
+        WW -->|RC·수동 전환| MANUAL
+        WF -->|정상| WOK
+        WS -->|정상| WOK
+        WW -->|정상| WOK
+        WP -->|정상| WOK
+        WP -->|전환 실패| FAULT
+        WTERMINAL --> WOK
+        WOK --> WTICK
+    end
+    SAFETY -. "Watchdog 우선" .-> ARBITER
+
+    subgraph OUTPUT["J. 단일 명령 중재·VehiclePort"]
+        FOLLOW_INTENT["Confirmed GuidanceIntent<br/>mode · reason · 네 축 setpoint"]
+        ARBITER{"같은 epoch·임무 상태?<br/>안전 이벤트 없음?<br/>FC·실제 Offboard 유효?"}
+        GUARD["최종 CommandGuard<br/>METRIC 무효면 잔류 전진 0<br/>Predicted는 수평·yaw 0<br/>Scan은 전진·횡 0<br/>시야 위험이면 전진 0<br/>한도·만료·변화율 적용"]
+        SEND["VehiclePort 단일 송신자<br/>MAVSDK set_velocity_body"]
+        DROP["오래된 의도 폐기<br/>상태 재평가"]
+
+        FOLLOW_INTENT --> ARBITER
+        ARBITER -->|예| GUARD --> SEND
+        ARBITER -->|아니오| DROP --> TICK
+    end
+
+    subgraph FAULTS["K. 고장·운용자 제어"]
+        MANUAL["재개차단 ON · 임무=MANUAL<br/>Offboard 명령 중지<br/>운용자 모드 존중"]
+        FAULT["재개차단 ON · 임무=FAULT<br/>추종·Scan 의도 폐기"]
+        FCLASS{"RC 개입?<br/>실제 Offboard·추정 유효?<br/>hold_attempted=false?"}
+        NO_RETRY["재개차단 ON · 임무=FAULT<br/>Hold 자동 재요청 금지<br/>수동 재시도는 별도 운용자 명령"]
+        PX4_FS["기체 상태·구성된 PX4 페일세이프 감시<br/>운용자 알림 · Hover 보장 주장 금지"]
+
+        FAULT --> FCLASS
+        FCLASS -->|RC 개입| MANUAL
+        FCLASS -->|Offboard·추정 유효·미시도| HOLD_REQ
+        FCLASS -->|추정 무효·모드 불명·이미 시도| NO_RETRY
+        NO_RETRY --> PX4_FS
+    end
+
+    FC -.-> CMC
+    FC -.-> RAY
+    FC -.-> WTICK
+    SEND -. "기체·텔레메트리" .-> FC

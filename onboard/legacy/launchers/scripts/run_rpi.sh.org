@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PYTHON_BIN="$PROJECT_DIR/.venv-rpi/bin/python"
+RUNTIME_ENV="$PROJECT_DIR/config/runtime.env"
+
+if [[ -f "$RUNTIME_ENV" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$RUNTIME_ENV"
+  set +a
+fi
+
+resolve_project_path() {
+  local value="$1"
+  if [[ "$value" = /* ]]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$PROJECT_DIR/$value"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+사용법:
+  ./scripts/run_rpi.sh [YOLOX_HEF] [카메라] [라벨파일] [--preview]
+
+예:
+  ./scripts/run_rpi.sh
+  ./scripts/run_rpi.sh models/yolox_s_640_vehicle_v01_hailo8.hef
+  ./scripts/run_rpi.sh models/yolox_s_640_vehicle_v01_hailo8.hef /dev/video2 config/labels.txt --preview
+
+인수가 없으면 config/runtime.env 설정을 사용합니다.
+EOF
+}
+
+if [[ $# -gt 4 ]]; then
+  usage >&2
+  exit 2
+fi
+
+HEF_PATH="${1:-${ARGUS_HEF:-}}"
+CAMERA_DEVICE="${2:-${ARGUS_CAMERA:-/dev/video0}}"
+LABELS_PATH="${3:-${ARGUS_LABELS:-config/labels.txt}}"
+PREVIEW_FLAG="${4:-}"
+WIDTH="${ARGUS_WIDTH:-640}"
+HEIGHT="${ARGUS_HEIGHT:-480}"
+FPS="${ARGUS_FPS:-30}"
+FOURCC="${ARGUS_FOURCC:-MJPG}"
+SCORE_THRESHOLD="${ARGUS_SCORE_THRESHOLD:-0.35}"
+FRAME_QUEUE_SIZE="${ARGUS_FRAME_QUEUE_SIZE:-2}"
+PROFILE_NAME="${ARGUS_PROFILE:-REAL_IR}"
+FRAME_SOURCE="${ARGUS_FRAME_SOURCE:-auto}"
+IR_CAPTURE="${ARGUS_IR_CAPTURE:-/home/user/thessen_raw14_viewer/build/i3_raw14_capture}"
+IR_DEVICE="${ARGUS_IR_DEVICE:-0}"
+IR_TIMEOUT="${ARGUS_IR_TIMEOUT:-15}"
+IR_PREPROCESS="${ARGUS_IR_PREPROCESS:-minmax}"
+LOG_EVERY="${ARGUS_LOG_EVERY:-30}"
+PUBLISH_NPU_INPUT="${ARGUS_PUBLISH_NPU_INPUT:-0}"
+NPU_INPUT_MAX_FPS="${ARGUS_NPU_INPUT_MAX_FPS:-15}"
+NPU_INPUT_JPEG_QUALITY="${ARGUS_NPU_INPUT_JPEG_QUALITY:-80}"
+
+if [[ -z "$HEF_PATH" ]]; then
+  echo "[오류] HEF 경로를 인수 또는 config/runtime.env의 ARGUS_HEF로 지정하십시오." >&2
+  usage >&2
+  exit 2
+fi
+
+HEF_PATH="$(resolve_project_path "$HEF_PATH")"
+LABELS_PATH="$(resolve_project_path "$LABELS_PATH")"
+
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "[오류] 먼저 ./scripts/setup_rpi.sh를 실행하십시오." >&2
+  exit 1
+fi
+if [[ ! -f "$HEF_PATH" ]]; then
+  echo "[오류] HEF 파일이 없습니다: $HEF_PATH" >&2
+  exit 1
+fi
+if [[ ! -f "$LABELS_PATH" ]]; then
+  echo "[오류] 라벨 파일이 없습니다: $LABELS_PATH" >&2
+  exit 1
+fi
+if [[ -n "$PREVIEW_FLAG" && "$PREVIEW_FLAG" != "--preview" ]]; then
+  usage >&2
+  exit 2
+fi
+
+SOURCE_KIND="$FRAME_SOURCE"
+if [[ "$SOURCE_KIND" == "auto" ]]; then
+  SOURCE_KIND=$("$PYTHON_BIN" -c 'import sys; from argus_vision.profile import load_profile; print(load_profile(sys.argv[1], sys.argv[2]).frame_source)' "$PROJECT_DIR/config/profiles.toml" "$PROFILE_NAME")
+fi
+
+"$SCRIPT_DIR/verify_rpi.sh" \
+  "$CAMERA_DEVICE" "$HEF_PATH" "$LABELS_PATH" "$WIDTH" "$HEIGHT" "$FOURCC" \
+  "$SOURCE_KIND" "$IR_CAPTURE" "$IR_DEVICE" "$IR_TIMEOUT"
+
+BUS_PID=""
+VIEWER_PID=""
+cleanup() {
+  if [[ -n "$VIEWER_PID" ]]; then
+    kill "$VIEWER_PID" 2>/dev/null || true
+    wait "$VIEWER_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$BUS_PID" ]]; then
+    kill "$BUS_PID" 2>/dev/null || true
+    wait "$BUS_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+"$PYTHON_BIN" -m argus_vision.busd \
+  --publish-bind tcp://127.0.0.1:5555 \
+  --subscribe-bind tcp://\*:5556 &
+BUS_PID=$!
+sleep 0.5
+if ! kill -0 "$BUS_PID" 2>/dev/null; then
+  echo "[오류] 메시지 버스를 시작하지 못했습니다. 5555/5556 포트를 확인하십시오." >&2
+  exit 1
+fi
+
+VISION_ARGS=(
+  --profile "$PROFILE_NAME"
+  --profiles "$PROJECT_DIR/config/profiles.toml"
+  --frame-source "$FRAME_SOURCE"
+  --ir-capture "$IR_CAPTURE"
+  --ir-device "$IR_DEVICE"
+  --ir-timeout "$IR_TIMEOUT"
+  --ir-preprocess "$IR_PREPROCESS"
+  --backend hailo
+  --hef "$HEF_PATH"
+  --labels "$LABELS_PATH"
+  --camera "$CAMERA_DEVICE"
+  --width "$WIDTH"
+  --height "$HEIGHT"
+  --fps "$FPS"
+  --fourcc "$FOURCC"
+  --score-threshold "$SCORE_THRESHOLD"
+  --frame-queue-size "$FRAME_QUEUE_SIZE"
+  --log-every "$LOG_EVERY"
+  --npu-input-max-fps "$NPU_INPUT_MAX_FPS"
+  --npu-input-jpeg-quality "$NPU_INPUT_JPEG_QUALITY"
+)
+
+if [[ "$PUBLISH_NPU_INPUT" == "1" ]]; then
+  VISION_ARGS+=(--publish-npu-input)
+fi
+
+if [[ "$PREVIEW_FLAG" == "--preview" ]]; then
+  if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+    echo "[오류] --preview에는 데스크톱 DISPLAY 또는 WAYLAND_DISPLAY가 필요합니다." >&2
+    exit 1
+  fi
+  "$PYTHON_BIN" -m argus_vision.preview_subscriber &
+  VIEWER_PID=$!
+  VISION_ARGS+=(--publish-preview)
+fi
+
+echo "ARGUS YOLOX를 시작합니다. 종료: Ctrl+C"
+"$PYTHON_BIN" -m argus_vision.vision_node "${VISION_ARGS[@]}"
