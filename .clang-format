@@ -1,0 +1,9 @@
+# Google C++ 스타일을 기본으로 두고 프로젝트 규칙(docs/CODING_STYLE.md 3장)에 필요한 것만 바꾼다.
+# 나머지는 Google 기본값 그대로다 (clang-format --style=Google --dump-config 로 확인).
+BasedOnStyle: Google
+Standard: c++17
+IndentWidth: 4            # 들여쓰기 4칸 (Google 기본 2칸)
+AccessModifierOffset: -4  # public: 등을 클래스 본문보다 4칸 내어쓴다 (IndentWidth와 짝)
+ColumnLimit: 100          # 한 줄 100자 (Google 기본 80자)
+DerivePointerAlignment: false  # 파일마다 추정하지 않고 항상 int* p (PointerAlignment: Left)
+InsertBraces: true        # if·for·while 본문이 한 줄이어도 중괄호를 넣는다 (안전 규칙)
