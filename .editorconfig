@@ -1,0 +1,31 @@
+# 편집기 공통 설정 (CLion·VS Code·Visual Studio·Qt Creator 가 읽는다). https://editorconfig.org
+# C++ 의 값은 .clang-format 과 같다 (IndentWidth 4, ColumnLimit 100). 형식 검사는 clang-format 이 한다.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{cpp,hpp,h}]
+max_line_length = 100
+
+[*.xml]
+indent_size = 2
+max_line_length = off
+
+# MAVLink 저장소에서 받은 표준 정의는 손대지 않는다 (끝 공백 제거도 하지 않는다)
+[common/mavlink/message_definitions/{common,minimal,standard}.xml]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
