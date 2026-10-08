@@ -19,3 +19,14 @@
 - 폴더 이름: 역할을 나타내는 폴더는 단수(`src`, `include`, `test`), 같은 종류를 모아 둔 폴더는 복수(`docs`, `tools`, `models`).
 - 커밋·PR 규칙, 코딩 컨벤션: [CONTRIBUTING.md](CONTRIBUTING.md)
 
+## 통제기 빌드 (`gcs/`)
+
+Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.
+
+```bash
+cmake -S gcs -B build/gcs -DCMAKE_PREFIX_PATH=/opt/homebrew   # macOS (brew install qt). Windows: C:/Qt/6.x/msvc2022_64
+cmake --build build/gcs
+ctest --test-dir build/gcs
+./build/gcs/argus_gcs
+```
+
