@@ -71,7 +71,6 @@ run-clang-tidy -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'   #
 ```
 
 - clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 합니다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙입니다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생깁니다.
-- 옵션의 뜻, clang-tidy 가 빌드 폴더를 쓰는 이유, 다른 프로젝트의 같은 사용 예: argus-onboard 의 `docs/CODING_STYLE.md` 5장
 
 ---
 
