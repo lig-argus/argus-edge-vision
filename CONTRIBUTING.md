@@ -190,14 +190,16 @@ BREAKING CHANGE: GCS 는 v2 파서로 업데이트해야 수신 가능
 
 ### 머지 방식
 
-| PR 방향 | 머지 방식 |
-|---|---|
-| `feature/*` → `develop` | **Squash and merge** |
-| `release/*` → `main` / `develop` | **Create a merge commit** |
-| `hotfix/*` → `main` / `develop` | **Create a merge commit** |
+머지 방식은 **타겟 브랜치**로 정해지며, 저장소 rulesets 가 강제하므로 다른 버튼은 보이지 않습니다.
 
-> Squash merge 는 **PR 제목이 그대로 커밋 메시지**가 됩니다.
+| 타겟 브랜치 | 머지 방식 | 소스 브랜치 |
+|---|---|---|
+| `develop` | **Squash and merge** | `feature/*`, 그리고 `release/*`·`hotfix/*` 의 develop 반영 |
+| `main` | **Create a merge commit** | `release/*`, `hotfix/*` |
+
+> Squash merge 는 **PR 제목이 커밋 제목, PR 본문이 커밋 본문**이 됩니다 (저장소 설정).
 > 그래서 PR 제목도 커밋 메시지와 같은 형식이어야 하며, CI 가 검사합니다.
+> `Closes #n` 은 본문 마지막 줄에 두면 커밋 footer 로 들어가고, 머지 시 이슈가 닫힙니다.
 
 ### 리뷰 규칙
 
@@ -209,7 +211,7 @@ BREAKING CHANGE: GCS 는 v2 파서로 업데이트해야 수신 가능
 - 승인 후 새 커밋을 push 하면 승인이 초기화되어 다시 리뷰를 받아야 합니다.
 - 리뷰 코멘트(conversation)가 모두 resolve 되어야 머지할 수 있습니다.
 - PR 은 가능한 작게 — 하나의 PR 에는 하나의 목적만 담습니다.
-- PR 본문에 관련 이슈를 연결합니다. (`Closes #12`)
+- PR 본문 마지막 줄에 관련 이슈를 연결합니다. (`Closes #12`)
 
 ### PR 올리기 전 체크리스트
 
