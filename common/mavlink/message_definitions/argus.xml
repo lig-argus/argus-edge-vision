@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<!--
+  argus dialect: 탐지·추종 시스템(argus) 전용 메시지와 명령.
+  - 이 파일은 패킷 형식(메시지, 필드, 명령 번호, 값의 의미)만 정의한다. 송수신 규칙(주기, 절차, 통신 두절 판단)은 docs/ICD.md 에 있다.
+  - 번호 범위: 메시지 id 와 MAV_CMD 값 모두 45000 ~ 45099. MAVLink 저장소의 어느 dialect 도 사용하지 않는 범위다 (2026-10-08, 커밋 5bfd76d8 기준).
+  - 표준 정의(common.xml, standard.xml, minimal.xml)는 기체 FC(KoaFC, PX4 v1.16.0)가 사용하는 MAVLink 저장소 커밋 5bfd76d8 의 파일이다. 수정하지 않는다.
+  - 센서는 IR 과 EO 두 종류이며 동시에 탐지할 수 있다. 센서별 결과와 상태에는 sensor_id 를 붙인다.
+  - 수정 후에는 tools/generate_mavlink.sh 로 헤더를 다시 생성해 함께 커밋한다 (README "MAVLink 메시지").
+-->
+<mavlink>
+  <include>common.xml</include>
+  <version>1</version>
+  <enums>
+    <enum name="ARGUS_SENSOR">
+      <description>탐지 센서 종류. ARGUS_STATUS.active_sensor, ARGUS_DETECTION.sensor_id, ARGUS_SENSOR_STATUS.sensor_id, MAV_CMD_ARGUS_TRACK_START 의 param2 에서 사용한다. 0 은 미지정이다. MAVLink 2 는 paydload 끝의 trailing 0x00 바이트를 전송하지 않으므로, 생략된 필드가 미지정으로 해석되도록 0 을 미지정에 배정한다.</description>
+      <entry value="0" name="ARGUS_SENSOR_UNKNOWN">
+        <description>미지정.</description>
+      </entry>
+      <entry value="1" name="ARGUS_SENSOR_IR">
+        <description>IR(적외선) 카메라.</description>
+      </entry>
+      <entry value="2" name="ARGUS_SENSOR_EO">
+        <description>EO(주간) 카메라. 현재 기체에는 없으며 추후 장착 예정.</description>
+      </entry>
+    </enum>
+    <enum name="ARGUS_SENSOR_FLAGS" bitmask="true">
+      <description>센서의 상태와 기능. ARGUS_SENSOR_STATUS.flags 에서 사용한다.</description>
+      <entry value="1" name="ARGUS_SENSOR_FLAGS_CAMERA_OK">
+        <description>카메라 프레임을 정상 수신 중이다.</description>
+      </entry>
+      <entry value="2" name="ARGUS_SENSOR_FLAGS_INFERENCE_OK">
+        <description>이 센서의 탐지 추론이 정상 동작 중이다.</description>
+      </entry>
+      <entry value="4" name="ARGUS_SENSOR_FLAGS_TRACKING">
+        <description>이 센서는 트래커를 가지고 있어 탐지 결과(ARGUS_DETECTION)의 객체에 track_id 를 부여한다.</description>
+      </entry>
+      <entry value="8" name="ARGUS_SENSOR_FLAGS_FOLLOWABLE">
+        <description>이 센서의 객체를 추종 표적으로 지정할 수 있다. 어떤 센서를 허용할지는 onboard 설정 파일에서 정한다.</description>
+      </entry>
+    </enum>
+    <enum name="ARGUS_TRACK_STATE">
+      <description>onboard 의 추종 상태. ARGUS_STATUS.track_state 에서 사용한다.</description>
+      <entry value="0" name="ARGUS_TRACK_STATE_IDLE">
+        <description>추종하지 않는 상태.</description>
+      </entry>
+      <entry value="1" name="ARGUS_TRACK_STATE_ENGAGING">
+        <description>TRACK_START 를 받고 Offboard 모드로 진입하는 중.</description>
+      </entry>
+      <entry value="2" name="ARGUS_TRACK_STATE_SEARCHING">
+        <description>추종 중이지만 표적이 화면에 없는 상태.</description>
+      </entry>
+      <entry value="3" name="ARGUS_TRACK_STATE_TRACKING">
+        <description>표적을 추종 중.</description>
+      </entry>
+      <entry value="4" name="ARGUS_TRACK_STATE_LOST">
+        <description>표적을 잃어 추종을 종료하고 Hold 모드로 전환하는 중이거나 전환을 마친 상태.</description>
+      </entry>
+      <entry value="5" name="ARGUS_TRACK_STATE_RELEASING">
+        <description>TRACK_STOP 으로 추종을 종료하는 중 (setpoint 0, Offboard 해제, Hold 확인).</description>
+      </entry>
+    </enum>
+    <enum name="ARGUS_HEALTH_FLAGS" bitmask="true">
+      <description>onboard 전체의 연결 상태. ARGUS_STATUS.health 에서 사용한다. 비트가 1 이면 정상이다. 센서별 상태는 ARGUS_SENSOR_STATUS 에 있다.</description>
+      <entry value="1" name="ARGUS_HEALTH_FC_CONNECTED">
+        <description>FC 와 연결되어 텔레메트리를 수신 중이다.</description>
+      </entry>
+      <entry value="2" name="ARGUS_HEALTH_GCS_LINK">
+        <description>제어권을 가진 통제기의 HEARTBEAT 를 정상 수신 중이다.</description>
+      </entry>
+    </enum>
+    <enum name="MAV_CMD">
+      <entry value="45000" name="MAV_CMD_ARGUS_TRACK_START" hasLocation="false" isDestination="false">
+        <description>표적 추종 시작. 수신자: onboard (compid 195). 표적은 센서와 track_id 로 지정한다. 추종 중에 받으면 표적을 변경한다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다.</description>
+        <param index="1" label="Track ID" minValue="0" maxValue="65535" increment="1">추종할 표적의 track_id (ARGUS_DETECTION.track_id 값). 0 이면 해당 센서에서 신뢰도가 가장 높은 객체.</param>
+        <param index="2" label="Sensor" enum="ARGUS_SENSOR">표적이 있는 센서. UNKNOWN(0) 이면 거부한다.</param>
+        <param index="3" reserved="true" default="NaN"/>
+        <param index="4" reserved="true" default="NaN"/>
+        <param index="5" reserved="true" default="NaN"/>
+        <param index="6" reserved="true" default="NaN"/>
+        <param index="7" reserved="true" default="NaN"/>
+      </entry>
+      <entry value="45001" name="MAV_CMD_ARGUS_TRACK_STOP" hasLocation="false" isDestination="false">
+        <description>표적 추종 종료. 수신자: onboard (compid 195). 추종을 종료하고 Hold 모드로 전환한다. 추종 중이 아니면 ACCEPTED 로 응답한다.</description>
+        <param index="1" reserved="true" default="NaN"/>
+        <param index="2" reserved="true" default="NaN"/>
+        <param index="3" reserved="true" default="NaN"/>
+        <param index="4" reserved="true" default="NaN"/>
+        <param index="5" reserved="true" default="NaN"/>
+        <param index="6" reserved="true" default="NaN"/>
+        <param index="7" reserved="true" default="NaN"/>
+      </entry>
+    </enum>
+  </enums>
+  <messages>
+    <message id="45000" name="ARGUS_STATUS">
+      <description>onboard 전체 상태. onboard 가 1 Hz 로 전송하고, track_state·health·active_sensor 가 바뀌면 즉시 한 번 더 전송한다.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">onboard 프로그램 시작 후 경과 시간.</field>
+      <field type="float" name="cpu_temp" units="degC">RPi CPU 온도. 값을 알 수 없으면 NaN.</field>
+      <field type="uint16_t" name="target_id">추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.</field>
+      <field type="uint8_t" name="health" enum="ARGUS_HEALTH_FLAGS" display="bitmask">onboard 의 연결 상태.</field>
+      <field type="uint8_t" name="track_state" enum="ARGUS_TRACK_STATE">추종 상태.</field>
+      <field type="uint8_t" name="active_sensor" enum="ARGUS_SENSOR">추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).</field>
+      <field type="uint8_t" name="control_sysid">제어권을 가진 통제기의 system id. 없으면 0.</field>
+    </message>
+    <message id="45001" name="ARGUS_DETECTION">
+      <description>센서 하나의 한 프레임 탐지·추적 결과. 센서마다 추론한 프레임마다 전송한다. 객체가 없어도 count 0 으로 전송한다. 객체가 10 개를 넘으면 신뢰도 순으로 10 개를 보내되 추종 중인 표적은 항상 포함한다. 배열에서 count 번째 이후 원소는 0 이다.</description>
+      <field type="uint64_t" name="time_usec" units="us">탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).</field>
+      <field type="uint32_t" name="frame_id">프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.</field>
+      <field type="uint16_t" name="img_w" units="px">추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.</field>
+      <field type="uint16_t" name="img_h" units="px">추론 입력 영상의 높이.</field>
+      <field type="uint16_t" name="target_id">이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.</field>
+      <field type="uint8_t" name="sensor_id" enum="ARGUS_SENSOR">이 결과를 생성한 센서.</field>
+      <field type="uint8_t" name="count">아래 배열에서 유효한 객체 수 (0 ~ 10).</field>
+      <field type="float" name="err_x">추종 표적 중심의 가로 위치 오차. 화면 중심 0, 왼쪽 끝 -1, 오른쪽 끝 +1. 이 프레임에 표적이 없으면 NaN.</field>
+      <field type="float" name="err_y">추종 표적 중심의 세로 위치 오차. 화면 중심 0, 위쪽 끝 -1, 아래쪽 끝 +1. 표적이 없으면 NaN.</field>
+      <field type="uint16_t[10]" name="track_id">객체의 track_id. 1 부터 시작하며 같은 객체는 프레임이 바뀌어도 같은 값이다. 트래커가 없는 센서는 0.</field>
+      <field type="uint8_t[10]" name="class_id">객체의 클래스 id. 번호의 의미는 센서와 model_ver 에 따라 다르며, 그 표는 ICD 에 둔다. 미정의는 255.</field>
+      <field type="float[10]" name="conf">객체의 신뢰도, 0.0 ~ 1.0.</field>
+      <field type="uint16_t[10]" name="box_x" units="px">바운딩 박스 왼쪽 위 x (추론 입력 영상 좌표).</field>
+      <field type="uint16_t[10]" name="box_y" units="px">바운딩 박스 왼쪽 위 y.</field>
+      <field type="uint16_t[10]" name="box_w" units="px">바운딩 박스 너비.</field>
+      <field type="uint16_t[10]" name="box_h" units="px">바운딩 박스 높이.</field>
+    </message>
+    <message id="45002" name="ARGUS_SENSOR_STATUS">
+      <description>센서 하나의 상태. onboard 가 센서마다 1 Hz 로 전송하고, flags 가 바뀌면 즉시 한 번 더 전송한다.</description>
+      <field type="uint8_t" name="sensor_id" enum="ARGUS_SENSOR">이 상태의 센서.</field>
+      <field type="uint8_t" name="flags" enum="ARGUS_SENSOR_FLAGS" display="bitmask">센서의 상태와 기능.</field>
+      <field type="float" name="infer_fps" units="Hz">최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.</field>
+      <field type="uint16_t" name="model_ver">이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.</field>
+      <field type="uint16_t" name="img_w" units="px">추론 입력 영상의 너비. 알 수 없으면 0.</field>
+      <field type="uint16_t" name="img_h" units="px">추론 입력 영상의 높이. 알 수 없으면 0.</field>
+    </message>
+  </messages>
+</mavlink>

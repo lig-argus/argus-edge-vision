@@ -15,6 +15,8 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network Test)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common/mavlink ${CMAKE_CURRENT_BINARY_DIR}/mavlink)
+
 # 경고 설정 (CONTRIBUTING.md 0.2 코딩 컨벤션). 라이브러리·실행 파일·시험이 모두 이어받는다
 add_library(argus_gcs_warnings INTERFACE)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -24,7 +26,7 @@ elseif(MSVC)
 endif()
 
 add_executable(argus_gcs src/main.cpp)
-target_link_libraries(argus_gcs PRIVATE Qt6::Widgets argus_gcs_warnings)
+target_link_libraries(argus_gcs PRIVATE Qt6::Widgets argus_mavlink argus_gcs_warnings)
 
 # Qt Test: test/<이름>_test.cpp 마다 add_test. 첫 통신 클래스와 함께 추가한다
 include(CTest)
