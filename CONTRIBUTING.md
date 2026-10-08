@@ -2,7 +2,7 @@
 
 argus-edge-vision 프로젝트의 브랜치, 커밋, PR 규칙입니다. 작업 전에 한 번 읽어주세요.
 
-## 0. 처음 한 번만 — 로컬 커밋 검사 켜기
+## 0.1 처음 한 번만 — 로컬 커밋 검사 켜기
 
 커밋 메시지는 [commitlint](https://commitlint.js.org) 로 검사하며, [husky](https://typicode.github.io/husky/) 가 git hook 을 설치합니다.
 
@@ -29,9 +29,55 @@ PR 에서는 GitHub Actions(`commitlint`)가 `package-lock.json` 에 고정된 *
 
 ---
 
+## 0.2 처음 한 번만 — clang-format·clang-tidy 설치
+
+C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙은 `.clang-format`(Google 스타일 + 6항목)과 `.clang-tidy`, 통제기는 `gcs/.clang-tidy`(이름 규칙만 Qt camelCase)입니다.
+
+| OS | 설치 |
+|---|---|
+| macOS | `brew install clang-format llvm`, `.zshrc` 에 `export PATH="/opt/homebrew/opt/llvm/bin:$PATH"` |
+| Linux (Ubuntu 24.04) | `pip install clang-format==23.1.3 clang-tidy==22.1.8` (CI 와 같은 버전) |
+| Windows | [Git for Windows](https://git-scm.com) + `pip install clang-format==23.1.3 clang-tidy==22.1.8`. 명령은 Git Bash 에서 실행합니다 |
+
+- clang-format 은 23 이어야 합니다 (버전마다 결과가 다릅니다). `apt install clang-tidy` 는 18 이라 `gcs/.clang-tidy` 를 읽지 못하므로 쓰지 않습니다.
+- pip 으로 설치하면 `run-clang-tidy` 대신 `run-clang-tidy.py` 입니다. `clang-format` 이 PATH 에 있어야 hook 이 찾습니다.
+- 커밋할 때 `.husky/pre-commit` 이 스테이징한 C++ 파일의 형식을 검사합니다. 거부되면 `clang-format -i <파일>` 로 고친 뒤 다시 `git add` 합니다. PR 에서는 CI(`.github/workflows/ci.yml`)가 형식을 다시 검사합니다. 빌드·gtest·clang-tidy 작업은 CMake 프로젝트가 생기는 PR 에서 추가합니다.
+
+**IDE 에서 형식 정리하기**
+
+IDE 는 루트의 `.clang-format` 을 자동으로 읽어 저장할 때 또는 단축키로 정리합니다. 평소에는 이것으로 충분하고, 아래 0.3 의 명령은 전체를 한 번에 확인할 때 씁니다. 단, **IDE 가 쓰는 clang-format 이 23 이 아니면 결과가 달라 hook 에서 거부**되므로 위에 설치한 clang-format 23 을 쓰도록 지정합니다.
+
+| IDE | 설정 |
+|---|---|
+| VS Code (C/C++ 확장) | `settings.json` 의 `C_Cpp.clang_format_path` 에 설치한 clang-format 경로. `editor.formatOnSave: true` |
+| Visual Studio | 도구 > 옵션 > 텍스트 편집기 > C/C++ > 서식 > "사용자 지정 clang-format.exe 파일 사용" 에 경로 |
+| CLion | Settings > Editor > Code Style > C/C++ 에서 ClangFormat 사용. 내장 버전을 쓰므로 저장 뒤 0.3 의 형식 검사로 한 번 확인 |
+| Qt Creator | ClangFormat 플러그인 켜기 (Help > About Plugins). 내장 버전을 쓰므로 CLion 과 같이 확인 |
+
+## 0.3 형식 검사 직접 실행하기
+
+저장소 루트에서 실행합니다 (hook·CI 와 같은 명령).
+
+```bash
+# 형식 검사: 파일은 건드리지 않고, 고칠 자리를 "파일:줄:칸: error:" 로 출력. 고칠 곳이 있으면 exit 1 (hook·CI 가 쓰는 명령)
+#   --dry-run 만 쓰면 warning 으로 출력하고 exit 0. -Werror 가 error 로 올려 exit 1 로 만든다
+git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang-format --dry-run -Werror
+# 형식 정리: 같은 규칙으로 계산한 결과를 파일에 덮어쓴다. 출력 없음, 항상 exit 0 (내가 고칠 때)
+git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang-format -i
+
+# clang-tidy: 빌드 폴더의 compile_commands.json 에 있는 소스를 검사. 경고도 실패로
+run-clang-tidy -p build/onboard -quiet -warnings-as-errors='*'
+run-clang-tidy -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'   # 통제기: Qt moc 가 만든 소스 제외
+```
+
+- clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 합니다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙입니다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생깁니다.
+- 옵션의 뜻, clang-tidy 가 빌드 폴더를 쓰는 이유, 다른 프로젝트의 같은 사용 예: argus-onboard 의 `docs/CODING_STYLE.md` 5장
+
+---
+
 ## 1. 브랜치 전략 (Git Flow)
 
-| 브랜치 | 용도 | 분기 원본 | 머지 대상 |
+| 브랜치 | 용도 | 소스 브랜치 | 타겟 브랜치 |
 |---|---|---|---|
 | `main` | 배포(릴리즈) 버전 | — | — |
 | `develop` | 다음 릴리즈 통합 | `main` | — |
@@ -169,6 +215,7 @@ BREAKING CHANGE: GCS 는 v2 파서로 업데이트해야 수신 가능
 
 - [ ] 최신 `develop` 을 반영했다 (`git pull --rebase origin develop`)
 - [ ] 빌드/테스트가 로컬에서 통과한다
+- [ ] clang-format 검사와 `run-clang-tidy -warnings-as-errors='*'` 가 통과한다 (0.2·0.3 장. 형식은 pre-commit hook 이 먼저 막는다)
 - [ ] PR 제목이 Conventional Commits 형식이다
 - [ ] 불필요한 파일(빌드 산출물, 데이터셋 원본, 모델 가중치 등)이 포함되지 않았다
 

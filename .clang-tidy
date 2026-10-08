@@ -1,0 +1,46 @@
+# clang-tidy 설정. 규칙 설명은 docs/CODING_STYLE.md.
+# 검사 묶음은 버그·성능·현대화·정적 분석 네 가지만 켜고(Catch2·gRPC와 같은 골격),
+# 이름 규칙은 readability-identifier-naming 옵션으로 둔다(LLVM·Envoy 방식).
+# 끄는 검사 세 개와 이유 (Catch2·gRPC도 같은 것을 끈다):
+#   modernize-use-trailing-return-type  auto f() -> T 꼴을 강제한다. 쓰지 않는 문법
+#   modernize-use-nodiscard             const 멤버 함수마다 [[nodiscard]]를 요구해 경고 77개. 읽기 함수는 반환값을 버려도 된다
+#   bugprone-easily-swappable-parameters 같은 타입 매개변수가 이웃하면 경고(x, y 등). 좌표·크기 함수에서 피할 수 없다
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  clang-analyzer-*,
+  readability-identifier-naming,
+  -bugprone-easily-swappable-parameters
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '/(onboard|common|simulation)/.*'
+
+# 이름 규칙 (docs/CODING_STYLE.md 2장): 타입 CamelCase, 함수·변수 snake_case,
+# private·protected 멤버 `_` 접미사, 상수 k 접두사 + CamelCase, 인터페이스 I 접두사, 매크로 대문자
+CheckOptions:
+  readability-identifier-naming.NamespaceCase: lower_case
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  readability-identifier-naming.AbstractClassPrefix: I
+  readability-identifier-naming.FunctionCase: lower_case
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.MemberCase: lower_case
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberSuffix: _
+  readability-identifier-naming.ProtectedMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberSuffix: _
+  readability-identifier-naming.ConstexprVariableCase: CamelCase
+  readability-identifier-naming.ConstexprVariablePrefix: k
+  readability-identifier-naming.GlobalConstantCase: CamelCase
+  readability-identifier-naming.GlobalConstantPrefix: k
+  readability-identifier-naming.StaticConstantCase: CamelCase
+  readability-identifier-naming.StaticConstantPrefix: k
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE

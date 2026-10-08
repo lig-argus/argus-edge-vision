@@ -1,0 +1,4 @@
+# 스테이징된 C++ 파일의 형식을 clang-format으로 검사한다 (CONTRIBUTING.md 0.3).
+# 다르면 커밋이 거부된다: clang-format -i <파일> 로 고친 뒤 다시 add 한다.
+git diff --cached --name-only --diff-filter=ACM -- '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' |
+    xargs -r clang-format --dry-run -Werror
