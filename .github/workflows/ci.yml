@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      # 로컬과 같은 clang-format 23 (버전이 다르면 같은 설정으로도 결과가 다르다)
+      - run: pip install clang-format==23.1.3
+      - run: git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang-format --dry-run -Werror
+
+  gcs:
+    name: gcs build · test · clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        # Ubuntu 24.04 apt: qt6-base-dev 6.4 (Widgets·Network·Test 포함), OpenGL 헤더
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build qt6-base-dev libgl1-mesa-dev
+          pip install clang-tidy==22.1.8
+      - name: Configure
+        run: cmake -S gcs -B build/gcs -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/gcs
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build/gcs --output-on-failure
+      - name: clang-tidy
+        # compile_commands.json 에 있는 소스를 병렬로 검사. 경고도 실패로 (clang-tidy 는 경고만으로는 exit 0).
+        # 마지막 인자: Qt moc 가 만든 소스(*_autogen/mocs_compilation.cpp)는 검사하지 않는다
+        run: run-clang-tidy.py -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'
+
+  # onboard 빌드·gtest·clang-tidy 작업은 onboard/ 에 CMake 프로젝트가 생길 때 gcs 와 같은 모양으로 추가한다
