@@ -86,9 +86,11 @@ hotfix/v0.2.1
 | scope | 대상 |
 |---|---|
 | `onboard` | `onboard/` — 기체 탑재 SW |
-| `gcs` | `ground_control_station/` — 지상 통제 SW |
-| `models` | `models/` — 학습/추론 모델 |
-| `datasets` | `datasets/` — 데이터셋, 전처리 |
+| `gcs` | `gcs/` — 지상 통제 SW |
+| `common` | `common/` — onboard와 gcs가 함께 쓰는 라이브러리 |
+| `simulation` | `simulation/` — 시뮬레이션 환경과 실험 |
+| `models` | `models/` — 학습/추론 모델 (데이터셋은 저장소에 올리지 않는다) |
+| `tools` | `tools/` — 생성·검사 스크립트 |
 | `docs` | `docs/` |
 | `ci` | `.github/` 워크플로 |
 | `deps` | 의존성 버전 변경 |
