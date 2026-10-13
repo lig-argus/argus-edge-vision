@@ -8,8 +8,8 @@
 
 
 typedef struct __mavlink_argus_detection_t {
- uint64_t time_usec; /*< [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).*/
- uint32_t frame_id; /*<  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.*/
+ uint64_t time_usec; /*< [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.*/
+ uint32_t frame_id; /*<  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.*/
  float err_x; /*<  추종 표적 중심의 가로 위치 오차. 화면 중심 0, 왼쪽 끝 -1, 오른쪽 끝 +1. 이 프레임에 표적이 없으면 NaN.*/
  float err_y; /*<  추종 표적 중심의 세로 위치 오차. 화면 중심 0, 위쪽 끝 -1, 아래쪽 끝 +1. 표적이 없으면 NaN.*/
  float conf[10]; /*<  객체의 신뢰도, 0.0 ~ 1.0.*/
@@ -95,8 +95,8 @@ typedef struct __mavlink_argus_detection_t {
  * @param component_id ID of this component (e.g. 200 for IMU)
  * @param msg The MAVLink message to compress the data into
  *
- * @param time_usec [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).
- * @param frame_id  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.
+ * @param time_usec [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.
+ * @param frame_id  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.
  * @param img_w [px] 추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.
  * @param img_h [px] 추론 입력 영상의 높이.
  * @param target_id  이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.
@@ -167,8 +167,8 @@ static inline uint16_t mavlink_msg_argus_detection_pack(uint8_t system_id, uint8
  * @param status MAVLink status structure
  * @param msg The MAVLink message to compress the data into
  *
- * @param time_usec [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).
- * @param frame_id  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.
+ * @param time_usec [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.
+ * @param frame_id  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.
  * @param img_w [px] 추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.
  * @param img_h [px] 추론 입력 영상의 높이.
  * @param target_id  이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.
@@ -242,8 +242,8 @@ static inline uint16_t mavlink_msg_argus_detection_pack_status(uint8_t system_id
  * @param component_id ID of this component (e.g. 200 for IMU)
  * @param chan The MAVLink channel this message will be sent over
  * @param msg The MAVLink message to compress the data into
- * @param time_usec [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).
- * @param frame_id  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.
+ * @param time_usec [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.
+ * @param frame_id  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.
  * @param img_w [px] 추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.
  * @param img_h [px] 추론 입력 영상의 높이.
  * @param target_id  이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.
@@ -353,8 +353,8 @@ static inline uint16_t mavlink_msg_argus_detection_encode_status(uint8_t system_
  * @brief Send a argus_detection message
  * @param chan MAVLink channel to send the message
  *
- * @param time_usec [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).
- * @param frame_id  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.
+ * @param time_usec [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.
+ * @param frame_id  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.
  * @param img_w [px] 추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.
  * @param img_h [px] 추론 입력 영상의 높이.
  * @param target_id  이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.
@@ -489,7 +489,7 @@ static inline void mavlink_msg_argus_detection_send_buf(mavlink_message_t *msgbu
 /**
  * @brief Get field time_usec from argus_detection message
  *
- * @return [us] 탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).
+ * @return [us] 탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.
  */
 static inline uint64_t mavlink_msg_argus_detection_get_time_usec(const mavlink_message_t* msg)
 {
@@ -499,7 +499,7 @@ static inline uint64_t mavlink_msg_argus_detection_get_time_usec(const mavlink_m
 /**
  * @brief Get field frame_id from argus_detection message
  *
- * @return  프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.
+ * @return  센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.
  */
 static inline uint32_t mavlink_msg_argus_detection_get_frame_id(const mavlink_message_t* msg)
 {

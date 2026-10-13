@@ -71,7 +71,7 @@
     <enum name="MAV_CMD">
       <entry value="45000" name="MAV_CMD_ARGUS_TRACK_START" hasLocation="false" isDestination="false">
         <description>표적 추종 시작. 수신자: onboard (compid 195). 표적은 센서와 track_id 로 지정한다. 추종 중에 받으면 표적을 변경한다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다.</description>
-        <param index="1" label="Track ID" minValue="0" maxValue="65535" increment="1">추종할 표적의 track_id (ARGUS_DETECTION.track_id 값). 0 이면 해당 센서에서 신뢰도가 가장 높은 객체.</param>
+        <param index="1" label="Track ID" minValue="1" maxValue="65535" increment="1">추종할 표적의 track_id (ARGUS_DETECTION.track_id 값). 0 이거나 해당 센서의 최신 탐지 결과에 없는 track_id 면 DENIED.</param>
         <param index="2" label="Sensor" enum="ARGUS_SENSOR">표적이 있는 센서. UNKNOWN(0) 이면 거부한다.</param>
         <param index="3" reserved="true" default="NaN"/>
         <param index="4" reserved="true" default="NaN"/>
@@ -104,8 +104,8 @@
     </message>
     <message id="45001" name="ARGUS_DETECTION">
       <description>센서 하나의 한 프레임 탐지·추적 결과. 센서마다 추론한 프레임마다 전송한다. 객체가 없어도 count 0 으로 전송한다. 객체가 10 개를 넘으면 신뢰도 순으로 10 개를 보내되 추종 중인 표적은 항상 포함한다. 배열에서 count 번째 이후 원소는 0 이다.</description>
-      <field type="uint64_t" name="time_usec" units="us">탐지 프로세스가 이 프레임을 받은 시각. RPi 의 CLOCK_MONOTONIC (부팅 후 경과 µs).</field>
-      <field type="uint32_t" name="frame_id">프레임 번호. 센서마다 별도로 증가한다. 영상 프레임과는 (sensor_id, frame_id) 로 대응시킨다.</field>
+      <field type="uint64_t" name="time_usec" units="us">탐지에 쓴 영상 프레임의 촬영 시각(노출 시각). RPi CLOCK_MONOTONIC (부팅 후 경과 µs). 영상 스트림의 같은 프레임에도 같은 값을 넣는다.</field>
+      <field type="uint32_t" name="frame_id">센서별 프레임 순번. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다. 영상 스트림(H.264)의 같은 프레임에 같은 값을 넣어 탐지 결과와 영상을 동기화한다.</field>
       <field type="uint16_t" name="img_w" units="px">추론 입력 영상의 너비. box_* 와 err_* 의 좌표 기준.</field>
       <field type="uint16_t" name="img_h" units="px">추론 입력 영상의 높이.</field>
       <field type="uint16_t" name="target_id">이 센서에서 추종 중인 표적의 track_id. 이 센서로 추종하지 않으면 0.</field>
