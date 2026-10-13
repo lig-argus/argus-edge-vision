@@ -29,13 +29,15 @@
 | 노드 | 실행 위치 | MAVLink sysid | compid | 역할 |
 |---|---|---|---|---|
 | FC | 기체 비행 제어기 (PX4 v1.16) | 1 | 1 (MAV_COMP_ID_AUTOPILOT1) | 비행 제어, 텔레메트리 |
-| onboard | RPi, 추종 프로그램 | 1 | 195 (MAV_COMP_ID_ONBOARD_COMPUTER) | 탐지 결과로 표적 추종, 통제기 명령 처리 |
+| onboard: 명령·setpoint (MAVSDK) | RPi, 추종 프로그램 | 1 | 195 (MAV_COMP_ID_PATHPLANNER, MAVSDK 보조 컴퓨터 기본값) | 통제기 명령 처리, ARGUS_* 송신, FC 로 setpoint·모드 요청 |
+| onboard: FC 관측·TIMESYNC (FC_RX) | RPi, 추종 프로그램 | 1 | 191 (MAV_COMP_ID_ONBOARD_COMPUTER) | FC 텔레메트리 수신, TIMESYNC 요청. 명령·setpoint 는 보내지 않는다 |
 | 탐지 프로세스 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 카메라 프레임 추론, 결과를 onboard 로 전달 |
 | 통제기 | 운용자 노트북 (gcs) | 250 | 190 (MAV_COMP_ID_MISSIONPLANNER) | 감시, 명령, 가상 조종 |
 | QGC | 운용자 노트북 (선택) | 255 | 190 | PX4 파라미터·보정 전용. 비행 명령은 보내지 않는다 |
 
 - 기체 안의 FC 와 onboard 는 같은 sysid 1 을 쓰고 compid 로 구분한다 (MAVLink 관례: 한 기체 = 한 sysid).
 - 통제기 sysid 250 은 제어권을 가진 유일한 통제기다 (5장).
+- onboard 는 한 프로그램이지만 MAVLink 식별자를 둘 쓴다. TIMESYNC 응답을 자기 요청과 맞추려면 보낸 쪽 compid 가 MAVSDK 와 달라야 한다 (`docs/design/system-architecture.md` 1.8·1.9). 통제기가 onboard 에 보내는 명령은 `target_component = 195`.
 
 ### 1.2 링크
 
@@ -45,7 +47,7 @@ flowchart LR
         FC[FC PX4<br/>sysid 1 / compid 1]
         subgraph rpi [RPi]
             router[mavlink-router]
-            onboard[onboard<br/>sysid 1 / compid 195]
+            onboard[onboard<br/>sysid 1 / compid 195·191]
             vision[탐지 프로세스]
             rtsp[RTSP 서버<br/>H.264 인코더]
         end
