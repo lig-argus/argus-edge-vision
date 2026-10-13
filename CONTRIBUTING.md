@@ -54,6 +54,19 @@ IDE 는 루트의 `.clang-format` 을 자동으로 읽어 저장할 때 또는 �
 | CLion | Settings > Editor > Code Style > C/C++ 에서 ClangFormat 사용. 내장 버전을 쓰므로 저장 뒤 0.3 의 형식 검사로 한 번 확인 |
 | Qt Creator | ClangFormat 플러그인 켜기 (Help > About Plugins). 내장 버전을 쓰므로 CLion 과 같이 확인 |
 
+**편집기 공통 설정 (`.editorconfig`)**
+
+저장소 루트의 `.editorconfig` 가 들여쓰기(C++ 4칸, XML 2칸), 줄 끝(LF), 파일 끝 개행, 끝 공백 제거를 정합니다. 편집기가 파일을 열 때 자동으로 읽으므로 따로 설치할 것은 없고, 지원이 켜져 있는지만 확인합니다.
+
+| 편집기 | 확인 |
+|---|---|
+| CLion | 기본 켜짐. Settings > Editor > Code Style > "Enable EditorConfig support" |
+| VS Code | 확장 "EditorConfig for VS Code" 설치 |
+| Visual Studio | 기본 켜짐 (2017 이상) |
+| Qt Creator | 기본 켜짐 (Preferences > Text Editor > Behavior > "Use EditorConfig") |
+
+확인 방법: `common/mavlink/message_definitions/argus.xml` 에서 Enter 를 누르면 2칸, `.cpp` 에서는 4칸 들여쓰기가 되면 적용된 것입니다.
+
 ## 0.3 형식 검사 직접 실행하기
 
 저장소 루트에서 실행합니다 (hook·CI 와 같은 명령).
