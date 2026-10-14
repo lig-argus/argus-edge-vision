@@ -19,7 +19,7 @@
 - 메시지·필드의 바이트 형식과 값의 의미 → `argus.xml` 과 생성 헤더
 - 추종 제어 알고리즘과 onboard 상태 전이 → `docs/design/system-architecture.md`
 - 탐지 모델
-- 영상 전송 규약 → `docs/VIDEO.md` (#20)
+- 영상 전송 규약 → `docs/video.md` (#20)
 - FC(PX4) 파라미터 값 → 배포 문서
 
 ## 1. 구성과 전송
@@ -72,8 +72,8 @@ flowchart LR
 | RPi 라우터 ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (서버) | 통제기가 먼저 보내면 라우터가 그 주소로 응답 |
 | RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 라우터가 QGC 의 명령을 FC 로 보내지 않도록 필터 |
 | 탐지 프로세스 → onboard | UDP, RPi 안 | `127.0.0.1:25100` | `ARGUS_DETECTION` 패킷 (MAVLink 2 프레임, 헤더 포함) |
-| 탐지 프로세스 → RTSP 서버 | RPi 안 | `docs/VIDEO.md` | 카메라 프레임과 메타데이터(sensor_id, frame_id, time_usec) |
-| RTSP 서버 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/VIDEO.md` | H.264 영상. 탐지 결과와는 H.264 SEI 의 frame_id·time_usec 로 동기화 |
+| 탐지 프로세스 → RTSP 서버 | RPi 안 | `docs/video.md` | 카메라 프레임과 메타데이터(sensor_id, frame_id, time_usec) |
+| RTSP 서버 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/video.md` | H.264 영상. 탐지 결과와는 H.264 SEI 의 frame_id·time_usec 로 동기화 |
 
 - mavlink-router 가 FC 의 UART 를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 그래서 onboard 와 통제기는 서로의 메시지도 받는다 (sysid·compid 로 걸러 쓴다).
 - 프로토콜은 **MAVLink 2** 만 쓴다. 메시지 id 45000 번대는 MAVLink 1 로 보낼 수 없다. 서명(signing)은 쓰지 않는다 [미결 D1].
@@ -95,7 +95,7 @@ flowchart LR
 | COMMAND_ACK (77) | FC, onboard → 통제기 | 응답 | 명령 결과 (4장) |
 | SET_POSITION_TARGET_LOCAL_NED (84) | onboard → FC | 20 Hz | Offboard 속도 setpoint. 추종 중에만 보낸다 |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
-| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/VIDEO.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, H.264, 해상도, fps 알림 |
+| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, H.264, 해상도, fps 알림 |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
 
 - FC 텔레메트리 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
@@ -116,7 +116,7 @@ flowchart LR
 - 객체가 없는 프레임도 `count = 0` 으로 보낸다. 통제기는 이것으로 "탐지는 살아 있고 객체만 없음" 을 구분한다.
 - `time_usec` 는 그 프레임의 촬영 시각(노출 시각), RPi `CLOCK_MONOTONIC` 기준이다. 탐지 프로세스가 받은 시각이 아니다.
 - `frame_id` 는 센서별 프레임 순번이다. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다.
-- 영상 스트림(H.264)의 같은 프레임 SEI 에 같은 `sensor_id`·`frame_id`·`time_usec` 를 넣는다. 통제기는 이 값으로 바운딩 박스를 해당 프레임에 그린다 (`docs/VIDEO.md`).
+- 영상 스트림(H.264)의 같은 프레임 SEI 에 같은 `sensor_id`·`frame_id`·`time_usec` 를 넣는다. 통제기는 이 값으로 바운딩 박스를 해당 프레임에 그린다 (`docs/video.md`).
 
 ### 3.2 좌표 규약
 
@@ -231,7 +231,7 @@ sequenceDiagram
 | B3 | 센서 상태 항목 | flags 4 개 외에 필요한 것 (온도, 프레임 드롭) | 탐지 |
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 | 탐지 |
-| C | 영상 전송 | RTSP + RTP + H.264 로 정함. 세부(프레임 전달 방식, RTSP 서버, 디코더, SEI 형식, 포트)는 `docs/VIDEO.md` (#20) | 통제기·탐지 |
+| C | 영상 전송 | RTSP + RTP + H.264 로 정함. 세부(프레임 전달 방식, RTSP 서버, 디코더, SEI 형식, 포트)는 `docs/video.md` (#20) | 통제기·탐지 |
 | D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |

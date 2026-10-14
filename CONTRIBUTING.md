@@ -221,7 +221,15 @@ BREAKING CHANGE: GCS 는 v2 파서로 업데이트해야 수신 가능
 
 ---
 
-## 4. 예시
+## 4. 문서 파일 이름
+
+- 저장소 루트의 안내 파일만 대문자로 씁니다: `README.md`, `CONTRIBUTING.md`, `LICENSE` (GitHub 가 인식하는 이름)
+- `docs/` 아래 문서는 소문자 snake_case 로 씁니다: `docs/icd.md`, `docs/video.md`
+- 근거: PX4·MAVSDK·OpenCV·PyTorch 는 소스 파일과 같은 snake_case 를 문서에도 씁니다. 하위 폴더의 대문자 `.md` 는 도구가 정한 이름(`SUMMARY.md`, `CHANGELOG_*.md`)뿐입니다.
+
+---
+
+## 5. 예시
 
 ```bash
 # 1) 기능 브랜치 생성
