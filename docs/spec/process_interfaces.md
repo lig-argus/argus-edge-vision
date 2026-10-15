@@ -187,7 +187,7 @@ flowchart LR
 ## 6. 두절·시간 초과 판단과 동작
 
 - setpoint 유효 시간: `control/setpoint` 의 `valid_until_monotonic_ns` 가 지나도록 새 값이 없으면 onboard 가 속도 0 을 보내고 Hold 를 요청한다.
-- 생존 확인: onboard 는 `follow/status`(1 Hz) 가 3 초 없으면 추종 제어가 멈춘 것으로 보고, 추종·Scan 중이면 Hold 로 전환하고 `mission_state` FAULT 를 보고한다 (`docs/spec/icd.md` 6.4).
+- 상태 보고 두절 판단: onboard 는 `follow/status`(1 Hz) 가 3 초 동안 오지 않으면 추종 제어가 멈춘 것으로 보고, 추종·Scan 중이면 Hold 로 전환하고 `mission_state` FAULT 를 보고한다 (`docs/spec/icd.md` 6.4).
 - 요청 대응: REQ/REP 응답이 정해진 시간 안에 오지 않으면 실패로 본다. `valid_until_monotonic_ns` 가 지난 요청은 실행하지 않고 REJECTED 로 답한다.
 - 재시작: 추적기가 재시작하면 generation 이 바뀌므로, 이전 generation 의 표적을 가리키는 명령은 REJECTED. 추종 제어·onboard 재시작 시 상대는 `follow/status` 의 `controller_session`, `fc/mode_event` 의 세션 식별자 변화로 알아챈다.
 
