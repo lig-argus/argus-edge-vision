@@ -1,0 +1,28 @@
+# 위치: 각 프로젝트 저장소의 .github/workflows/slack-mention.yml (반드시 main 브랜치)
+name: Slack mentions
+
+on:
+  pull_request_target:            # 리뷰어 지정, PR 담당자 지정
+    types: [review_requested, assigned]
+  pull_request_review:            # 리뷰 제출
+    types: [submitted]
+  issues:                         # 이슈 담당자 지정
+    types: [assigned]
+  issue_comment:                  # 이슈·PR 대화 코멘트의 @멘션
+    types: [created]
+  pull_request_review_comment:    # 코드 라인 코멘트의 @멘션
+    types: [created]
+  workflow_run:                   # CI 실패 알림
+    workflows: ["ci", "commitlint"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  notify:
+    # CI는 실패했을 때만 실행 (성공 시 runner 낭비 방지)
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure'
+    uses: lig-argus/.github/.github/workflows/slack-mention.yml@main
+    with:
+      user_map: ${{ vars.SLACK_USER_MAP }}
+    secrets: inherit
