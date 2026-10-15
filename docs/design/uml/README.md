@@ -13,7 +13,7 @@
 |---|---|---|---|
 | `deployment.md` | deployment diagram — 장비, 실행 환경(OS·런타임), 설치 산출물, 통신 경로 | `docs/spec/icd.md` 1장, `docs/spec/video.md` 1·8장 | 있음 |
 | `component.md` | component diagram — 프로세스와 통제기를 컴포넌트로, ZeroMQ 토픽·REQ/REP·MAVLink·RTSP 를 provided·required interface 로 | `docs/spec/process_interfaces.md` 2·5장, `docs/spec/icd.md` 1장 | 있음 |
-| `state_machine.md` | state machine diagram — `ARGUS_MISSION_STATE`, `ARGUS_TARGET_STATE` | `docs/spec/icd.md` 3·4·6장, `common/mavlink/message_definitions/argus.xml` | 있음 |
+| `state_machine.md` | state machine diagram — `ARGUS_MISSION_STATE`, `ARGUS_TARGET_STATE` 의 상태와 transition | `docs/spec/icd.md` 3·4·6장, `common/mavlink/message_definitions/argus.xml` | 있음 |
 | `class_onboard.md` | class diagram — onboard (FC 통신, 통제기 통신, ZeroMQ 어댑터) | `docs/spec/process_interfaces.md` 4장 | 예정 (#25 머지 뒤) |
 | `class_follow.md` | class diagram — 추종 제어 경계 (`IFollowCommand` 구현, 상태 관리) | `docs/spec/process_interfaces.md` 4장 | 예정 |
 | `class_video.md` | class diagram — 영상 송신부, 통제기 영상 수신 | `docs/spec/video.md` 5·6장 | 예정 (#20 머지 뒤) |
@@ -26,7 +26,7 @@
 
 - deployment diagram: Mermaid 에 deployment 전용 문법이 없어 flowchart 로 그린다. 상자 = 장비와 OS, 네모 = 산출물(둘째 줄은 실행 환경·런타임), 원통 = 파일·장치, 선 = 통신 경로.
 - component diagram: Mermaid 에 component 전용 문법이 없어 flowchart 로 그린다. 컴포넌트는 네모, 인터페이스는 둥근 네모(이름 = 토픽·요청·프로토콜). provided(발행·응답·서비스하는 쪽)는 컴포넌트 → 인터페이스 실선, required(구독·요청·클라이언트 쪽)는 인터페이스 → 컴포넌트 점선. 미결 항목은 라벨 끝에 `[미결 n]` (번호는 참조 문서의 검토 항목).
-- state machine diagram: Mermaid `stateDiagram-v2`. 화살표 라벨은 "사건 / 조건" 순서. 규약에 사건이 없는 화살표는 `[미결]` 로 적고 규약 문서에 질문을 남긴다.
+- state machine diagram: Mermaid `stateDiagram-v2`. transition 라벨은 UML 표기 `event [guard] / effect` 를 따른다. 그림에는 event 만 적고 guard·effect 와 출처는 그림 아래 표에 적는다. 규약에 event 가 없는 transition 은 `[미결]` 로 적고 규약 문서에 질문을 남긴다.
 
 ## 변경 이력
 
