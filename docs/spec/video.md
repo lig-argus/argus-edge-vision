@@ -133,7 +133,7 @@ a=control:trackID=1
 | tracks[].state | `argus:State` | 현재 CONFIRMED 만 발행 |
 
 - 트랙이 없는 프레임도 `tt:Frame` 을 보낸다(객체 없음). 통제기는 이것으로 "메타데이터는 살아 있고 객체만 없음" 을 구분한다. ONVIF 는 빈 프레임 생략을 허용하지만 우리는 생략하지 않는다.
-- `tracking/tracks` 메시지 자체가 없는 프레임(입력 부재, FC 정렬 실패)도 영상은 보내고 메타데이터는 객체 없는 `tt:Frame` 을 보낸다.
+- `tracking/tracks` 메시지 자체가 없는 프레임(입력 부재, 프레임 시각에 맞는 FC 표본 없음)도 영상은 보내고 메타데이터는 객체 없는 `tt:Frame` 을 보낸다.
 
 ### 3.3 좌표 변환
 
