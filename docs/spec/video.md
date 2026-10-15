@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.2 (팀 검토 전 초안) |
+| 문서 버전 | 0.3 (팀 검토 전 초안) |
 | 범위 | RPi 영상 송신부 → 통제기: 영상과 프레임별 추적 결과(바운딩 박스) 전송 |
 | 따르는 표준 | RTSP (RFC 2326), RTP·RTCP (RFC 3550), RTP/JPEG (RFC 2435), ONVIF Streaming·Analytics 명세의 메타데이터 스트림 형식. ONVIF Profile·SOAP 서비스는 구현하지 않는다 |
 | 관련 문서 | `docs/spec/icd.md` (MAVLink: 추종 명령, 스트림 알림), `docs/spec/process_interfaces.md` (RPi 안 토픽, 송신부 매칭 규칙) |
@@ -37,7 +37,7 @@ RPi 영상 송신부 (RTSP 서버)                          통제기 (RTSP 클�
 - RTSP 세션 하나에 트랙 둘. 통제기는 둘 다 SETUP 한다. 영상만 보는 도구(VLC 등)는 영상 트랙만 받아도 재생된다.
 - URL: `rtsp://<RPi 주소>:8554/argus/<센서>`. 센서 이름은 `ir`, `eo` (EO 카메라 장착 시). 포트·경로는 **[미결 5]**.
 - 전송은 RTP/UDP 유니캐스트. 통제기가 RTSP `SETUP` 에서 수신 포트를 알린다. RTCP 는 RTP 포트 + 1.
-- 통제기 수신 라이브러리 **[미결 2]**, RPi RTSP 서버 **[미결 1]**.
+- 구현 라이브러리: RPi 영상 송신부는 **GStreamer + gst-rtsp-server** (Ubuntu 24.04 apt, GStreamer 1.24), 통제기 수신부는 **GStreamer** (`rtspsrc`). 양쪽이 같은 도구라 송신 테스트 파이프라인을 수신 테스트에 그대로 쓸 수 있고, 코덱 변경이 파이프라인 요소 교체로 끝난다 (5·6장). Windows 배포 구성은 **[미결 1]**, Qt 연결 방식은 **[미결 2]**.
 
 SDP(Session Description Protocol, RFC 8866)는 세션에 어떤 트랙이 있고 어떻게 받는지 적은 텍스트다. 통제기가 RTSP `DESCRIBE` 를 보내면 서버가 SDP 로 답하고, 통제기는 이것을 읽어 어떤 트랙을 `SETUP` 할지 정한다. RTSP 서버가 파이프라인 구성에서 자동으로 만든다.
 
@@ -162,9 +162,11 @@ a=control:trackID=1
 - 영상 프레임이 없는 추적 결과는 보내지 않는다. 추적 결과가 없는 프레임은 영상 + 빈 `tt:Frame` 을 보낸다.
 - IR 카메라 NUC(셔터 보정) 동안 약 0.5 s 프레임이 없다. 송신부는 아무것도 보내지 않으며 RTSP 세션은 유지한다.
 - RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신).
+- 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! jpegenc ! rtpjpegpay name=pay0 pt=26`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 바꾸면 `jpegenc ! rtpjpegpay` 를 `x264enc ! rtph264pay` 처럼 요소만 바꾼다.
 
 ## 6. 통제기 동작
 
+- 구현: GStreamer `rtspsrc` 가 두 트랙을 받는다. 영상은 `rtpjpegdepay ! jpegdec ! appsink` (코덱이 바뀌면 `rtph264depay ! avdec_h264` 등으로 요소 교체. `decodebin` 으로 SDP 를 보고 자동 선택도 가능), 메타데이터는 `rtponvifmetadatadepay` 가 있으면 그것으로, 없으면 `appsink` 에서 RTP 헤더를 떼고 marker 까지 이어 붙여 XML 문서를 만든다 **[미결 1]**. `rtspsrc` 의 지터 버퍼(`latency`)와 RTCP 처리를 그대로 쓰고, UDP 가 막히면 TCP 로 자동 전환한다(`protocols`).
 - 영상 프레임을 디코딩해 표시하고, 4장 방법으로 동기화한 메타데이터의 박스를 그 위에 그린다. 메타데이터가 아직 안 온 프레임은 박스 없이 표시하고, 늦게 온 메타데이터는 버린다.
 - 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_TRACK_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
 - 선택된 표적(`ARGUS_STATUS.target_id`·`target_generation`)과 `ObjectId`·`argus:Generation` 이 같은 박스는 다른 색으로 강조한다.
@@ -200,8 +202,8 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 
 ## 9. 검토 필요 사항
 
-1. RPi RTSP 서버 구현: gst-rtsp-server (RTP/JPEG 패킷화 `rtpjpegpay`, RTCP, ONVIF 메타데이터 패킷화 `rtponvifmetadatapay` 가 있음. 외부 라이브러리 추가 승인 필요) vs MediaMTX (RTP 패킷을 직접 만들어 넣어야 함). — 통신
-2. 통제기 수신: GStreamer (메타데이터 트랙까지 처리, Windows 배포가 무거움) vs Qt Network 으로 직접 구현 (RTSP 요청, RFC 2435 복원, RTCP SR 파싱. 코드는 작지만 직접 검증) . Qt Multimedia 는 메타데이터 트랙에 접근할 수 없어 제외. — 통제기
+1. 통제기 GStreamer Windows 배포 구성: 공식 MSVC 바이너리에 `rtponvifmetadatadepay`(gst-plugins-rs)가 포함되는지 `gst-inspect-1.0` 으로 확인, 필요한 플러그인만 묶었을 때 크기 측정, GStreamer 버전 고정 방법. — 통제기
+2. 통제기에서 GStreamer 와 Qt 화면 연결 방식: `appsink` 로 프레임을 꺼내 `QImage` 로 그리기 vs `qml6glsink` 로 GPU 직접 표시. — 통제기
 3. 비압축 프레임 토픽 이름·schema·픽셀 형식 (`process_interfaces.md` 7장 3). — 탐지
 4. 표준에 없는 값을 넣을 XML 요소: `argus:` 네임스페이스와 요소 이름(FrameId, ImageWidth, ImageHeight, ClassId, Label, Generation, State), `tt:Class/tt:Type` 에 넣을 ONVIF 분류명. — 통신·탐지
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
@@ -218,4 +220,5 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-15 | 팀 검토 전 초안. 스트림 구성, RTP/JPEG, ONVIF 메타데이터 XML 과 필드 변환, 좌표 변환, 동기화, 송신부·통제기 동작, VIDEO_STREAM_INFORMATION, class_id 표, 미결 1~11 |
+| 0.3 | 2026-10-15 | 구현 라이브러리 결정: RPi gst-rtsp-server, 통제기 GStreamer (1·5·6장). 미결 1·2 를 배포 구성·Qt 연결로 교체 |
 | 0.2 | 2026-10-15 | 입력을 비압축 프레임으로 바꾸고 JPEG 인코딩·품질을 송신부 책임으로 (2·5장, 미결 3·12) |
