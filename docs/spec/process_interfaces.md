@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.3 (팀 검토 전 초안) |
+| 문서 버전 | 0.4 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -41,7 +41,7 @@ flowchart LR
     fc -->|fc/attitude, fc/state| ctl
     fc <-->|MAVLink| router[mavlink-router]
     gcs <-->|MAVLink| router
-    det -->|vision/overlay/jpeg, perception/observations| vtx[영상 송신부]
+    det -->|vision/frame/jpeg, perception/observations| vtx[영상 송신부]
     trk -->|tracking/tracks| vtx
 ```
 
@@ -77,7 +77,8 @@ flowchart LR
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
 - 버전: 필드 추가는 같은 버전, 필드 삭제·의미 변경은 `vN` 증가. 받는 쪽은 모르는 필드를 무시한다 (`tracking/tracks` v5 수신기는 이미 그렇게 동작).
-- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. (`tracking/tracks` 의 `ground_pose` 각도는 현재 deg **[미결 7]**)
+- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지의 deg·cm 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽 변환 경계에서 처리한다.
+- 영상 해상도: IR 원본 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
 - 정수 범위: `track_id`·`generation` 은 1~16,777,215 (2^24−1). MAVLink 명령 매개변수(float)로 손실 없이 전달하기 위한 범위다. `frame_id`·`fc_epoch` 는 uint64.
 - 시계: 프로세스 사이 시각은 RPi `CLOCK_MONOTONIC`. UTC 는 영상 메타데이터(`docs/spec/video.md`)에서만 쓴다.
 
@@ -102,16 +103,19 @@ flowchart LR
 
 | 토픽 | 발행 → 구독 | 주기 | 필드 |
 |---|---|---|---|
-| `vision/overlay/jpeg` | 탐지 → 영상 송신부 | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 헤더 + JPEG 바이트 |
-| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null |
+| `vision/frame/jpeg` (가칭) **[미결 3]** | 탐지 → 영상 송신부 | 최대 30 FPS | 박스를 그리지 않은 원본 해상도(640×480) JPEG. RTSP 영상 트랙의 소스. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, frame_id, unix_ns 등), schema 가칭 `argus.vision.frame.v1`. 이름·schema 는 탐지 쪽이 정한다 |
+| `vision/overlay/jpeg` | 탐지 → (진단·미리보기용) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. (B) 위 토픽으로 교체해 없애거나 (C) 미리보기용으로 남기는 것은 탐지 쪽이 정한다 **[미결 3]** |
+| `vision/npu_input/jpeg` | 탐지 → (진단용, 현재 구독자 없음) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 입력 640×640 레터박스 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 박스 좌표계가 원본 픽셀과 다르다 |
+| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 관측 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
 | `tracking/status` | 추적기 → onboard | 1 Hz | generation, FC 데이터 최신 여부, CMC 유효 여부, 처리 FPS **[미결 2]**. `ARGUS_SENSOR_STATUS` 보고에 사용 |
-| `fc/attitude` | onboard → 추적기, 추종 제어 | FC 자세 표본마다, **30 Hz 이상** | roll·pitch·yaw, 각속도, fc_time_boot_ms, received_monotonic_ns(원수신 시각), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid **[미결 7]** |
-| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | 위치(lat·lon·고도), local NED 위치·속도, 지면 기준 높이, 비행 모드, armed, in_air, 표본별 원수신 시각 **[미결 7]** |
+| `fc/attitude` | onboard → 추적기, 추종 제어 | FC 자세 표본마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid. 필드 이름은 **[미결 7]** |
+| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, 표본별 원수신 시각. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → onboard | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
 | `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 | 임무 상태(8개), 표적 상태(4개), 지정 표적(sensor, generation, class_id, track_id, label), 최근 명령의 command_id·결과 **[미결 2]** |
 | `fc/mode_event` | onboard → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
+- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 기존 6357 추적기 bind. 탐지 토픽은 기존 버스 5556. `fc/mode_event` 의 발행 엔드포인트는 **[미결 1]**.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. onboard 는 표본을 그대로 넘긴다.
 - `tracking/tracks` 가 없어도(입력 부재, FC 정렬·투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
@@ -122,7 +126,7 @@ flowchart LR
 | schema, source, frame_id | string, string, uint64 | `argus.tracking.tracks.v5`. source·frame_id 는 원본 JPEG·탐지와 같은 값 (매칭 키) |
 | fc_epoch, generation | uint64, uint64 | generation 은 추적기 재시작·초기화마다 1 증가하는 영구 저장 카운터. 1~16,777,215 |
 | sample_monotonic_ns, motion_sample_ns, clock_domain, timestamp_source | int64, int64, string, string | 시각과 그 출처. `exposure_monotonic_ns` 는 null, `exposure_time_valid` 는 false (노출 시각 없음) |
-| image_width, image_height, coordinate_frame | int, int, "camera_pixel" | 박스 좌표 기준 (원본 영상 픽셀) **[미결 3]** |
+| image_width, image_height, coordinate_frame | int, int, "camera_pixel" | 640, 480. 박스 좌표 기준 (원본 영상 픽셀) |
 | ground_pose | [N, E, D, roll, pitch, yaw] | m, deg |
 | tracks[] | | 아래 |
 | tracks[].track_id | int64 (1~16,777,215) | 프로세스 공통 카운터. 재시작 시 1 부터 (generation 으로 구분) |
@@ -142,12 +146,13 @@ flowchart LR
 | `follow/command` | onboard → 추종 제어 | action(START·STOP·SCAN_START), START 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), SCAN_START 는 yaw_range_rad·yaw_rate_rad_s·timeout_s(NaN 은 기본값), STOP 은 reason(운용자·링크 두절·onboard 판단) | ACCEPTED·REJECTED(이유)·FAILED. 이후 진행은 `follow/status` |
 | `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD), 또는 HOLD 상태 절대 heading(rad, NED) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
-- 엔드포인트, 타임아웃, 실제 schema 이름은 추적·추종 쪽 구현에 맞춘다 **[미결 1]**.
+- 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). 타임아웃과 schema 이름·필드는 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
 - 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어.
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
 
-- 구독: `vision/overlay/jpeg`, `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
+- 구독: `vision/frame/jpeg`(박스 없는 원본 JPEG, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
+- 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 관측 둘 중 하나만 짝이 생겨 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
 - 매칭 버퍼: 크기와 대기 시간을 제한한다. 도착 순서는 보장되지 않으므로 기다리되, 시간 안에 짝이 오지 않은 메시지는 버린다. 재연결·재시작(`session_id` 변경) 때 버퍼를 비운다. JPEG 이 없는 프레임의 탐지·추적 결과는 보내지 않는다.
 - 전송: RTSP 세션 하나에 영상 트랙(RTP/JPEG)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
 - 시각: 영상 프레임과 메타데이터 모두 JPEG 의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
@@ -163,13 +168,13 @@ flowchart LR
 
 ## 7. 검토 필요 사항
 
-1. REQ/REP 의 엔드포인트(주소·포트), schema 이름, 타임아웃. `fc/mode_event` 이름과 필드. 추적·추종 쪽에 이미 구현된 이름이 있으면 그것을 따른다. — 추적·추종·통신
-2. `follow/status`·`tracking/status` 의 실제 필드 (스키마 또는 메시지 덤프). — 추적·추종
-3. IR 영상 해상도: 탐지 쪽 설명은 640×480, `tracking/tracks` 예제는 640×512. 실제 값 확인. — 탐지·추적
-4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지 (`MAV_CMD_DO_REPOSITION` yaw vs Offboard 유지 중 yaw setpoint). `docs/spec/icd.md` E3. — 통신·추종
-5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 실제 수신 주기 흔들림이 정렬 허용 오차 50 ms 안인지 기체에서 측정. `docs/spec/icd.md` D5. — 통신·추적
+1. REQ/REP·PUB 의 schema 이름과 필드(요청, 결과, 모드 완료 이벤트) 고정. 엔드포인트 6370~6373 은 5장에 반영. `fc/mode_event` 의 발행 엔드포인트. — 추적·추종·통신
+2. `follow/status`·`tracking/status` 의 JSON Schema 와 예제를 5.1 에 반영 (추적·추종 쪽이 제공). — 추적·추종·통신
+3. 박스 없는 원본 JPEG 토픽(`vision/frame/jpeg` 가칭)의 이름·schema·FPS 상한. 기존 `vision/overlay/jpeg` 는 (B) 이 토픽으로 교체해 없앨지, (C) 미리보기용으로 남길지. — 탐지
+4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
+5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 실제 수신 주기 흔들림이 정렬 허용 오차 50 ms 안인지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
-7. `fc/attitude`·`fc/state` 필드 이름·단위 확정 (`ground_pose` 가 deg 를 쓰는 것과 통일할지). — 통신·추적
+7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 표본별 원수신 시각)은 합의됨. — 통신·추적
 
 ## 변경 이력
 
@@ -177,4 +182,5 @@ flowchart LR
 |---|---|---|
 | 0.1 | 2026-10-15 | 제안 초안. 프로세스 구성 두 안, 공통 규칙, C++ 인터페이스, 토픽, 두절·시간 초과 처리 |
 | 0.2 | 2026-10-15 | 5.3 영상 송신부 추가 |
+| 0.4 | 2026-10-15 | 리뷰 반영: 영상 소스를 박스 없는 원본 JPEG 토픽으로, `perception/observations` 빈 프레임 발행·frame_id 건너뜀, `vision/npu_input/jpeg` 추가, IR 640×480 확정, 엔드포인트 6370~6373, FC 필드·단위 합의, 7장 갱신 |
 | 0.3 | 2026-10-15 | 안 B 확정. 요청은 REQ/REP 로, 모드 수락·완료 구분, Hold heading 요청 추가. `control/target`·`designated` 삭제(지정 표적은 `follow/status`). `tracking/tracks` v5 실제 필드, generation·track_id 범위, FC 표본 30 Hz. 7장 갱신 |
