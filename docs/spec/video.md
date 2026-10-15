@@ -2,10 +2,10 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.3 (팀 검토 전 초안) |
+| 문서 버전 | 0.4 (팀 검토 전 초안) |
 | 범위 | RPi 영상 송신부 → 통제기: 영상과 프레임별 추적 결과(바운딩 박스) 전송 |
 | 따르는 표준 | RTSP (RFC 2326), RTP·RTCP (RFC 3550), RTP/JPEG (RFC 2435), ONVIF Streaming·Analytics 명세의 메타데이터 스트림 형식. ONVIF Profile·SOAP 서비스는 구현하지 않는다 |
-| 관련 문서 | `docs/spec/icd.md` (MAVLink: 추종 명령, 스트림 알림), `docs/spec/process_interfaces.md` (RPi 안 토픽, 송신부 매칭 규칙) |
+| 관련 문서 | `docs/spec/icd.md` (MAVLink: 추종 명령, 스트림 알림), `docs/spec/process_interfaces.md` (RPi 안 토픽, 송신부의 메시지 결합 규칙) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 9장의 검토 항목 번호 |
 
 ## 0. 범위
@@ -19,7 +19,7 @@
 - MAVLink `VIDEO_STREAM_INFORMATION` 내용
 
 이 문서가 정하지 않는 것
-- RPi 안에서 영상 송신부가 받는 토픽과 매칭 규칙 → `docs/spec/process_interfaces.md` 5.3
+- RPi 안에서 영상 송신부가 받는 토픽과 메시지 결합 규칙 → `docs/spec/process_interfaces.md` 5.3
 - 추종 명령·상태 → `docs/spec/icd.md`
 - 탐지·추적 알고리즘 → `docs/design/system_architecture.md`
 
@@ -63,8 +63,8 @@ a=control:trackID=1
 | 항목 | 값 |
 |---|---|
 | 페이로드 | RFC 2435 RTP/JPEG, 정적 페이로드 타입 26, 90 kHz 클럭 |
-| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임**(`process_interfaces.md` 5.1 `vision/frame/raw` 가칭, 토픽 이름·픽셀 형식 **[미결 3]**). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
-| JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 송신부의 JPEG 인코더(libjpeg-turbo 또는 GStreamer `jpegenc`)를 이 조건으로 설정한다 (progressive 끔, 허프만 테이블 최적화 끔). 흑백 입력이면 색차 성분 없이 인코딩한다 |
+| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임** `vision/frame/gray8` (schema `argus.vision.frame.v1`, encoding "gray8", 640×480 8 비트 흑백, 최대 30 FPS. `process_interfaces.md` 5.1). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
+| JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 송신부의 JPEG 인코더(libjpeg-turbo 또는 GStreamer `jpegenc`)를 이 조건으로 설정한다 (progressive 끔, 허프만 테이블 최적화 끔). 흑백(gray8) 입력은 인코딩 전에 4:2:0(I420)으로 변환한다. RFC 2435 type 0·1 은 3 성분 JPEG 만 다루므로 1 성분(흑백) JPEG 은 `rtpjpegpay` 가 전송하지 못한다 (GStreamer 1.24.2 실측: GRAY8 은 "Wrong SOF length" 경고로 0 프레임 수신, I420 은 전부 수신). 색차 성분이 일정값이라 크기 증가는 거의 없다 |
 | 해상도 | IR 640×480. RFC 2435 는 8 px 단위, 최대 2040 px. 2040 px 를 넘는 EO 영상은 ONVIF JPEG RTP 헤더 확장(첫 패킷 0xFFD8, 이후 0xFFFF 식별자로 SOF·DQT·DHT 전달)으로 보낸다 **[미결 8]** |
 | 품질 | 송신부 설정값. 초기값 75, 화질 측정 뒤 조정 **[미결 12]**. 양자화 테이블은 RFC 2435 의 Q 필드로 전달한다: Q 1~99 는 테이블 보내지 않고 수신기가 RFC 2435 부록 A 의 표준 양자화 테이블을 Q 값으로 배율 조정해 만든다. Q 128~255 는 인코더가 쓴 양자화 테이블을 첫 패킷의 Quantization Table 헤더에 담아 보낸다. 어느 쪽을 쓸지는 패킷화 구현(rtpjpegpay 등)이 정하므로, 통제기는 두 방식을 모두 지원해야 한다 |
 | FPS | 최대 30. 고정 주기가 아니며 탐지 쪽 큐 드롭으로 프레임이 빠질 수 있다 |
@@ -157,12 +157,12 @@ a=control:trackID=1
 
 ## 5. 송신부 동작
 
-- 구독·매칭 버퍼·재시작 처리는 `process_interfaces.md` 5.3 을 따른다.
-- 프레임마다: 비압축 프레임 → JPEG 인코딩(640×480 흑백 약 1~2 ms) → RTP/JPEG 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
+- 구독·메시지 결합·재시작 처리는 `process_interfaces.md` 5.3 을 따른다.
+- 프레임마다: 비압축 흑백 프레임 → I420 변환 → JPEG 인코딩(640×480 약 1~2 ms) → RTP/JPEG 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
 - 영상 프레임이 없는 추적 결과는 보내지 않는다. 추적 결과가 없는 프레임은 영상 + 빈 `tt:Frame` 을 보낸다.
 - IR 카메라 NUC(셔터 보정) 동안 약 0.5 s 프레임이 없다. 송신부는 아무것도 보내지 않으며 RTSP 세션은 유지한다.
 - RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신).
-- 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! jpegenc ! rtpjpegpay name=pay0 pt=26`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 바꾸면 `jpegenc ! rtpjpegpay` 를 `x264enc ! rtph264pay` 처럼 요소만 바꾼다.
+- 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay name=pay0 pt=26`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 바꾸면 `jpegenc ! rtpjpegpay` 를 `x264enc ! rtph264pay` 처럼 요소만 바꾼다.
 
 ## 6. 통제기 동작
 
@@ -196,29 +196,30 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 
 | 센서 | model_ver | 모델 파일 | class_id | label | ONVIF `tt:Type` |
 |---|---|---|---|---|---|
-| IR | 1 | `yolox_s_leaky_v7.3.hef` | — | — | — |
+| IR | 1 | `yolox_s_leaky_v7.3.hef` | 0 | tank | Vehicle |
 
-탐지 담당이 채운다 **[미결 10]**. 통제기는 표에 없는 class_id 를 받으면 `argus:Label` 문자열을 그대로 표시한다.
+라벨 파일은 RPi `config/tank_labels.txt`. 클래스 구성이 바뀌는 모델을 올릴 때 탐지 담당이 `model_ver` 를 올리고 이 표를 함께 갱신한다. 통제기는 표에 없는 class_id 를 받으면 `argus:Label` 문자열을 그대로 표시한다.
 
 ## 9. 검토 필요 사항
 
 1. 통제기 GStreamer Windows 배포 구성: 공식 MSVC 바이너리에 `rtponvifmetadatadepay`(gst-plugins-rs)가 포함되는지 `gst-inspect-1.0` 으로 확인, 필요한 플러그인만 묶었을 때 크기 측정, GStreamer 버전 고정 방법. — 통제기
 2. 통제기에서 GStreamer 와 Qt 화면 연결 방식: `appsink` 로 프레임을 꺼내 `QImage` 로 그리기 vs `qml6glsink` 로 GPU 직접 표시. — 통제기
-3. 비압축 프레임 토픽 이름·schema·픽셀 형식 (`process_interfaces.md` 7장 3). — 탐지
+3. 비압축 프레임 토픽은 `vision/frame/gray8` 로 확정 (`process_interfaces.md` 5.1). 남은 것: 전송 경로(기존 버스 vs IPC 직결, Pi 측정 뒤). — 탐지
 4. 표준에 없는 값을 넣을 XML 요소: `argus:` 네임스페이스와 요소 이름(FrameId, ImageWidth, ImageHeight, ClassId, Label, Generation, State), `tt:Class/tt:Type` 에 넣을 ONVIF 분류명. — 통신·탐지
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
 7. 통제기 "영상 정지" 판단 시간 (NUC 0.5 s 보다 길게). — 통제기
 8. EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
 9. onboard 가 송신부 상태를 받는 방법 (`VIDEO_STREAM_INFORMATION` flags 용). — 통신
-10. IR 모델 v7.3 class_id 표. — 탐지
+10. IR 모델 v7.3 class_id 표는 8장에 반영함. 모델 교체 때 갱신. — 탐지
 11. RPi–통제기 Wi-Fi 의 실제 처리량·손실률 측정 (영상 6~8 Mbps + 메타데이터 + MAVLink). 부족하면 품질·FPS 조정. — 통신
-12. JPEG 품질값: 비압축 프레임 대 JPEG 의 화질(PSNR·육안)을 품질 75·90·95 에서 측정해 정함. 비트 전송률(11)과 함께 판단. — 통신·탐지
+12. JPEG 품질값: 비압축 프레임 대 JPEG 의 화질(PSNR·육안)을 품질 75·90·95 에서 측정해 정함. 비트 전송률(11)과 함께 판단. 측정은 비압축 프레임 토픽 구현 뒤 탐지 쪽이 Pi 에서 수행. — 통신·탐지
 
 ## 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-15 | 팀 검토 전 초안. 스트림 구성, RTP/JPEG, ONVIF 메타데이터 XML 과 필드 변환, 좌표 변환, 동기화, 송신부·통제기 동작, VIDEO_STREAM_INFORMATION, class_id 표, 미결 1~11 |
-| 0.3 | 2026-10-15 | 구현 라이브러리 결정: RPi gst-rtsp-server, 통제기 GStreamer (1·5·6장). 미결 1·2 를 배포 구성·Qt 연결로 교체 |
 | 0.2 | 2026-10-15 | 입력을 비압축 프레임으로 바꾸고 JPEG 인코딩·품질을 송신부 책임으로 (2·5장, 미결 3·12) |
+| 0.3 | 2026-10-15 | 구현 라이브러리 결정: RPi gst-rtsp-server, 통제기 GStreamer (1·5·6장). 미결 1·2 를 배포 구성·Qt 연결로 교체 |
+| 0.4 | 2026-10-16 | 리뷰 반영: 입력 토픽 `vision/frame/gray8` 확정, 흑백은 I420 변환 뒤 인코딩(RFC 2435 3 성분 제약), class_id 표(IR tank), 미결 3·10 해소, 변경 이력 정렬 |
