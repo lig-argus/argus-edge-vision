@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.5 (팀 검토 전 초안) |
+| 문서 버전 | 0.6 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -41,7 +41,7 @@ flowchart LR
     fc -->|fc/attitude, fc/state| ctl
     fc <-->|MAVLink| router[mavlink-router]
     gcs <-->|MAVLink| router
-    det -->|vision/frame/jpeg, perception/observations| vtx[영상 송신부]
+    det -->|vision/frame/raw, perception/observations| vtx[영상 송신부]
     trk -->|tracking/tracks| vtx
 ```
 
@@ -78,7 +78,7 @@ flowchart LR
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
 - 버전: 필드 추가는 같은 버전, 필드 삭제·의미 변경은 `vN` 증가. 받는 쪽은 모르는 필드를 무시한다 (`tracking/tracks` v5 수신기는 이미 그렇게 동작).
 - 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose`, `follow/status` 의 `scan_config` 등)은 받는 쪽(onboard)이 받을 때 rad·m·s 로 바꾼다.
-- 영상 해상도: IR 원본 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
+- 영상 해상도: IR 카메라 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
 - 정수 범위: `track_id`·`generation` 은 1~16,777,215 (2^24−1). MAVLink 명령 매개변수(float)로 손실 없이 전달하기 위한 범위다. `frame_id`·`fc_epoch` 는 uint64.
 - 시계: 프로세스 사이 시각은 RPi `CLOCK_MONOTONIC`. UTC 는 영상 메타데이터(`docs/spec/video.md`)에서만 쓴다.
 
@@ -103,8 +103,8 @@ flowchart LR
 
 | 토픽 | 발행 → 구독 | 주기 | 필드 |
 |---|---|---|---|
-| `vision/frame/jpeg` (가칭) **[미결 3]** | 탐지 → 영상 송신부 | 최대 30 FPS | 박스를 그리지 않은 원본 해상도(640×480) JPEG. RTSP 영상 트랙의 소스. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, frame_id, unix_ns 등), schema 가칭 `argus.vision.frame.v1`. 이름·schema 는 탐지 쪽이 정한다 |
-| `vision/overlay/jpeg` | 탐지 → (진단·미리보기용) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. (B) 위 토픽으로 교체해 없애거나 (C) 미리보기용으로 남기는 것은 탐지 쪽이 정한다 **[미결 3]** |
+| `vision/frame/raw` (가칭) **[미결 3]** | 탐지 → 영상 송신부 | 최대 30 FPS | 박스를 그리지 않은 **비압축** 프레임(640×480, 픽셀 형식은 `encoding` 에 명시. 예 `gray8`). RTSP 영상 트랙의 소스이며, 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, frame_id, unix_ns, width, height, encoding), schema 가칭 `argus.vision.frame.v1`. 이름·schema 는 탐지 쪽이 정한다 |
+| `vision/overlay/jpeg` | 탐지 → (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 유지 여부는 탐지 쪽이 정한다 |
 | `vision/npu_input/jpeg` | 탐지 → (진단용, 현재 구독자 없음) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 입력 640×640 레터박스 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 박스 좌표계가 원본 픽셀과 다르다 |
 | `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 관측 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
@@ -123,7 +123,7 @@ flowchart LR
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| schema, source, frame_id | string, string, uint64 | `argus.tracking.tracks.v5`. source·frame_id 는 원본 JPEG·탐지와 같은 값 (매칭 키) |
+| schema, source, frame_id | string, string, uint64 | `argus.tracking.tracks.v5`. source·frame_id 는 JPEG·탐지 메시지와 같은 값 (매칭 키) |
 | fc_epoch, generation | uint64, uint64 | generation 은 추적기 재시작·초기화마다 1 증가하는 영구 저장 카운터. 1~16,777,215 |
 | sample_monotonic_ns, motion_sample_ns, clock_domain, timestamp_source | int64, int64, string, string | 시각과 그 출처. `exposure_monotonic_ns` 는 null, `exposure_time_valid` 는 false (노출 시각 없음) |
 | image_width, image_height, coordinate_frame | int, int, "camera_pixel" | 640, 480. 박스 좌표 기준 (원본 영상 픽셀) |
@@ -176,9 +176,10 @@ flowchart LR
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
 
-- 구독: `vision/frame/jpeg`(박스 없는 원본 JPEG, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
-- 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 관측 둘 중 하나만 같은 frame_id 의 JPEG 이 있어 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
-- 매칭 버퍼: 크기와 대기 시간을 제한한다. 도착 순서는 보장되지 않으므로 기다리되, 시간 안에 같은 (source, frame_id) 의 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 버퍼를 비운다. JPEG 이 없는 프레임의 탐지·추적 결과는 보내지 않는다.
+- 구독: `vision/frame/raw`(박스 없는 비압축 프레임, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
+- 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 관측 둘 중 하나만 같은 frame_id 의 영상이 있어 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
+- 전송 코덱 인코딩(JPEG, 필요하면 H.264 등)은 영상 송신부가 한다. 탐지 프로세스는 프레임과 박스만 내고 전송 방식을 모른다(단일 책임). 그래서 코덱 추가·품질 변경은 송신부의 설정과 인코더 구현 추가로 끝나고 탐지 코드는 바뀌지 않으며(개방-폐쇄), 비압축 프레임이 있어 압축 손실 측정과 수신기 테스트도 할 수 있다. 비용: 640×480 8 비트 흑백 307 KB/프레임, 30 FPS 약 9 MB/s (RPi 안 ZeroMQ 로 충분). 송신부 JPEG 인코딩은 프레임당 1~2 ms.
+- 매칭 버퍼: 크기와 대기 시간을 제한한다. 도착 순서는 보장되지 않으므로 기다리되, 시간 안에 같은 (source, frame_id) 의 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 버퍼를 비운다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다.
 - 전송: RTSP 세션 하나에 영상 트랙(RTP/JPEG)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
 - 시각: 영상 프레임과 메타데이터 모두 JPEG 의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
 - 메타데이터의 박스: 운용자가 클릭해 고를 수 있어야 하므로 `tracking/tracks` 의 트랙 기준으로 보낸다. 영상에 그려진 탐지 박스와 위치가 다를 수 있다. 추적 결과가 없는 프레임은 박스 없이 보낸다.
@@ -195,7 +196,7 @@ flowchart LR
 
 1. REQ/REP 요청·응답(`follow/command`, `control/mode_request`)과 `fc/mode_event` 의 schema 이름·필드 고정. 응답 result 에 거부(rejected)를 따로 둘지, `failed` + reason 으로 할지. `fc/mode_event` 의 발행 엔드포인트. 엔드포인트 6370~6373 은 5장에 반영. — 추적·추종·통신
 2. `follow/status`·`tracking/status` 는 받은 schema 로 5.1.2·5.1.3 에 반영함. 남은 것: `follow/status` 발행 주기, `uid`·`client_session`·`onboard_session` 의 뜻, `scan_config` 단위를 rad/s·s 로 맞출지. — 추적·추종
-3. 박스 없는 원본 JPEG 토픽(`vision/frame/jpeg` 가칭)의 이름·schema·FPS 상한. 기존 `vision/overlay/jpeg` 는 (B) 이 토픽으로 교체해 없앨지, (C) 미리보기용으로 남길지. — 탐지
+3. 박스 없는 비압축 프레임 토픽(`vision/frame/raw` 가칭)의 이름·schema·픽셀 형식·FPS 상한. 기존 `vision/overlay/jpeg` 유지 여부. — 탐지
 4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
 5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
@@ -208,5 +209,6 @@ flowchart LR
 | 0.1 | 2026-10-15 | 제안 초안. 프로세스 구성 두 안, 공통 규칙, C++ 인터페이스, 토픽, 두절·시간 초과 처리 |
 | 0.2 | 2026-10-15 | 5.3 영상 송신부 추가 |
 | 0.5 | 2026-10-15 | `follow/status`·`tracking/status` 실제 schema 반영(5.1.2·5.1.3), `follow/command` action·result 이름을 구현에 맞춤, 단위 변환 규칙 보완, 7장 1·2 갱신 |
-| 0.4 | 2026-10-15 | 리뷰 반영: 영상 소스를 박스 없는 원본 JPEG 토픽으로, `perception/observations` 빈 프레임 발행·frame_id 건너뜀, `vision/npu_input/jpeg` 추가, IR 640×480 확정, 엔드포인트 6370~6373, FC 필드·단위 합의, 7장 갱신 |
+| 0.6 | 2026-10-15 | 영상 소스를 비압축 프레임 토픽으로 바꾸고 전송 코덱 인코딩을 영상 송신부로 (5.1·5.3·7장 3) |
+| 0.4 | 2026-10-15 | 리뷰 반영: 영상 소스를 박스 없는 JPEG 토픽으로, `perception/observations` 빈 프레임 발행·frame_id 건너뜀, `vision/npu_input/jpeg` 추가, IR 640×480 확정, 엔드포인트 6370~6373, FC 필드·단위 합의, 7장 갱신 |
 | 0.3 | 2026-10-15 | 안 B 확정. 요청은 REQ/REP 로, 모드 수락·완료 구분, Hold heading 요청 추가. `control/target`·`designated` 삭제(지정 표적은 `follow/status`). `tracking/tracks` v5 실제 필드, generation·track_id 범위, FC 표본 30 Hz. 7장 갱신 |
