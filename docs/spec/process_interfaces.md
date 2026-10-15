@@ -117,7 +117,7 @@ flowchart LR
 
 - 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 기존 6357 추적기 bind. 탐지 토픽은 기존 버스 5556. `fc/mode_event` 의 발행 엔드포인트는 **[미결 1]**.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. onboard 는 표본을 그대로 넘긴다.
-- `tracking/tracks` 가 없어도(입력 부재, FC 정렬·투영 실패) 영상 송신부는 영상을 계속 보낸다.
+- `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 FC 표본 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
 #### 5.1.1 `tracking/tracks` v5 필드 (2026-10-15 기준)
 
@@ -136,7 +136,7 @@ flowchart LR
 | tracks[].real_detection, last_real_detection_monotonic_ns | bool, int64 | |
 | tracks[].ground, ground_anchor | [N, E, varN, covNE, varE, alignment_ms], [anchor_y, height_m] | 지면 투영 |
 
-- 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, FC 정렬 실패).
+- 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 FC 표본 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
 
 #### 5.1.2 `follow/status` v1 필드 (2026-10-15 기준)
@@ -197,7 +197,7 @@ flowchart LR
 2. `follow/status`·`tracking/status` 는 받은 schema 로 5.1.2·5.1.3 에 반영함. 남은 것: `follow/status` 발행 주기, `uid`·`client_session`·`onboard_session` 의 뜻, `scan_config` 단위를 rad/s·s 로 맞출지. — 추적·추종
 3. 박스 없는 원본 JPEG 토픽(`vision/frame/jpeg` 가칭)의 이름·schema·FPS 상한. 기존 `vision/overlay/jpeg` 는 (B) 이 토픽으로 교체해 없앨지, (C) 미리보기용으로 남길지. — 탐지
 4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
-5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 실제 수신 주기 흔들림이 정렬 허용 오차 50 ms 안인지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
+5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
 7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 표본별 원수신 시각)은 합의됨. — 통신·추적
 
