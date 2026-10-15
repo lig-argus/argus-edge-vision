@@ -17,9 +17,10 @@
 
 이 문서가 정하지 않는 것
 - 메시지·필드의 바이트 형식과 값의 의미 → `argus.xml` 과 생성 헤더
-- 추종 제어 알고리즘과 onboard 상태 전이 → `docs/design/system-architecture.md`
+- 추종 제어 알고리즘과 onboard 상태 전이 → `docs/design/system_architecture.md`
 - 탐지 모델
 - 영상 전송 규약 → `docs/video.md` (#20)
+- RPi 안 탐지 프로세스 → onboard 전달(Pub/Sub) → `docs/design/system_architecture.md`
 - FC(PX4) 파라미터 값 → 배포 문서
 
 ## 1. 구성과 전송
@@ -31,13 +32,13 @@
 | FC | 기체 비행 제어기 (PX4 v1.16) | 1 | 1 (MAV_COMP_ID_AUTOPILOT1) | 비행 제어, 텔레메트리 |
 | onboard: 명령·setpoint (MAVSDK) | RPi, 추종 프로그램 | 1 | 195 (MAV_COMP_ID_PATHPLANNER, MAVSDK 보조 컴퓨터 기본값) | 통제기 명령 처리, ARGUS_* 송신, FC 로 setpoint·모드 요청 |
 | onboard: FC 관측·TIMESYNC (FC_RX) | RPi, 추종 프로그램 | 1 | 191 (MAV_COMP_ID_ONBOARD_COMPUTER) | FC 텔레메트리 수신, TIMESYNC 요청. 명령·setpoint 는 보내지 않는다 |
-| 탐지 프로세스 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 카메라 프레임 추론, 결과를 onboard 로 전달 |
+| 탐지 프로세스 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 카메라 프레임 추론, 결과를 RPi 내부 Pub/Sub 으로 onboard 와 RTSP 송신부에 전달 |
 | 통제기 | 운용자 노트북 (gcs) | 250 | 190 (MAV_COMP_ID_MISSIONPLANNER) | 감시, 명령, 가상 조종 |
 | QGC | 운용자 노트북 (선택) | 255 | 190 | PX4 파라미터·보정 전용. 비행 명령은 보내지 않는다 |
 
 - 기체 안의 FC 와 onboard 는 같은 sysid 1 을 쓰고 compid 로 구분한다 (MAVLink 관례: 한 기체 = 한 sysid).
 - 통제기 sysid 250 은 제어권을 가진 유일한 통제기다 (5장).
-- onboard 는 한 프로그램이지만 MAVLink 식별자를 둘 쓴다. TIMESYNC 응답을 자기 요청과 맞추려면 보낸 쪽 compid 가 MAVSDK 와 달라야 한다 (`docs/design/system-architecture.md` 1.8·1.9). 통제기가 onboard 에 보내는 명령은 `target_component = 195`.
+- onboard 는 한 프로그램이지만 MAVLink 식별자를 둘 쓴다. TIMESYNC 응답을 자기 요청과 맞추려면 보낸 쪽 compid 가 MAVSDK 와 달라야 한다 (`docs/design/system_architecture.md` 1.8·1.9). 통제기가 onboard 에 보내는 명령은 `target_component = 195`.
 
 ### 1.2 링크
 
@@ -49,7 +50,7 @@ flowchart LR
             router[mavlink-router]
             onboard[onboard<br/>sysid 1 / compid 195·191]
             vision[탐지 프로세스]
-            rtsp[RTSP 서버<br/>H.264 인코더]
+            rtsp[RTSP 서버<br/>JPEG 인코더]
         end
     end
     subgraph ground [지상]
@@ -60,9 +61,9 @@ flowchart LR
     router <-->|UDP 127.0.0.1:14540| onboard
     router <-->|UDP 14550| gcs
     router <-->|UDP 14551| qgc
-    vision -->|UDP 127.0.0.1:25100<br/>ARGUS_DETECTION| onboard
-    vision -->|프레임·메타데이터| rtsp
-    rtsp -->|RTSP + RTP/H.264| gcs
+    vision -->|Pub/Sub RPi 내부| onboard
+    vision -->|프레임·탐지 결과| rtsp
+    rtsp -->|RTSP + RTP/JPEG<br/>+ 메타데이터 트랙 ONVIF XML| gcs
 ```
 
 | 링크 | 전송 | 주소·포트 | 내용 |
@@ -71,13 +72,11 @@ flowchart LR
 | RPi 라우터 ↔ onboard | UDP, RPi 안 | `127.0.0.1:14540` | onboard 가 FC·통제기와 주고받는 모든 메시지 |
 | RPi 라우터 ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (서버) | 통제기가 먼저 보내면 라우터가 그 주소로 응답 |
 | RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 라우터가 QGC 의 명령을 FC 로 보내지 않도록 필터 |
-| 탐지 프로세스 → onboard | UDP, RPi 안 | `127.0.0.1:25100` | `ARGUS_DETECTION` 패킷 (MAVLink 2 프레임, 헤더 포함) |
-| 탐지 프로세스 → RTSP 서버 | RPi 안 | `docs/video.md` | 카메라 프레임과 메타데이터(sensor_id, frame_id, time_usec) |
-| RTSP 서버 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/video.md` | H.264 영상. 탐지 결과와는 H.264 SEI 의 frame_id·time_usec 로 동기화 |
+| 탐지 프로세스 → RTSP 서버 | RPi 안 | `docs/video.md` | 카메라 프레임과 프레임별 탐지 결과 |
+| RTSP 서버 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/video.md` | JPEG 영상 트랙 + ONVIF XML 메타데이터 트랙. 프레임 대응은 `docs/video.md` |
 
 - mavlink-router 가 FC 의 UART 를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 그래서 onboard 와 통제기는 서로의 메시지도 받는다 (sysid·compid 로 걸러 쓴다).
 - 프로토콜은 **MAVLink 2** 만 쓴다. 메시지 id 45000 번대는 MAVLink 1 로 보낼 수 없다. 서명(signing)은 쓰지 않는다 [미결 D1].
-- 탐지 프로세스는 MAVLink 노드로 등록하지 않는다. `ARGUS_DETECTION` 을 MAVLink 2 프레임으로 만들어 onboard 로만 보낸다 (통제기에는 onboard 가 중계).
 
 ## 2. 표준 메시지 사용 목록
 
@@ -95,7 +94,7 @@ flowchart LR
 | COMMAND_ACK (77) | FC, onboard → 통제기 | 응답 | 명령 결과 (4장) |
 | SET_POSITION_TARGET_LOCAL_NED (84) | onboard → FC | 20 Hz | Offboard 속도 setpoint. 추종 중에만 보낸다 |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
-| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, H.264, 해상도, fps 알림 |
+| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_UNKNOWN`(0) (MAVLink 에 JPEG 값이 없음. 코덱은 RTSP 의 SDP 로 알림) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
 
 - FC 텔레메트리 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
@@ -109,14 +108,15 @@ flowchart LR
 | 메시지 (id) | 송신 → 수신 | 주기 | 수신자가 하는 일 |
 |---|---|---|---|
 | ARGUS_STATUS (45000) | onboard → 통제기 | 1 Hz, 그리고 `track_state`·`health`·`active_sensor` 가 바뀌면 즉시 1회 | 통제기: 추종 상태·연결 상태 표시. 6.1 의 두절 판단에 사용 |
-| ARGUS_DETECTION (45001) | 탐지 프로세스 → onboard (UDP 25100) / onboard → 통제기 (중계) | 센서마다 추론 프레임마다 (최대 15 Hz [미결 B1]) | onboard: 추종 오차 입력. 통제기: 바운딩 박스 표시 |
+| ARGUS_DETECTION (45001) | onboard → 통제기 [미결 B6] | 센서마다 추론 프레임마다 (최대 15 Hz [미결 B1]) | 통제기: 바운딩 박스 표시 [미결 B6] |
 | ARGUS_SENSOR_STATUS (45002) | onboard → 통제기 | 센서마다 1 Hz, `flags` 가 바뀌면 즉시 1회 | 통제기: 센서별 상태 표시, FOLLOWABLE 로 표적 선택 가능 여부 결정 |
 
+- `ARGUS_DETECTION` 의 역할은 다시 정한다: 프레임별 탐지 결과는 RPi 내부 Pub/Sub(탐지 프로세스 → onboard)과 영상 메타데이터 트랙(→ 통제기, `docs/video.md`)으로 전달하므로, 메시지를 삭제하거나 추종 표적 정보만 남긴다 (#21). 아래 `ARGUS_DETECTION` 내용과 3.2·3.3 은 그 결정 전까지의 값이다 [미결 B6].
 - onboard 는 탐지 프로세스에서 받은 `ARGUS_DETECTION` 을 **그대로** 통제기에 중계한다 (필드를 바꾸지 않는다). 통제기용 전송률 제한은 두지 않는다 [미결 B1].
 - 객체가 없는 프레임도 `count = 0` 으로 보낸다. 통제기는 이것으로 "탐지는 살아 있고 객체만 없음" 을 구분한다.
 - `time_usec` 는 그 프레임의 촬영 시각(노출 시각), RPi `CLOCK_MONOTONIC` 기준이다. 탐지 프로세스가 받은 시각이 아니다.
 - `frame_id` 는 센서별 프레임 순번이다. 카메라에서 받은 프레임마다 1 씩 증가하며 추론을 건너뛴 프레임도 센다.
-- 영상 스트림(H.264)의 같은 프레임 SEI 에 같은 `sensor_id`·`frame_id`·`time_usec` 를 넣는다. 통제기는 이 값으로 바운딩 박스를 해당 프레임에 그린다 (`docs/video.md`).
+- 통제기가 영상 위에 그리는 바운딩 박스는 영상 메타데이터 트랙의 값을 쓴다 (`docs/video.md`).
 
 ### 3.2 좌표 규약
 
@@ -160,7 +160,7 @@ err_y = (표적 중심 y - img_h/2) / (img_h/2)   → 위쪽 끝 -1, 중심 0, �
 
 | 명령 | param | 조건 | 결과 |
 |---|---|---|---|
-| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1 이상, 운용자가 고른 객체), p2 sensor | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ p1 이 p2 센서의 최신 `ARGUS_DETECTION` 에 있음 (0 이면 DENIED. 최신의 기준 시간은 아키텍처 문서 2.3) | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고 Offboard 진입 성공 시 ACCEPTED, 실패 시 FAILED |
+| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1 이상, 운용자가 고른 객체), p2 sensor | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ p1 이 onboard 가 받은 p2 센서의 최신 탐지 결과에 있음 (0 이면 DENIED. 최신의 기준 시간은 아키텍처 문서 2.3) ⑤ 추종 중이 아님 | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고 Offboard 진입 성공 시 ACCEPTED, 실패 시 FAILED |
 | MAV_CMD_ARGUS_TRACK_STOP (45001) | 없음 | 보낸 sysid 가 제어권 통제기 | 추종 중이면 추종을 끝내고 Hold 로 바꾼 뒤 ACCEPTED. 추종 중이 아니어도 ACCEPTED |
 
 ```mermaid
@@ -183,8 +183,8 @@ sequenceDiagram
     O-->>G: ARGUS_STATUS track_state=IDLE
 ```
 
-- 추종 중에 TRACK_START 를 다시 받았을 때의 처리(표적 변경 또는 DENIED)는 정하지 않았다 [미결 E2].
-- 추종 중 표적을 잃었을 때의 onboard 동작(상태 전환 시간, Hold 전환)은 `docs/design/system-architecture.md` 2.7·2.11 을 따른다. 통제기는 `ARGUS_STATUS.track_state` 로만 본다 [미결 E1].
+- 추종 중에 받은 TRACK_START 는 DENIED 다. 표적을 바꾸려면 TRACK_STOP(Hold) 뒤 다시 선택한다 (아키텍처 문서 2.14).
+- 추종 중 표적을 잃었을 때의 onboard 동작(상태 전환 시간, Hold 전환)은 `docs/design/system_architecture.md` 2.7·2.11 을 따른다. 통제기는 `ARGUS_STATUS.track_state` 로만 본다 [미결 E1].
 
 ### 4.3 비행 명령 (FC 가 받는다, 통제기 → FC 직접)
 
@@ -212,7 +212,7 @@ sequenceDiagram
 |---|---|---|
 | 6.1 통제기 → onboard | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
 | 6.2 onboard → FC | FC 텔레메트리(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
-| 6.3 탐지 → onboard | 추종 중인 센서의 `ARGUS_DETECTION` 이 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | onboard 동작은 아키텍처 문서 2.7·2.11. 통제기는 `track_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
+| 6.3 탐지 → onboard | 추종 중인 센서의 탐지 결과(RPi 내부 Pub/Sub)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | onboard 동작은 아키텍처 문서 2.7·2.11. 통제기는 `track_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
 | 6.4 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). onboard 의 6.1 과 독립이다.
@@ -231,13 +231,13 @@ sequenceDiagram
 | B3 | 센서 상태 항목 | flags 4 개 외에 필요한 것 (온도, 프레임 드롭) | 탐지 |
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 | 탐지 |
-| C | 영상 전송 | RTSP + RTP + H.264 로 정함. 세부(프레임 전달 방식, RTSP 서버, 디코더, SEI 형식, 포트)는 `docs/video.md` (#20) | 통제기·탐지 |
+| B6 | ARGUS_DETECTION 역할 | 삭제 vs 추종 표적 정보만 남김 (#21). 결정 뒤 3.1·3.2·3.3 수정 | 통제기·제어·탐지 |
+| C | 영상 전송 | RTSP + RTP/JPEG + ONVIF XML 메타데이터 트랙으로 정함. 세부(RTSP 서버, 통제기 수신, 포트, 시각 변환)는 `docs/video.md` (#20) | 통제기·탐지 |
 | D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
 | E1 | 추종 상태 값 | `ARGUS_TRACK_STATE` 를 아키텍처 문서의 상태 모델(pending, priming, Confirmed·Predicted·Lost, Hold 대기, Scan)에 맞추기. 통제기가 구분할 상태 목록 대기 | 제어·통제기 |
-| E2 | 추종 중 TRACK_START | 표적 변경 허용 vs DENIED 후 Hold·재선택 (아키텍처 문서 2.14) | 제어 |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
 
@@ -260,4 +260,4 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
-| 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종 명령 절차, 두절 판단, 미결 항목 A1~E2 |
+| 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종 명령 절차, 두절 판단, 미결 항목 A1~E1 |
