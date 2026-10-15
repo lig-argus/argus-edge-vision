@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.1 (팀 검토 전 초안) |
+| 문서 버전 | 0.2 (팀 검토 전 초안) |
 | 범위 | RPi 영상 송신부 → 통제기: 영상과 프레임별 추적 결과(바운딩 박스) 전송 |
 | 따르는 표준 | RTSP (RFC 2326), RTP·RTCP (RFC 3550), RTP/JPEG (RFC 2435), ONVIF Streaming·Analytics 명세의 메타데이터 스트림 형식. ONVIF Profile·SOAP 서비스는 구현하지 않는다 |
 | 관련 문서 | `docs/spec/icd.md` (MAVLink: 추종 명령, 스트림 알림), `docs/spec/process_interfaces.md` (RPi 안 토픽, 송신부 매칭 규칙) |
@@ -63,10 +63,10 @@ a=control:trackID=1
 | 항목 | 값 |
 |---|---|
 | 페이로드 | RFC 2435 RTP/JPEG, 정적 페이로드 타입 26, 90 kHz 클럭 |
-| 입력 | 탐지 프로세스가 발행하는 박스 없는 원본 JPEG (`process_interfaces.md` 5.1, 토픽 이름 **[미결 3]**). 송신부는 다시 인코딩하지 않고 패킷화만 한다 |
-| JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 탐지 쪽 OpenCV 옵션 `IMWRITE_JPEG_PROGRESSIVE=0`, `IMWRITE_JPEG_OPTIMIZE=0` (최적화 표 끔) |
+| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임**(`process_interfaces.md` 5.1 `vision/frame/raw` 가칭, 토픽 이름·픽셀 형식 **[미결 3]**). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
+| JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 송신부의 JPEG 인코더(libjpeg-turbo 또는 GStreamer `jpegenc`)를 이 조건으로 설정한다 (progressive 끔, 허프만 테이블 최적화 끔). 흑백 입력이면 색차 성분 없이 인코딩한다 |
 | 해상도 | IR 640×480. RFC 2435 는 8 px 단위, 최대 2040 px. 2040 px 를 넘는 EO 영상은 ONVIF JPEG RTP 헤더 확장(첫 패킷 0xFFD8, 이후 0xFFFF 식별자로 SOF·DQT·DHT 전달)으로 보낸다 **[미결 8]** |
-| 품질 | 탐지 쪽 설정 75. 양자화 테이블은 RFC 2435 의 Q 필드로 전달한다: Q 1~99 는 테이블 보내지 않고 수신기가 RFC 2435 부록 A 의 표준 양자화 테이블을 Q 값으로 배율 조정해 만든다. Q 128~255 는 인코더가 쓴 양자화 테이블을 첫 패킷의 Quantization Table 헤더에 담아 보낸다. 어느 쪽을 쓸지는 패킷화 구현(rtpjpegpay 등)이 정하므로, 통제기는 두 방식을 모두 지원해야 한다 |
+| 품질 | 송신부 설정값. 초기값 75, 화질 측정 뒤 조정 **[미결 12]**. 양자화 테이블은 RFC 2435 의 Q 필드로 전달한다: Q 1~99 는 테이블 보내지 않고 수신기가 RFC 2435 부록 A 의 표준 양자화 테이블을 Q 값으로 배율 조정해 만든다. Q 128~255 는 인코더가 쓴 양자화 테이블을 첫 패킷의 Quantization Table 헤더에 담아 보낸다. 어느 쪽을 쓸지는 패킷화 구현(rtpjpegpay 등)이 정하므로, 통제기는 두 방식을 모두 지원해야 한다 |
 | FPS | 최대 30. 고정 주기가 아니며 탐지 쪽 큐 드롭으로 프레임이 빠질 수 있다 |
 | RTP 타임스탬프 | 프레임의 `unix_ns` 를 90 kHz 클럭으로 변환한 값. 영상 RTP 는 코덱과 관계없이 90000 Hz 로 정해져 있다 (RFC 3551. 1 틱 ≈ 11.1 µs, 30 FPS 에서 프레임당 3000 틱). 32 비트라 절대 시각이 아니며 RTCP SR 로 UTC 에 대응한다 (4장). 한 프레임의 모든 패킷이 같은 값, 마지막 패킷 marker = 1 |
 | 비트 전송률 | 640×480 품질 75 는 프레임당 약 25~35 KB → 30 FPS 에서 약 6~8 Mbps (메타데이터 약 0.3 Mbps 별도). 7장 `bitrate` 에 이 값을 넣는다. 전송 경로는 RPi 와 통제기 사이 Wi-Fi(`docs/spec/icd.md` 1.2)이며 MAVLink 트래픽과 함께 쓴다. 실제 처리량과 손실률은 현장에서 측정한다 **[미결 11]** |
@@ -158,8 +158,8 @@ a=control:trackID=1
 ## 5. 송신부 동작
 
 - 구독·매칭 버퍼·재시작 처리는 `process_interfaces.md` 5.3 을 따른다.
-- 프레임마다: JPEG → RTP/JPEG 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
-- JPEG 이 없는 프레임의 추적 결과는 보내지 않는다. 추적 결과가 없는 프레임은 영상 + 빈 `tt:Frame` 을 보낸다.
+- 프레임마다: 비압축 프레임 → JPEG 인코딩(640×480 흑백 약 1~2 ms) → RTP/JPEG 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
+- 영상 프레임이 없는 추적 결과는 보내지 않는다. 추적 결과가 없는 프레임은 영상 + 빈 `tt:Frame` 을 보낸다.
 - IR 카메라 NUC(셔터 보정) 동안 약 0.5 s 프레임이 없다. 송신부는 아무것도 보내지 않으며 RTSP 세션은 유지한다.
 - RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신).
 
@@ -202,7 +202,7 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 
 1. RPi RTSP 서버 구현: gst-rtsp-server (RTP/JPEG 패킷화 `rtpjpegpay`, RTCP, ONVIF 메타데이터 패킷화 `rtponvifmetadatapay` 가 있음. 외부 라이브러리 추가 승인 필요) vs MediaMTX (RTP 패킷을 직접 만들어 넣어야 함). — 통신
 2. 통제기 수신: GStreamer (메타데이터 트랙까지 처리, Windows 배포가 무거움) vs Qt Network 으로 직접 구현 (RTSP 요청, RFC 2435 복원, RTCP SR 파싱. 코드는 작지만 직접 검증) . Qt Multimedia 는 메타데이터 트랙에 접근할 수 없어 제외. — 통제기
-3. 원본 JPEG 토픽 이름·schema (`process_interfaces.md` 7장 3). — 탐지
+3. 비압축 프레임 토픽 이름·schema·픽셀 형식 (`process_interfaces.md` 7장 3). — 탐지
 4. 표준에 없는 값을 넣을 XML 요소: `argus:` 네임스페이스와 요소 이름(FrameId, ImageWidth, ImageHeight, ClassId, Label, Generation, State), `tt:Class/tt:Type` 에 넣을 ONVIF 분류명. — 통신·탐지
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
@@ -211,9 +211,11 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 9. onboard 가 송신부 상태를 받는 방법 (`VIDEO_STREAM_INFORMATION` flags 용). — 통신
 10. IR 모델 v7.3 class_id 표. — 탐지
 11. RPi–통제기 Wi-Fi 의 실제 처리량·손실률 측정 (영상 6~8 Mbps + 메타데이터 + MAVLink). 부족하면 품질·FPS 조정. — 통신
+12. JPEG 품질값: 비압축 프레임 대 JPEG 의 화질(PSNR·육안)을 품질 75·90·95 에서 측정해 정함. 비트 전송률(11)과 함께 판단. — 통신·탐지
 
 ## 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-15 | 팀 검토 전 초안. 스트림 구성, RTP/JPEG, ONVIF 메타데이터 XML 과 필드 변환, 좌표 변환, 동기화, 송신부·통제기 동작, VIDEO_STREAM_INFORMATION, class_id 표, 미결 1~11 |
+| 0.2 | 2026-10-15 | 입력을 비압축 프레임으로 바꾸고 JPEG 인코딩·품질을 송신부 책임으로 (2·5장, 미결 3·12) |
