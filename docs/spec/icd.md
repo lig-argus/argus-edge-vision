@@ -29,9 +29,9 @@
 
 | 노드 | 실행 위치 | MAVLink sysid | compid | 역할 |
 |---|---|---|---|---|
-| FC | 기체 비행 제어기 (PX4 v1.16) | 1 | 1 (MAV_COMP_ID_AUTOPILOT1) | 비행 제어, 텔레메트리 |
+| FC | 기체 비행 제어기 (PX4 v1.16) | 1 | 1 (MAV_COMP_ID_AUTOPILOT1) | 비행 제어, telemetry |
 | onboard: 명령·setpoint (MAVSDK) | RPi, onboard 프로세스 | 1 | 195 (MAV_COMP_ID_PATHPLANNER, MAVSDK 보조 컴퓨터 기본값) | 통제기 명령 처리, ARGUS_* 송신, FC 로 setpoint·모드 요청 |
-| onboard: FC 관측·TIMESYNC (FC_RX) | RPi, onboard 프로세스 | 1 | 191 (MAV_COMP_ID_ONBOARD_COMPUTER) | FC 텔레메트리 수신, TIMESYNC 요청. 명령·setpoint 는 보내지 않는다 |
+| onboard: FC 관측·TIMESYNC (FC_RX) | RPi, onboard 프로세스 | 1 | 191 (MAV_COMP_ID_ONBOARD_COMPUTER) | telemetry 수신, TIMESYNC 요청. 명령·setpoint 는 보내지 않는다 |
 | 탐지 프로세스 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 카메라 프레임 추론. 탐지 결과를 추적기와 영상 송신부에 발행 |
 | UCMC 추적기 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 탐지 결과에 track_id 부여, 추적 결과(`tracking/tracks`) 발행. FC 자세·위치는 onboard 에서 받는다 |
 | 추종 제어 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 추종·스캔 판단, 속도 setpoint 계산. FC 로 보내는 것은 모두 onboard 를 거친다 |
@@ -63,16 +63,18 @@ flowchart LR
         gcs[통제기<br/>sysid 250 / compid 190]
         qgc[QGC<br/>sysid 255]
     end
-    FC <-->|UART TELEM2 921600| router
-    router <-->|UDP 127.0.0.1:14540| onboard
-    router <-->|UDP 14550| gcs
-    router <-->|UDP 14551| qgc
+    FC <-->|UART TELEM2 921600<br/>모든 MAVLink| router
+    router <-->|UDP 127.0.0.1:14540<br/>onboard 가 주고받는 모든 MAVLink| onboard
+    router -->|UDP 14551<br/>telemetry| qgc
+    router -->|UDP 14550<br/>telemetry·ARGUS 상태| gcs
+    gcs -->|UDP 14550<br/>통제기 명령| router
+    onboard -->|기체 상태| follow
+    follow -->|setpoint·모드·추종 명령| onboard
     onboard -->|기체 상태| tracker
-    onboard <-->|기체 상태 / setpoint·모드·추종 명령| follow
+    tracker -->|추적 결과| onboard
     vision -->|탐지 결과| tracker
     tracker -->|추적 결과| follow
-    tracker -->|추적 결과| onboard
-    vision -->|박스 없는 비압축 프레임·탐지 결과| rtsp
+    vision -->|박스 없는 비압축 프레임<br/>+ 탐지 결과| rtsp
     tracker -->|추적 결과| rtsp
     rtsp -->|RTSP + RTP/JPEG<br/>+ 메타데이터 트랙 ONVIF XML| gcs
 ```
@@ -112,7 +114,7 @@ flowchart LR
 | VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_UNKNOWN`(0) (MAVLink 에 JPEG 값이 없음. 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
 
-- FC 텔레메트리 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
+- telemetry 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
 - 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 표본이 있었으며 그 표본의 수신 후 경과 시간이 200 ms 를 넘지 않았다 (200 ms 의 기준 시점은 확인 중). 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 로 TELEM2 921600 bps(약 115 kB/s) 안이다.
 - PX4 는 Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 Offboard 에 들어가고 유지한다. setpoint 가 끊긴 뒤 `COM_OF_LOSS_T` (기체 FC 1.0 s, PX4 v1.16 기본값과 같음, 2026-10-06 FC 에서 읽음)가 지나면 `COM_OBL_RC_ACT` 동작으로 Offboard 를 빠져나간다. onboard 는 추종 중 20 Hz 를 유지한다.
 - `COM_OBL_RC_ACT` 는 5(Hold)로 설정한다. 2026-10-06 FC 에서 읽은 값은 0(Position)이었으므로 기체 FC 에 적용됐는지 확인이 필요하다 [미결 D4].
@@ -205,7 +207,7 @@ sequenceDiagram
 | 구간 | 판단 기준 | 두절 시 동작 |
 |---|---|---|
 | 6.1 통제기 → onboard | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
-| 6.2 onboard → FC | FC 텔레메트리(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
+| 6.2 onboard → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
 | 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청의 유효 시간이 지남 | ⓐ·ⓒ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. 모두 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장) |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
