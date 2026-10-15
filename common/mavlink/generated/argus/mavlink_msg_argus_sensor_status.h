@@ -4,31 +4,31 @@
 
 #include <stdint.h>
 
-#define MAVLINK_MSG_ID_ARGUS_SENSOR_STATUS 45002
+#define MAVLINK_MSG_ID_ARGUS_SENSOR_STATUS 45001
 
 
 typedef struct __mavlink_argus_sensor_status_t {
  float infer_fps; /*< [Hz] 최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.*/
- uint16_t model_ver; /*<  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.*/
- uint16_t img_w; /*< [px] 추론 입력 영상의 너비. 알 수 없으면 0.*/
- uint16_t img_h; /*< [px] 추론 입력 영상의 높이. 알 수 없으면 0.*/
+ uint16_t model_ver; /*<  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.*/
+ uint16_t img_w; /*< [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.*/
+ uint16_t img_h; /*< [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.*/
  uint8_t sensor_id; /*<  이 상태의 센서.*/
  uint8_t flags; /*<  센서의 상태와 기능.*/
 } mavlink_argus_sensor_status_t;
 
 #define MAVLINK_MSG_ID_ARGUS_SENSOR_STATUS_LEN 12
 #define MAVLINK_MSG_ID_ARGUS_SENSOR_STATUS_MIN_LEN 12
-#define MAVLINK_MSG_ID_45002_LEN 12
-#define MAVLINK_MSG_ID_45002_MIN_LEN 12
+#define MAVLINK_MSG_ID_45001_LEN 12
+#define MAVLINK_MSG_ID_45001_MIN_LEN 12
 
 #define MAVLINK_MSG_ID_ARGUS_SENSOR_STATUS_CRC 223
-#define MAVLINK_MSG_ID_45002_CRC 223
+#define MAVLINK_MSG_ID_45001_CRC 223
 
 
 
 #if MAVLINK_COMMAND_24BIT
 #define MAVLINK_MESSAGE_INFO_ARGUS_SENSOR_STATUS { \
-    45002, \
+    45001, \
     "ARGUS_SENSOR_STATUS", \
     6, \
     {  { "sensor_id", NULL, MAVLINK_TYPE_UINT8_T, 0, 10, offsetof(mavlink_argus_sensor_status_t, sensor_id) }, \
@@ -62,9 +62,9 @@ typedef struct __mavlink_argus_sensor_status_t {
  * @param sensor_id  이 상태의 센서.
  * @param flags  센서의 상태와 기능.
  * @param infer_fps [Hz] 최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.
- * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.
- * @param img_w [px] 추론 입력 영상의 너비. 알 수 없으면 0.
- * @param img_h [px] 추론 입력 영상의 높이. 알 수 없으면 0.
+ * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.
+ * @param img_w [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
+ * @param img_h [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
@@ -106,9 +106,9 @@ static inline uint16_t mavlink_msg_argus_sensor_status_pack(uint8_t system_id, u
  * @param sensor_id  이 상태의 센서.
  * @param flags  센서의 상태와 기능.
  * @param infer_fps [Hz] 최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.
- * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.
- * @param img_w [px] 추론 입력 영상의 너비. 알 수 없으면 0.
- * @param img_h [px] 추론 입력 영상의 높이. 알 수 없으면 0.
+ * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.
+ * @param img_w [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
+ * @param img_h [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_pack_status(uint8_t system_id, uint8_t component_id, mavlink_status_t *_status, mavlink_message_t* msg,
@@ -153,9 +153,9 @@ static inline uint16_t mavlink_msg_argus_sensor_status_pack_status(uint8_t syste
  * @param sensor_id  이 상태의 센서.
  * @param flags  센서의 상태와 기능.
  * @param infer_fps [Hz] 최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.
- * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.
- * @param img_w [px] 추론 입력 영상의 너비. 알 수 없으면 0.
- * @param img_h [px] 추론 입력 영상의 높이. 알 수 없으면 0.
+ * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.
+ * @param img_w [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
+ * @param img_h [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_pack_chan(uint8_t system_id, uint8_t component_id, uint8_t chan,
@@ -236,9 +236,9 @@ static inline uint16_t mavlink_msg_argus_sensor_status_encode_status(uint8_t sys
  * @param sensor_id  이 상태의 센서.
  * @param flags  센서의 상태와 기능.
  * @param infer_fps [Hz] 최근 1 초의 추론 FPS. 값을 알 수 없으면 NaN.
- * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.
- * @param img_w [px] 추론 입력 영상의 너비. 알 수 없으면 0.
- * @param img_h [px] 추론 입력 영상의 높이. 알 수 없으면 0.
+ * @param model_ver  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.
+ * @param img_w [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
+ * @param img_h [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  */
 #ifdef MAVLINK_USE_CONVENIENCE_FUNCTIONS
 
@@ -353,7 +353,7 @@ static inline float mavlink_msg_argus_sensor_status_get_infer_fps(const mavlink_
 /**
  * @brief Get field model_ver from argus_sensor_status message
  *
- * @return  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 ICD 에 둔다). 알 수 없으면 0.
+ * @return  이 센서가 사용하는 탐지 모델 버전 (class_id 의 의미를 정하는 표는 docs/spec/video.md 에 둔다). 알 수 없으면 0.
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_get_model_ver(const mavlink_message_t* msg)
 {
@@ -363,7 +363,7 @@ static inline uint16_t mavlink_msg_argus_sensor_status_get_model_ver(const mavli
 /**
  * @brief Get field img_w from argus_sensor_status message
  *
- * @return [px] 추론 입력 영상의 너비. 알 수 없으면 0.
+ * @return [px] 추론 입력 영상의 너비. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_get_img_w(const mavlink_message_t* msg)
 {
@@ -373,7 +373,7 @@ static inline uint16_t mavlink_msg_argus_sensor_status_get_img_w(const mavlink_m
 /**
  * @brief Get field img_h from argus_sensor_status message
  *
- * @return [px] 추론 입력 영상의 높이. 알 수 없으면 0.
+ * @return [px] 추론 입력 영상의 높이. 영상 메타데이터 좌표의 기준. 알 수 없으면 0.
  */
 static inline uint16_t mavlink_msg_argus_sensor_status_get_img_h(const mavlink_message_t* msg)
 {

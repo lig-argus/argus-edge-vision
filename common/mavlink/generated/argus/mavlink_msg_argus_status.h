@@ -10,20 +10,22 @@
 typedef struct __mavlink_argus_status_t {
  uint32_t time_boot_ms; /*< [ms] onboard 프로그램 시작 후 경과 시간.*/
  float cpu_temp; /*< [degC] RPi CPU 온도. 값을 알 수 없으면 NaN.*/
- uint16_t target_id; /*<  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.*/
+ uint32_t target_id; /*<  선택된 표적의 track_id. 표적이 없으면 0.*/
+ uint32_t target_generation; /*<  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.*/
  uint8_t health; /*<  onboard 의 연결 상태.*/
- uint8_t track_state; /*<  추종 상태.*/
+ uint8_t mission_state; /*<  임무 상태.*/
+ uint8_t target_state; /*<  선택된 표적의 상태.*/
  uint8_t active_sensor; /*<  추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).*/
  uint8_t control_sysid; /*<  제어권을 가진 통제기의 system id. 없으면 0.*/
 } mavlink_argus_status_t;
 
-#define MAVLINK_MSG_ID_ARGUS_STATUS_LEN 14
-#define MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN 14
-#define MAVLINK_MSG_ID_45000_LEN 14
-#define MAVLINK_MSG_ID_45000_MIN_LEN 14
+#define MAVLINK_MSG_ID_ARGUS_STATUS_LEN 21
+#define MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN 21
+#define MAVLINK_MSG_ID_45000_LEN 21
+#define MAVLINK_MSG_ID_45000_MIN_LEN 21
 
-#define MAVLINK_MSG_ID_ARGUS_STATUS_CRC 152
-#define MAVLINK_MSG_ID_45000_CRC 152
+#define MAVLINK_MSG_ID_ARGUS_STATUS_CRC 133
+#define MAVLINK_MSG_ID_45000_CRC 133
 
 
 
@@ -31,27 +33,31 @@ typedef struct __mavlink_argus_status_t {
 #define MAVLINK_MESSAGE_INFO_ARGUS_STATUS { \
     45000, \
     "ARGUS_STATUS", \
-    7, \
+    9, \
     {  { "time_boot_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_argus_status_t, time_boot_ms) }, \
          { "cpu_temp", NULL, MAVLINK_TYPE_FLOAT, 0, 4, offsetof(mavlink_argus_status_t, cpu_temp) }, \
-         { "target_id", NULL, MAVLINK_TYPE_UINT16_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
-         { "health", NULL, MAVLINK_TYPE_UINT8_T, 0, 10, offsetof(mavlink_argus_status_t, health) }, \
-         { "track_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 11, offsetof(mavlink_argus_status_t, track_state) }, \
-         { "active_sensor", NULL, MAVLINK_TYPE_UINT8_T, 0, 12, offsetof(mavlink_argus_status_t, active_sensor) }, \
-         { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 13, offsetof(mavlink_argus_status_t, control_sysid) }, \
+         { "target_id", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
+         { "target_generation", NULL, MAVLINK_TYPE_UINT32_T, 0, 12, offsetof(mavlink_argus_status_t, target_generation) }, \
+         { "health", NULL, MAVLINK_TYPE_UINT8_T, 0, 16, offsetof(mavlink_argus_status_t, health) }, \
+         { "mission_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 17, offsetof(mavlink_argus_status_t, mission_state) }, \
+         { "target_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 18, offsetof(mavlink_argus_status_t, target_state) }, \
+         { "active_sensor", NULL, MAVLINK_TYPE_UINT8_T, 0, 19, offsetof(mavlink_argus_status_t, active_sensor) }, \
+         { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 20, offsetof(mavlink_argus_status_t, control_sysid) }, \
          } \
 }
 #else
 #define MAVLINK_MESSAGE_INFO_ARGUS_STATUS { \
     "ARGUS_STATUS", \
-    7, \
+    9, \
     {  { "time_boot_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_argus_status_t, time_boot_ms) }, \
          { "cpu_temp", NULL, MAVLINK_TYPE_FLOAT, 0, 4, offsetof(mavlink_argus_status_t, cpu_temp) }, \
-         { "target_id", NULL, MAVLINK_TYPE_UINT16_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
-         { "health", NULL, MAVLINK_TYPE_UINT8_T, 0, 10, offsetof(mavlink_argus_status_t, health) }, \
-         { "track_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 11, offsetof(mavlink_argus_status_t, track_state) }, \
-         { "active_sensor", NULL, MAVLINK_TYPE_UINT8_T, 0, 12, offsetof(mavlink_argus_status_t, active_sensor) }, \
-         { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 13, offsetof(mavlink_argus_status_t, control_sysid) }, \
+         { "target_id", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
+         { "target_generation", NULL, MAVLINK_TYPE_UINT32_T, 0, 12, offsetof(mavlink_argus_status_t, target_generation) }, \
+         { "health", NULL, MAVLINK_TYPE_UINT8_T, 0, 16, offsetof(mavlink_argus_status_t, health) }, \
+         { "mission_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 17, offsetof(mavlink_argus_status_t, mission_state) }, \
+         { "target_state", NULL, MAVLINK_TYPE_UINT8_T, 0, 18, offsetof(mavlink_argus_status_t, target_state) }, \
+         { "active_sensor", NULL, MAVLINK_TYPE_UINT8_T, 0, 19, offsetof(mavlink_argus_status_t, active_sensor) }, \
+         { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 20, offsetof(mavlink_argus_status_t, control_sysid) }, \
          } \
 }
 #endif
@@ -64,25 +70,29 @@ typedef struct __mavlink_argus_status_t {
  *
  * @param time_boot_ms [ms] onboard 프로그램 시작 후 경과 시간.
  * @param cpu_temp [degC] RPi CPU 온도. 값을 알 수 없으면 NaN.
- * @param target_id  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.
+ * @param target_id  선택된 표적의 track_id. 표적이 없으면 0.
+ * @param target_generation  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.
  * @param health  onboard 의 연결 상태.
- * @param track_state  추종 상태.
+ * @param mission_state  임무 상태.
+ * @param target_state  선택된 표적의 상태.
  * @param active_sensor  추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).
  * @param control_sysid  제어권을 가진 통제기의 system id. 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
-                               uint32_t time_boot_ms, float cpu_temp, uint16_t target_id, uint8_t health, uint8_t track_state, uint8_t active_sensor, uint8_t control_sysid)
+                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
     _mav_put_uint32_t(buf, 0, time_boot_ms);
     _mav_put_float(buf, 4, cpu_temp);
-    _mav_put_uint16_t(buf, 8, target_id);
-    _mav_put_uint8_t(buf, 10, health);
-    _mav_put_uint8_t(buf, 11, track_state);
-    _mav_put_uint8_t(buf, 12, active_sensor);
-    _mav_put_uint8_t(buf, 13, control_sysid);
+    _mav_put_uint32_t(buf, 8, target_id);
+    _mav_put_uint32_t(buf, 12, target_generation);
+    _mav_put_uint8_t(buf, 16, health);
+    _mav_put_uint8_t(buf, 17, mission_state);
+    _mav_put_uint8_t(buf, 18, target_state);
+    _mav_put_uint8_t(buf, 19, active_sensor);
+    _mav_put_uint8_t(buf, 20, control_sysid);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -90,8 +100,10 @@ static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t 
     packet.time_boot_ms = time_boot_ms;
     packet.cpu_temp = cpu_temp;
     packet.target_id = target_id;
+    packet.target_generation = target_generation;
     packet.health = health;
-    packet.track_state = track_state;
+    packet.mission_state = mission_state;
+    packet.target_state = target_state;
     packet.active_sensor = active_sensor;
     packet.control_sysid = control_sysid;
 
@@ -111,25 +123,29 @@ static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t 
  *
  * @param time_boot_ms [ms] onboard 프로그램 시작 후 경과 시간.
  * @param cpu_temp [degC] RPi CPU 온도. 값을 알 수 없으면 NaN.
- * @param target_id  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.
+ * @param target_id  선택된 표적의 track_id. 표적이 없으면 0.
+ * @param target_generation  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.
  * @param health  onboard 의 연결 상태.
- * @param track_state  추종 상태.
+ * @param mission_state  임무 상태.
+ * @param target_state  선택된 표적의 상태.
  * @param active_sensor  추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).
  * @param control_sysid  제어권을 가진 통제기의 system id. 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, uint8_t component_id, mavlink_status_t *_status, mavlink_message_t* msg,
-                               uint32_t time_boot_ms, float cpu_temp, uint16_t target_id, uint8_t health, uint8_t track_state, uint8_t active_sensor, uint8_t control_sysid)
+                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
     _mav_put_uint32_t(buf, 0, time_boot_ms);
     _mav_put_float(buf, 4, cpu_temp);
-    _mav_put_uint16_t(buf, 8, target_id);
-    _mav_put_uint8_t(buf, 10, health);
-    _mav_put_uint8_t(buf, 11, track_state);
-    _mav_put_uint8_t(buf, 12, active_sensor);
-    _mav_put_uint8_t(buf, 13, control_sysid);
+    _mav_put_uint32_t(buf, 8, target_id);
+    _mav_put_uint32_t(buf, 12, target_generation);
+    _mav_put_uint8_t(buf, 16, health);
+    _mav_put_uint8_t(buf, 17, mission_state);
+    _mav_put_uint8_t(buf, 18, target_state);
+    _mav_put_uint8_t(buf, 19, active_sensor);
+    _mav_put_uint8_t(buf, 20, control_sysid);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -137,8 +153,10 @@ static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, u
     packet.time_boot_ms = time_boot_ms;
     packet.cpu_temp = cpu_temp;
     packet.target_id = target_id;
+    packet.target_generation = target_generation;
     packet.health = health;
-    packet.track_state = track_state;
+    packet.mission_state = mission_state;
+    packet.target_state = target_state;
     packet.active_sensor = active_sensor;
     packet.control_sysid = control_sysid;
 
@@ -161,26 +179,30 @@ static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, u
  * @param msg The MAVLink message to compress the data into
  * @param time_boot_ms [ms] onboard 프로그램 시작 후 경과 시간.
  * @param cpu_temp [degC] RPi CPU 온도. 값을 알 수 없으면 NaN.
- * @param target_id  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.
+ * @param target_id  선택된 표적의 track_id. 표적이 없으면 0.
+ * @param target_generation  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.
  * @param health  onboard 의 연결 상태.
- * @param track_state  추종 상태.
+ * @param mission_state  임무 상태.
+ * @param target_state  선택된 표적의 상태.
  * @param active_sensor  추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).
  * @param control_sysid  제어권을 가진 통제기의 system id. 없으면 0.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uint8_t component_id, uint8_t chan,
                                mavlink_message_t* msg,
-                                   uint32_t time_boot_ms,float cpu_temp,uint16_t target_id,uint8_t health,uint8_t track_state,uint8_t active_sensor,uint8_t control_sysid)
+                                   uint32_t time_boot_ms,float cpu_temp,uint32_t target_id,uint32_t target_generation,uint8_t health,uint8_t mission_state,uint8_t target_state,uint8_t active_sensor,uint8_t control_sysid)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
     _mav_put_uint32_t(buf, 0, time_boot_ms);
     _mav_put_float(buf, 4, cpu_temp);
-    _mav_put_uint16_t(buf, 8, target_id);
-    _mav_put_uint8_t(buf, 10, health);
-    _mav_put_uint8_t(buf, 11, track_state);
-    _mav_put_uint8_t(buf, 12, active_sensor);
-    _mav_put_uint8_t(buf, 13, control_sysid);
+    _mav_put_uint32_t(buf, 8, target_id);
+    _mav_put_uint32_t(buf, 12, target_generation);
+    _mav_put_uint8_t(buf, 16, health);
+    _mav_put_uint8_t(buf, 17, mission_state);
+    _mav_put_uint8_t(buf, 18, target_state);
+    _mav_put_uint8_t(buf, 19, active_sensor);
+    _mav_put_uint8_t(buf, 20, control_sysid);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -188,8 +210,10 @@ static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uin
     packet.time_boot_ms = time_boot_ms;
     packet.cpu_temp = cpu_temp;
     packet.target_id = target_id;
+    packet.target_generation = target_generation;
     packet.health = health;
-    packet.track_state = track_state;
+    packet.mission_state = mission_state;
+    packet.target_state = target_state;
     packet.active_sensor = active_sensor;
     packet.control_sysid = control_sysid;
 
@@ -210,7 +234,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uin
  */
 static inline uint16_t mavlink_msg_argus_status_encode(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack(system_id, component_id, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->health, argus_status->track_state, argus_status->active_sensor, argus_status->control_sysid);
+    return mavlink_msg_argus_status_pack(system_id, component_id, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid);
 }
 
 /**
@@ -224,7 +248,7 @@ static inline uint16_t mavlink_msg_argus_status_encode(uint8_t system_id, uint8_
  */
 static inline uint16_t mavlink_msg_argus_status_encode_chan(uint8_t system_id, uint8_t component_id, uint8_t chan, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack_chan(system_id, component_id, chan, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->health, argus_status->track_state, argus_status->active_sensor, argus_status->control_sysid);
+    return mavlink_msg_argus_status_pack_chan(system_id, component_id, chan, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid);
 }
 
 /**
@@ -238,7 +262,7 @@ static inline uint16_t mavlink_msg_argus_status_encode_chan(uint8_t system_id, u
  */
 static inline uint16_t mavlink_msg_argus_status_encode_status(uint8_t system_id, uint8_t component_id, mavlink_status_t* _status, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack_status(system_id, component_id, _status, msg,  argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->health, argus_status->track_state, argus_status->active_sensor, argus_status->control_sysid);
+    return mavlink_msg_argus_status_pack_status(system_id, component_id, _status, msg,  argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid);
 }
 
 /**
@@ -247,25 +271,29 @@ static inline uint16_t mavlink_msg_argus_status_encode_status(uint8_t system_id,
  *
  * @param time_boot_ms [ms] onboard 프로그램 시작 후 경과 시간.
  * @param cpu_temp [degC] RPi CPU 온도. 값을 알 수 없으면 NaN.
- * @param target_id  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.
+ * @param target_id  선택된 표적의 track_id. 표적이 없으면 0.
+ * @param target_generation  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.
  * @param health  onboard 의 연결 상태.
- * @param track_state  추종 상태.
+ * @param mission_state  임무 상태.
+ * @param target_state  선택된 표적의 상태.
  * @param active_sensor  추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).
  * @param control_sysid  제어권을 가진 통제기의 system id. 없으면 0.
  */
 #ifdef MAVLINK_USE_CONVENIENCE_FUNCTIONS
 
-static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_t time_boot_ms, float cpu_temp, uint16_t target_id, uint8_t health, uint8_t track_state, uint8_t active_sensor, uint8_t control_sysid)
+static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
     _mav_put_uint32_t(buf, 0, time_boot_ms);
     _mav_put_float(buf, 4, cpu_temp);
-    _mav_put_uint16_t(buf, 8, target_id);
-    _mav_put_uint8_t(buf, 10, health);
-    _mav_put_uint8_t(buf, 11, track_state);
-    _mav_put_uint8_t(buf, 12, active_sensor);
-    _mav_put_uint8_t(buf, 13, control_sysid);
+    _mav_put_uint32_t(buf, 8, target_id);
+    _mav_put_uint32_t(buf, 12, target_generation);
+    _mav_put_uint8_t(buf, 16, health);
+    _mav_put_uint8_t(buf, 17, mission_state);
+    _mav_put_uint8_t(buf, 18, target_state);
+    _mav_put_uint8_t(buf, 19, active_sensor);
+    _mav_put_uint8_t(buf, 20, control_sysid);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, buf, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #else
@@ -273,8 +301,10 @@ static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_
     packet.time_boot_ms = time_boot_ms;
     packet.cpu_temp = cpu_temp;
     packet.target_id = target_id;
+    packet.target_generation = target_generation;
     packet.health = health;
-    packet.track_state = track_state;
+    packet.mission_state = mission_state;
+    packet.target_state = target_state;
     packet.active_sensor = active_sensor;
     packet.control_sysid = control_sysid;
 
@@ -290,7 +320,7 @@ static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_
 static inline void mavlink_msg_argus_status_send_struct(mavlink_channel_t chan, const mavlink_argus_status_t* argus_status)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
-    mavlink_msg_argus_status_send(chan, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->health, argus_status->track_state, argus_status->active_sensor, argus_status->control_sysid);
+    mavlink_msg_argus_status_send(chan, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid);
 #else
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, (const char *)argus_status, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #endif
@@ -304,17 +334,19 @@ static inline void mavlink_msg_argus_status_send_struct(mavlink_channel_t chan, 
   is usually the receive buffer for the channel, and allows a reply to an
   incoming message with minimum stack space usage.
  */
-static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t time_boot_ms, float cpu_temp, uint16_t target_id, uint8_t health, uint8_t track_state, uint8_t active_sensor, uint8_t control_sysid)
+static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char *buf = (char *)msgbuf;
     _mav_put_uint32_t(buf, 0, time_boot_ms);
     _mav_put_float(buf, 4, cpu_temp);
-    _mav_put_uint16_t(buf, 8, target_id);
-    _mav_put_uint8_t(buf, 10, health);
-    _mav_put_uint8_t(buf, 11, track_state);
-    _mav_put_uint8_t(buf, 12, active_sensor);
-    _mav_put_uint8_t(buf, 13, control_sysid);
+    _mav_put_uint32_t(buf, 8, target_id);
+    _mav_put_uint32_t(buf, 12, target_generation);
+    _mav_put_uint8_t(buf, 16, health);
+    _mav_put_uint8_t(buf, 17, mission_state);
+    _mav_put_uint8_t(buf, 18, target_state);
+    _mav_put_uint8_t(buf, 19, active_sensor);
+    _mav_put_uint8_t(buf, 20, control_sysid);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, buf, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #else
@@ -322,8 +354,10 @@ static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, 
     packet->time_boot_ms = time_boot_ms;
     packet->cpu_temp = cpu_temp;
     packet->target_id = target_id;
+    packet->target_generation = target_generation;
     packet->health = health;
-    packet->track_state = track_state;
+    packet->mission_state = mission_state;
+    packet->target_state = target_state;
     packet->active_sensor = active_sensor;
     packet->control_sysid = control_sysid;
 
@@ -360,11 +394,21 @@ static inline float mavlink_msg_argus_status_get_cpu_temp(const mavlink_message_
 /**
  * @brief Get field target_id from argus_status message
  *
- * @return  추종 중인 표적의 track_id (ARGUS_DETECTION.track_id 값). 추종하지 않으면 0.
+ * @return  선택된 표적의 track_id. 표적이 없으면 0.
  */
-static inline uint16_t mavlink_msg_argus_status_get_target_id(const mavlink_message_t* msg)
+static inline uint32_t mavlink_msg_argus_status_get_target_id(const mavlink_message_t* msg)
 {
-    return _MAV_RETURN_uint16_t(msg,  8);
+    return _MAV_RETURN_uint32_t(msg,  8);
+}
+
+/**
+ * @brief Get field target_generation from argus_status message
+ *
+ * @return  선택된 표적을 발행한 추적기의 세대 번호. 표적이 없으면 0.
+ */
+static inline uint32_t mavlink_msg_argus_status_get_target_generation(const mavlink_message_t* msg)
+{
+    return _MAV_RETURN_uint32_t(msg,  12);
 }
 
 /**
@@ -374,17 +418,27 @@ static inline uint16_t mavlink_msg_argus_status_get_target_id(const mavlink_mess
  */
 static inline uint8_t mavlink_msg_argus_status_get_health(const mavlink_message_t* msg)
 {
-    return _MAV_RETURN_uint8_t(msg,  10);
+    return _MAV_RETURN_uint8_t(msg,  16);
 }
 
 /**
- * @brief Get field track_state from argus_status message
+ * @brief Get field mission_state from argus_status message
  *
- * @return  추종 상태.
+ * @return  임무 상태.
  */
-static inline uint8_t mavlink_msg_argus_status_get_track_state(const mavlink_message_t* msg)
+static inline uint8_t mavlink_msg_argus_status_get_mission_state(const mavlink_message_t* msg)
 {
-    return _MAV_RETURN_uint8_t(msg,  11);
+    return _MAV_RETURN_uint8_t(msg,  17);
+}
+
+/**
+ * @brief Get field target_state from argus_status message
+ *
+ * @return  선택된 표적의 상태.
+ */
+static inline uint8_t mavlink_msg_argus_status_get_target_state(const mavlink_message_t* msg)
+{
+    return _MAV_RETURN_uint8_t(msg,  18);
 }
 
 /**
@@ -394,7 +448,7 @@ static inline uint8_t mavlink_msg_argus_status_get_track_state(const mavlink_mes
  */
 static inline uint8_t mavlink_msg_argus_status_get_active_sensor(const mavlink_message_t* msg)
 {
-    return _MAV_RETURN_uint8_t(msg,  12);
+    return _MAV_RETURN_uint8_t(msg,  19);
 }
 
 /**
@@ -404,7 +458,7 @@ static inline uint8_t mavlink_msg_argus_status_get_active_sensor(const mavlink_m
  */
 static inline uint8_t mavlink_msg_argus_status_get_control_sysid(const mavlink_message_t* msg)
 {
-    return _MAV_RETURN_uint8_t(msg,  13);
+    return _MAV_RETURN_uint8_t(msg,  20);
 }
 
 /**
@@ -419,8 +473,10 @@ static inline void mavlink_msg_argus_status_decode(const mavlink_message_t* msg,
     argus_status->time_boot_ms = mavlink_msg_argus_status_get_time_boot_ms(msg);
     argus_status->cpu_temp = mavlink_msg_argus_status_get_cpu_temp(msg);
     argus_status->target_id = mavlink_msg_argus_status_get_target_id(msg);
+    argus_status->target_generation = mavlink_msg_argus_status_get_target_generation(msg);
     argus_status->health = mavlink_msg_argus_status_get_health(msg);
-    argus_status->track_state = mavlink_msg_argus_status_get_track_state(msg);
+    argus_status->mission_state = mavlink_msg_argus_status_get_mission_state(msg);
+    argus_status->target_state = mavlink_msg_argus_status_get_target_state(msg);
     argus_status->active_sensor = mavlink_msg_argus_status_get_active_sensor(msg);
     argus_status->control_sysid = mavlink_msg_argus_status_get_control_sysid(msg);
 #else
