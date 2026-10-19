@@ -1,4 +1,4 @@
-# State machine diagram — 임무 상태와 표적 상태의 transition
+# State Machine Diagram — 임무 상태와 표적 상태의 transition
 
 | 항목 | 내용 |
 |---|---|
@@ -46,13 +46,13 @@ transition 의 event [guard] / effect:
 | transition | event | guard | effect | 출처 |
 |---|---|---|---|---|
 | IDLE·HOLD_WAIT → PREPARING | TRACK_START 수신 | `icd.md` 4.2 조건 ①~⑤ 충족 | ACK IN_PROGRESS | `icd.md` 4.2 |
-| PREPARING → FOLLOW_ACTIVE | Offboard 진입 성공 | — | ACK ACCEPTED | `icd.md` 4.2 sequence diagram |
+| PREPARING → FOLLOW_ACTIVE | Offboard 진입 성공 | — | ACK ACCEPTED | `icd.md` 4.2 Sequence Diagram |
 | PREPARING → HOLD_WAIT | Offboard 진입 실패 | — | ACK FAILED. 도착 상태는 **[미결 A]** | `icd.md` 4.2 |
 | IDLE·HOLD_WAIT → SCAN_ACTIVE | SCAN_START 수신 | 조건 충족, FC Hold | ACK IN_PROGRESS | `icd.md` 4.2 |
 | SCAN_ACTIVE → HOLD_WAIT | yaw 회전량 도달, timeout, 추적 후보 발견 | — | 정지, ACK ACCEPTED | `icd.md` 4.2 |
 | FOLLOW_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음, target_state → LOST | — | Hold 요청 | `icd.md` 4.2, 6.1, 아키텍처 문서 2.7·2.11 |
 | SCAN_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음 | — | Hold 요청 | `icd.md` 4.2, 6.1 |
-| HOLD_TRANSITION → HOLD_WAIT | FC Hold 확인 | — | ACK ACCEPTED | `icd.md` 4.2 sequence diagram |
+| HOLD_TRANSITION → HOLD_WAIT | FC Hold 확인 | — | ACK ACCEPTED | `icd.md` 4.2 Sequence Diagram |
 | FOLLOW_ACTIVE·SCAN_ACTIVE → MANUAL | Offboard 이탈 | 원인이 조종사 RC 또는 통제기 모드 변경 | — | `icd.md` 4.3, 아키텍처 문서 2.11·2.20 |
 | PREPARING·FOLLOW_ACTIVE·SCAN_ACTIVE → FAULT | FC telemetry 2 s 없음, `follow/status` 3 s 없음, setpoint 유효 시간 초과, Offboard 이탈 | Offboard 이탈은 원인이 failsafe 일 때 (PREPARING 제외) | 속도 0, Hold 요청 | `icd.md` 6.2, 6.4, 4.3, `process_interfaces.md` 6장 |
 | MANUAL → IDLE | 규약에 없음 **[미결 B]** | — | — | `argus.xml` |
@@ -79,7 +79,7 @@ stateDiagram-v2
 | CONFIRMED → PREDICTED | 검출 없음 | — | 예측으로 유지 | `argus.xml` |
 | PREDICTED → CONFIRMED | 검출이 다시 연결됨 | — | — | `argus.xml` |
 | PREDICTED → LOST | 예측 유지 한도 초과 | 한도는 `system_architecture.md` 2.7, 값은 `icd.md` 미결 E4 | 추종 제어가 Hold 요청 | `argus.xml`, `icd.md` 부록 B |
-| CONFIRMED·PREDICTED → NONE | TRACK_STOP 수신 | — | Hold 전환 완료 뒤 | `icd.md` 4.2 sequence diagram |
+| CONFIRMED·PREDICTED → NONE | TRACK_STOP 수신 | — | Hold 전환 완료 뒤 | `icd.md` 4.2 Sequence Diagram |
 | LOST → NONE | Hold 전환 완료 | — | — | `argus.xml` |
 
 - LOST 가 되면 추종 제어가 Hold 로 전환한다. 그래서 `mission_state` 의 FOLLOW_ACTIVE → HOLD_TRANSITION 조건에 target_state LOST 가 들어간다.

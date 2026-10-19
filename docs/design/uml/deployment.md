@@ -1,4 +1,4 @@
-# Deployment diagram — 장비, 실행 환경, 산출물
+# Deployment Diagram — 장비, 실행 환경, 산출물
 
 | 항목 | 내용 |
 |---|---|

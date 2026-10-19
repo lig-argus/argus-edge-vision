@@ -1,4 +1,4 @@
-# Component diagram — 프로세스와 인터페이스
+# Component Diagram — 프로세스와 인터페이스
 
 | 항목 | 내용 |
 |---|---|
