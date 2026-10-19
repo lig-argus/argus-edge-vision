@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.7 (팀 검토 전 초안) |
+| 문서 버전 | 0.8 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -77,7 +77,7 @@ flowchart LR
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
 - 버전: 필드 추가는 같은 버전, 필드 삭제·의미 변경은 `vN` 증가. 받는 쪽은 모르는 필드를 무시한다 (`tracking/tracks` v5 수신기는 이미 그렇게 동작).
-- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose`, `follow/status` 의 `scan_config` 등)은 받는 쪽(onboard)이 받을 때 rad·m·s 로 바꾼다.
+- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽(onboard)이 받을 때 rad·m·s 로 바꾼다. `follow/status` 의 `scan_config` 는 SI 필드(`yaw_rate_rad_s`, `sweep_rad`, `timeout_s`)를 쓴다 (5.1.2).
 - 영상 해상도: IR 카메라 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
 - 정수 범위: `track_id`·`generation` 은 1~16,777,215 (2^24−1). MAVLink 명령 매개변수(float)로 손실 없이 전달하기 위한 범위다. `frame_id`·`fc_epoch` 는 uint64.
 - 시계: 프로세스 사이 시각은 RPi `CLOCK_MONOTONIC`. UTC 는 영상 메타데이터(`docs/spec/video.md`)에서만 쓴다.
@@ -93,7 +93,7 @@ flowchart LR
 | `IModeControl` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 수락은 동기 응답, 전환 완료·Offboard 이탈은 이벤트 |
 | `IFollowCommand` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
 
-- 구현을 실기 FC, SITL, 테스트용 가짜로 바꿔도 같은 계약을 지킨다.
+- 구현을 기체 FC, SITL, 테스트용 가짜로 바꿔도 같은 계약을 지킨다.
 - 새 행동(예: Scan)은 `IFollowCommand` 의 명령 종류 추가로 넣고 FC 통신 코드는 바꾸지 않는다.
 - 계약(사전·사후 조건, 시간 제한)은 인터페이스 확정 뒤 헤더 주석과 테스트로 적는다.
 
@@ -112,7 +112,7 @@ flowchart LR
 | `fc/attitude` | onboard → 추적기, 추종 제어 | FC 자세 표본마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid. 필드 이름은 **[미결 7]** |
 | `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, 표본별 원수신 시각. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → onboard | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
-| `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 **[미결 2]** | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
+| `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
 | `fc/mode_event` | onboard → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
 - 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 기존 6357 추적기 bind. 탐지 토픽은 기존 버스 5556. `fc/mode_event` 의 발행 엔드포인트는 **[미결 1]**.
@@ -139,20 +139,20 @@ flowchart LR
 - 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 FC 표본 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
 
-#### 5.1.2 `follow/status` v1 필드 (2026-10-15 기준)
+#### 5.1.2 `follow/status` v1 필드 (2026-10-16 기준)
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
 | schema, source, clock_domain | string | `argus.follow.status.v1`, `argus-follow-controller`, `host_monotonic` |
-| controller_session, client_session, session_id, onboard_session, uid | string | 세션 식별자. 추종 제어 재시작 감지에는 `controller_session` 을 쓴다. 나머지의 뜻은 **[미결 2]** |
+| controller_session, client_session, session_id, onboard_session, uid | string | `controller_session`: 추종 제어 프로세스가 시작할 때 만드는 세션. 추종 제어 재시작 감지에 쓴다. `client_session`: 추종 제어가 onboard 에 요청할 때의 세션. `session_id`: 이 메시지 발행자의 세션. 지금은 세 값이 같다. `onboard_session`: 상대 onboard 의 세션. `uid`: 설정된 대상 FC 의 UID 이며, 이 값만으로 연결이 확인됐다는 뜻은 아니다 |
 | fc_epoch, seq, received_monotonic_ns | uint64, uint64, int64 | |
 | status.mission_state | enum | IDLE, PREPARING, FOLLOW_ACTIVE, HOLD_TRANSITION, HOLD_WAIT, SCAN_ACTIVE, MANUAL, FAULT → `ARGUS_STATUS.mission_state` |
 | status.target_state | enum | NONE, CONFIRMED, PREDICTED, LOST → `ARGUS_STATUS.target_state` |
 | status.target_phase, recovery_reason, ambiguous, mission, reason, active | enum·string·bool | 추종 제어 내부 세부 상태(target_phase: UNSELECTED, LOCKED, GAP_HOLD, REACQUIRE, CONFIRM, LOST). MAVLink 로는 보내지 않고, 거부·실패 이유는 `STATUSTEXT` 에 쓸 수 있다 |
 | status.selected | object 또는 null | 선택 표적: generation, track_id, class_id, label, sensor(문자열) → `ARGUS_STATUS.target_id`·`target_generation`, `active_sensor`(변환표) |
-| status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(문자열 또는 정수), action(`track_start`·`stop`·`search`), pending, accepted, result(`pending`·`accepted`·`failed`), reason, generation·track_id·class_id·sensor. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다 |
+| status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(string 또는 int32), action(`track_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 최근 32개까지만 보관하되 진행 중(IN_PROGRESS)인 기록은 32개를 넘어도 지우지 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
 | status.command_epoch, command_sent | uint64, bool | |
-| status.scan_state, scan_state_name, scan_config{rate_deg_s, sweep_rad, timeout_ms}, scan_progress_deg, heading_stop_pending | | Scan 진행. 단위가 deg/s·rad·ms 로 섞여 있어 onboard 가 받을 때 rad/s·s 로 바꾼다 (3장) |
+| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용 |
 
 #### 5.1.3 `tracking/status` v1 필드 (2026-10-15 기준)
 
@@ -168,11 +168,34 @@ flowchart LR
 
 | 요청 | 요청자 → 응답자 | 내용 | 응답 |
 |---|---|---|---|
-| `follow/command` | onboard → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·onboard 판단) | result `pending`·`accepted`·`failed` + reason. 거부도 `failed` 와 reason 으로 표현한다 **[미결 1]**. 이후 진행은 `follow/status` 의 command_results |
+| `follow/command` | onboard → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·onboard 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
 | `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD), 또는 HOLD 상태 절대 heading(rad, NED) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
-- 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). 타임아웃과 schema 이름·필드는 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
+- 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 schema·필드와 두 요청의 타임아웃은 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
 - 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어.
+
+#### 5.2.1 `follow/result` v1·v2 필드 (2026-10-16 기준)
+
+`follow/command` 의 응답이다. schema 는 `argus.follow.result.v1`·`argus.follow.result.v2`.
+
+| 필드 | 형 | 뜻 |
+|---|---|---|
+| command_id | string 또는 int32 | 요청의 command_id |
+| outcome | enum | IN_PROGRESS·SUCCEEDED·REJECTED·FAILED (아래 표). 진행·완료 판단에 쓴다 |
+| request_accepted | bool | 요청을 처음에 수락했는지. 수락 뒤 실행이 실패해도 true 로 남는다 |
+| reason | string | 사람이 읽는 이유. 판정에는 쓰지 않고 `STATUSTEXT` 에 옮길 수 있다 |
+| result, pending, accepted | | 호환용. v1 result 는 `pending`·`accepted`·`failed`, v2 result 는 `ACCEPTED`·`REJECTED`·`FAILED` |
+
+| outcome | request_accepted | 뜻 | onboard 의 `COMMAND_ACK` |
+|---|---|---|---|
+| IN_PROGRESS | true | 요청을 수락하고 진행 중 | IN_PROGRESS |
+| SUCCEEDED | true | 완료. Scan 은 시간 제한으로 끝나도 실제 Hold·회전 정지를 확인한 뒤 SUCCEEDED | ACCEPTED |
+| REJECTED | false | 수락 전 조건·입력 불충족으로 거부 | DENIED |
+| FAILED | true | 수락 뒤 실행 실패, 취소, RC·모드 개입 | FAILED |
+
+- onboard 는 첫 결과를 REP 응답에서 받는다. 형식·세션·`valid_until_monotonic_ns` 를 보는 사전 검사에서 거부된 요청은 응답으로만 알려지고 `command_results` 에는 남지 않을 수 있기 때문이다. 이후 진행은 `follow/status.command_results` 에서 같은 command_id 로 찾는다.
+- 같은 command_id 로 다시 요청하면 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다. 그래서 통제기가 `COMMAND_LONG` 을 재전송하면(`docs/spec/icd.md` 4.1) onboard 는 같은 command_id 로 요청한다.
+- outcome 이 없는 응답(이전 생산자)에는 이 표의 규칙을 적용하지 않는다.
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
 
@@ -194,13 +217,14 @@ flowchart LR
 
 ## 7. 검토 필요 사항
 
-1. REQ/REP 요청·응답(`follow/command`, `control/mode_request`)과 `fc/mode_event` 의 schema 이름·필드 고정. 응답 result 에 거부(rejected)를 따로 둘지, `failed` + reason 으로 할지. `fc/mode_event` 의 발행 엔드포인트. 엔드포인트 6370~6373 은 5장에 반영. — 추적·추종·통신
-2. `follow/status`·`tracking/status` 는 받은 schema 로 5.1.2·5.1.3 에 반영함. 남은 것: `follow/status` 발행 주기, `uid`·`client_session`·`onboard_session` 의 뜻, `scan_config` 단위를 rad/s·s 로 맞출지. — 추적·추종
+1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 schema 이름·필드 고정, 두 REQ/REP 의 타임아웃, `fc/mode_event` 의 발행 엔드포인트. `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. — 추적·추종·통신
+2. 해소 (0.8): `follow/status` 발행 주기(1 Hz + 변경 시), 세션 필드의 뜻, `scan_config` SI 필드를 5.1·5.1.2 에 반영함. — 추적·추종
 3. `vision/frame/gray8` 의 전송 경로: 우선 기존 버스(5555/5556). 프레임당 307 KB 가 Python → C++ 어댑터 → 프록시로 복사되므로 Pi 에서 FPS·CPU 를 재 보고 무거우면 IPC 직결. — 탐지
 4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
 5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
 7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 표본별 원수신 시각)은 합의됨. — 통신·추적
+8. 추종 제어의 거부 이유 "another writer owns FC": FC 에 쓰는 권한(소유권)의 뜻과 판정 주체, `docs/spec/icd.md` 5장 제어권과의 관계 (#32). — 추적·추종·통신
 
 ## 변경 이력
 
@@ -213,3 +237,4 @@ flowchart LR
 | 0.5 | 2026-10-15 | `follow/status`·`tracking/status` 실제 schema 반영(5.1.2·5.1.3), `follow/command` action·result 이름을 구현에 맞춤, 단위 변환 규칙 보완, 7장 1·2 갱신 |
 | 0.6 | 2026-10-15 | 영상 소스를 비압축 프레임 토픽으로 바꾸고 전송 코덱 인코딩을 영상 송신부로 (5.1·5.3·7장 3) |
 | 0.7 | 2026-10-16 | 비압축 프레임 토픽을 `vision/frame/gray8` 로 확정(schema·헤더·픽셀 정의, 기본 꺼짐), overlay 는 지상 미리보기용으로 당분간 유지, 7장 3 을 전송 경로 확인으로 교체 |
+| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, 7장 1 갱신·2 해소·8 추가 |

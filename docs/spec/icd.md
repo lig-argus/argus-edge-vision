@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.1 (팀 검토 전 초안) |
+| 문서 버전 | 0.2 (팀 검토 전 초안) |
 | 패킷 형식 | `common/mavlink/message_definitions/argus.xml` (argus dialect) + 표준 `common.xml`. 3·4장의 argus 메시지·명령 정의는 `argus.xml` 보다 앞서 있으며, `argus.xml` 반영은 #21 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 7장의 검토 항목 번호 |
@@ -115,7 +115,7 @@ flowchart LR
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
 
 - telemetry 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
-- 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 표본이 있었으며 그 표본의 수신 후 경과 시간이 200 ms 를 넘지 않았다 (200 ms 의 기준 시점은 확인 중). 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 로 TELEM2 921600 bps(약 115 kB/s) 안이다.
+- 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 표본이 있었으며 추적기가 그 표본을 고른 시점에서 표본의 호스트 수신 시각을 뺀 값이 200 ms 를 넘지 않았다. 이 결과는 읽기 전용 계측이며, 실제 추적·추종 실행이나 거리 센서를 포함한 지면 투영까지 검증한 것은 아니다. 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 로 TELEM2 921600 bps(약 115 kB/s) 안이다.
 - PX4 는 Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 Offboard 에 들어가고 유지한다. setpoint 가 끊긴 뒤 `COM_OF_LOSS_T` (기체 FC 1.0 s, PX4 v1.16 기본값과 같음, 2026-10-06 FC 에서 읽음)가 지나면 `COM_OBL_RC_ACT` 동작으로 Offboard 를 빠져나간다. onboard 는 추종 중 20 Hz 를 유지한다.
 - `COM_OBL_RC_ACT` 는 5(Hold)로 설정한다. 2026-10-06 FC 에서 읽은 값은 0(Position)이었으므로 기체 FC 에 적용됐는지 확인이 필요하다 [미결 D4].
 
@@ -209,7 +209,7 @@ sequenceDiagram
 | 6.1 통제기 → onboard | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
 | 6.2 onboard → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
-| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청의 유효 시간이 지남 | ⓐ·ⓒ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. 모두 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장) |
+| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청을 FC 로 보내기 전에 그 요청의 `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음)가 지남 | ⓐ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: onboard 가 그 요청을 FC 로 보내지 않고 거부한다. 이미 FC 로 보낸 회전 중에 추종 제어의 heading 갱신이 끊겼을 때 회전을 멈출지 판단하는 기준과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). onboard 의 6.1 과 독립이다.
@@ -232,8 +232,10 @@ sequenceDiagram
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
 | D5 | FC 표본 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
-| E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함 | 통제기·제어 |
+| E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함. 이미 FC 로 보낸 회전 중에 heading 갱신이 끊겼을 때 회전을 멈출지 판단하는 기준과 정지 절차도 이 시험에서 정함 (6.4 ⓒ) | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
+| E5 | TRACK_START 의 FC 모드 조건 | 추종 제어는 FC 가 실제로 Hold 이거나 Position 에서 명시적으로 넘겨받을 때만 추종을 시작한다(#32 의 결과 계약 예제). 4.2 조건에 FC 모드 조건을 추가할지 확인 중 | 통제기·제어 |
+| E6 | 규약에 없는 임무 상태 변화 | PREPARING 에서 Offboard 진입에 실패한 뒤의 `mission_state`, MANUAL·FAULT 에서 IDLE 로 돌아가는 조건 (#32) | 제어 |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
 
@@ -279,3 +281,4 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종·스캔 명령 절차, 임무·표적 상태(부록 B), 두절 판단, 미결 항목 |
+| 0.2 | 2026-10-19 | #30 리뷰 답변 반영(#32): 2장 200 ms 의 기준 시점과 계측 범위, 6.4 ⓒ 를 FC 로 보내기 전 `valid_until_monotonic_ns` 검사로 한정하고 보낸 뒤 회전 중 갱신이 끊긴 경우는 E3 으로, 7장 E5·E6 추가 |
