@@ -12,7 +12,7 @@ flowchart LR
         px4[PX4 v1.16 펌웨어]
     end
     subgraph cam_node [IR 카메라]
-        ir[IR 센서 i3system<br/>RAW14 640×480]
+        ir[IR 카메라 i3system<br/>RAW14 640×480]
     end
     subgraph rpi_node [Raspberry Pi — Ubuntu 24.04]
         direction TB
@@ -61,7 +61,7 @@ flowchart LR
 | 경로 | 매체 | 프로토콜 | 출처 |
 |---|---|---|---|
 | FC ↔ RPi | UART (TELEM2), 921600 bps | MAVLink 2 | `icd.md` 1.2 |
-| IR 카메라 → RPi | USB 2.0 (i3system HYUNY, USB ID 0547:0080) | i3 SDK 가 usbfs 로 직접 읽음 (커널 드라이버 없음) | #33 리뷰 (탐지 담당) |
+| IR 카메라 → RPi | USB 2.0 (i3system, USB ID 0547:0080 HYUNY) | i3 SDK 가 usbfs 로 직접 읽음 (커널 드라이버 없음) | #33 리뷰 (탐지 담당) |
 | RPi 안 | PCIe Gen3 x1 (8 GT/s), `/dev/hailo0` | HailoRT 4.23.0 | #33 리뷰 (탐지 담당) |
 | RPi ↔ 통제기 PC | Wi-Fi | UDP 14550 (MAVLink), UDP 14551 (QGC), RTSP + RTP/UDP, UDP 미리보기 JPEG(`argus_preview_udp_relay`, RTSP 전환 전까지) | `icd.md` 1.2, `video.md` 1장 |
 
@@ -71,11 +71,11 @@ flowchart LR
 2. 해소 (0.2): IR 카메라는 USB 2.0, Hailo-8 은 PCIe Gen3 x1 (탐지 담당 확인).
 3. 설정 파일의 이름과 위치(`/etc/argus/…` 등)는 `onboard/` 구조가 정해진 뒤 적는다.
 4. `argus_preview_udp_relay` 를 RTSP 전환 뒤 없앨지, 그 전까지 `onboard/` 로 옮길지, 담당과 UDP 포트.
-5. FC ↔ RPi 연결: drone Pi 는 지금 USB(cdc_acm)로 연결되어 있고 `icd.md` 1.2 는 UART TELEM2 921600 이다. 운용 구성을 정해 `icd.md` 와 함께 맞춘다.
+5. 해소 (0.2): 운용(비행) 연결은 `icd.md` 1.2 대로 UART TELEM2 921600(`/dev/ttyAMA0`). drone Pi 의 USB(cdc_acm) 연결은 벤치 테스트 구성이다. PX4 는 USB 에 MAVLink Config 모드를 써서 ATTITUDE 기본 주기가 50 Hz(TELEM2 Onboard 모드는 100 Hz)이므로, 벤치 테스트 구성에서 잰 FC 주기는 운용 값으로 쓰지 않는다. PX4 는 USB 를 연결한 채 비행하는 것을 권하지 않는다.
 
 ## 변경 이력
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
-| 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 카메라 USB 2.0, Hailo-8 PCIe Gen3 x1, 탐지 실행 환경(C++ + Python 3.12 venv, hailort 4.23.0, i3 SDK), `argus_preview_udp_relay` 추가. 검토 필요 사항 2 해소, 4·5 추가 |
+| 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 카메라 USB 2.0, Hailo-8 PCIe Gen3 x1, 탐지 실행 환경(C++ + Python 3.12 venv, hailort 4.23.0, i3 SDK), `argus_preview_udp_relay` 추가. 검토 필요 사항 2·5 해소(5: 운용은 TELEM2, USB 는 벤치 테스트 구성), 4 추가 |
