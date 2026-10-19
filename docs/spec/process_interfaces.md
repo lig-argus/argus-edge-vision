@@ -172,7 +172,7 @@ flowchart LR
 | `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD), 또는 HOLD 상태 절대 heading(rad, NED) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
 - 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 schema·필드와 두 요청의 타임아웃은 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
-- 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 이거나 유효한 Position 인계 절차를 거쳤을 때만 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않는다 (`docs/spec/icd.md` 4.2 ⑥).
+- 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
 
 #### 5.2.1 `follow/result` v1·v2 필드 (2026-10-16 기준)
 

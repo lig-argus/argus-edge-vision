@@ -152,7 +152,7 @@ flowchart LR
 
 | 명령 | param | 조건 | 결과 |
 |---|---|---|---|
-| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값 | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold 이거나 유효한 Position 인계 절차를 거침 (Position 모드라는 것만으로는 안 됨) | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT) |
+| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값 | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold. Position 모드에서 조종사가 추종 제어에 조종을 넘기는 절차를 거친 경우도 허용하지만, 그 절차는 아직 정의되지 않았다 [미결 E5]. Position 모드라는 것만으로는 허용하지 않는다 | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT) |
 | MAV_CMD_ARGUS_TRACK_STOP (45001) | 없음 | 보낸 sysid 가 제어권 통제기 | 추종 또는 스캔 중이면 끝내고 Hold 로 바꾼 뒤 ACCEPTED (HOLD_TRANSITION → HOLD_WAIT). 둘 다 아니어도 ACCEPTED |
 | MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 onboard 설정 기본값(2π, 10 deg/s 상당, 60 s) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 FC 모드가 Hold ④ 매개변수가 범위 안 | 조건 불충족 → DENIED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 운용자가 TRACK_START 로 선택해야 추종이 시작된다 |
 
@@ -237,7 +237,7 @@ sequenceDiagram
 | D5 | FC 표본 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
 | E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차도 이 시험에서 정함 (6.4 ⓒ). 감시 시간 안에 새 heading 요청이 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 FC 정지 명령 방식은 이 시험으로 정한다 | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
-| E5 | TRACK_START 의 FC 모드 조건 | 해소 (0.2): FC 가 실제로 Hold 이거나 유효한 Position 인계 절차를 거쳤을 때만 허용. 4.2 조건 ⑥ | — |
+| E5 | Position 모드에서 조종을 넘기는 절차 | TRACK_START 는 FC 가 실제 Hold 일 때 허용(4.2 조건 ⑥). Position 모드에서 조종사가 추종 제어에 조종을 넘기는 절차(통제기·RC 에서 무엇을 하고, onboard·추종 제어가 무엇을 확인하는지)는 추적·추종 담당에게 확인 중 | 통제기·제어 |
 | E6 | 규약에 없는 임무 상태 변화 | 해소 (0.2): Offboard 요청·ACK 실패, 실제 모드 확인 시간 초과는 FAULT (4.2). MANUAL·FAULT 의 복구는 6장 아래 항목 | — |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
@@ -284,4 +284,4 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종·스캔 명령 절차, 임무·표적 상태(부록 B), 두절 판단, 미결 항목 |
-| 0.2 | 2026-10-19 | #30 리뷰 답변 반영(#32): 2장 200 ms 의 기준 시점과 계측 범위, 6.4 ⓒ 를 FC 로 보내기 전 `valid_until_monotonic_ns` 검사로 한정하고 보낸 뒤 회전 중 새 heading 요청이 오지 않는 경우는 E3 으로, 7장 E5·E6 추가, 4.2 TRACK_START 조건 ⑥(FC 실제 Hold 또는 Position 인계)과 Offboard 성공·실패 조건, 5장 FC 제어 명령 송신권, 6.6 onboard 독립 감시, FAULT·MANUAL 복구 조건, E3 회전 중 새 heading 요청이 오지 않을 때 onboard 독립 정지, E5·E6 해소 |
+| 0.2 | 2026-10-19 | #30 리뷰 답변 반영(#32): 2장 200 ms 의 기준 시점과 계측 범위, 6.4 ⓒ 를 FC 로 보내기 전 `valid_until_monotonic_ns` 검사로 한정하고 보낸 뒤 회전 중 새 heading 요청이 오지 않는 경우는 E3 으로, 7장 E5·E6 추가, 4.2 TRACK_START 조건 ⑥(FC 실제 Hold, Position 모드에서 조종을 넘기는 절차는 E5)과 Offboard 성공·실패 조건, 5장 FC 제어 명령 송신권, 6.6 onboard 독립 감시, FAULT·MANUAL 복구 조건, E3 회전 중 새 heading 요청이 오지 않을 때 onboard 독립 정지, E5 를 "Position 모드에서 조종을 넘기는 절차" 로 좁힘, E6 해소 |
