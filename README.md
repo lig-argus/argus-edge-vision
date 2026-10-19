@@ -31,7 +31,8 @@ onboard/
   libs/                   # 프로세스들이 함께 쓰는 라이브러리
     core/                 # IClock 등 공통 기반
     bus/                  # ZeroMQ PUB/SUB·REQ/REP 인터페이스와 구현, MessagePack 메시지 타입
-    vehicle_api/          # IVehicleState·IVelocitySetpoint·IModeControl·IFollowCommand, ZeroMQ 어댑터
+    vehicle_api/          # IVehicleState·IVelocitySetpoint·IModeControl·IFollowCommand 순수 인터페이스 (의존성 없음)
+    vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크)
   apps/                   # 실행 파일. 프로세스 하나에 폴더 하나
     onboard/              # onboard 프로세스 (통신 담당)
     video_sender/         # 영상 송신부 (통신 담당)

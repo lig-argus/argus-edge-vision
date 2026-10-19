@@ -38,6 +38,7 @@ include(cmake/ArgusTest.cmake)
 add_subdirectory(libs/core)
 add_subdirectory(libs/bus)
 add_subdirectory(libs/vehicle_api)
+add_subdirectory(libs/vehicle_api_zmq)
 
 # 실행 파일 (프로세스 하나에 폴더 하나)
 add_subdirectory(apps/onboard)

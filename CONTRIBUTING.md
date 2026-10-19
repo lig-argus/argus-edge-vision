@@ -101,6 +101,7 @@ run-clang-tidy -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'   #
 - 헤더 경로에 `argus/<모듈>/` 을 넣는 이유: 모듈마다 같은 파일 이름(`types.hpp` 등)이 있어도 include 가 겹치지 않고, 어느 모듈의 헤더인지 include 문만 보고 알 수 있습니다 (ROS 2 `rclcpp` 의 `include/rclcpp/` 와 같은 방식).
 - 모듈이 다른 모듈을 쓸 때는 `target_link_libraries` 로 연결합니다. 다른 모듈의 `src/` 나 상대 경로(`../`)로 헤더를 부르지 않습니다.
 - 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꿉니다.
+- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ·MessagePack)에 의존하지 않습니다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 가짜 구현 테스트가 인터페이스 모듈만 링크하게 합니다.
 - 빌드·테스트 명령과 의존성 설치는 README.md "onboard 구조와 빌드" 확인.
 
 ---
