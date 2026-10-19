@@ -38,7 +38,8 @@ sequenceDiagram
     ctl->>mode: REQ control/mode_request OFFBOARD
     mode->>fc: DO_SET_MODE Offboard
     fc-->>mode: COMMAND_ACK ACCEPTED
-    mode--)ctl: PUB fc/mode_event Offboard
+    fc-->>mode: HEARTBEAT 실제 모드 Offboard
+    mode--)ctl: PUB fc/mode_event Offboard (ACK + 실제 모드 확인)
     ctl--)fcc: PUB follow/status command_results outcome=SUCCEEDED, mission_state=FOLLOW_ACTIVE
     fcc-->>disp: SUCCEEDED
     disp-->>cmd: COMMAND_ACK ACCEPTED
@@ -68,8 +69,8 @@ sequenceDiagram
         fct--)ctl: PUB fc/attitude, fc/state
     end
     vis--)trk: PUB perception/observations (frame_id, unix_ns)
-    trk->>vss: attitudeAt(unix_ns)
-    vss-->>trk: 차 50 ms 이내 표본 (없으면 fc_fresh=false)
+    trk->>vss: attitudeAt(프레임 received_monotonic_ns)
+    vss-->>trk: 시각 차 50 ms 이내, 수신 후 경과 시간 200 ms 이내 표본 (없으면 fc_fresh=false)
     trk--)ctl: PUB tracking/tracks
     ctl->>ctl: 표적 상태 갱신, 속도 계산
     ctl--)spr: PUB control/setpoint (valid_until)
@@ -136,13 +137,14 @@ sequenceDiagram
     Note over gcs: 통제기는 FC HEARTBEAT 3 s 없음으로 "연결 끊김" 을 따로 표시
 ```
 
-- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서 IDLE 로 돌아가는 event 는 미결이다 (`state_machine.md` 미결 B, #32).
+- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 TRACK_STOP 을 받고 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
+- onboard 는 추종 제어의 보고와 관계없이 FC 상태를 스스로 확인해 위험한 송신을 막는다 (`icd.md` 6.6).
 - 경로가 FC → mavlink-router → onboard 이므로 mavlink-router 가 멈춰도 같은 흐름이 된다. 이때는 통제기 링크도 함께 끊긴다.
 
 ## 검토 필요 사항
 
-1. 1절: Offboard 진입에 실패했을 때(FC 가 DO_SET_MODE 를 거부)의 흐름. outcome=FAILED → ACK FAILED 이며, 이후 mission_state 는 `state_machine.md` 미결 A.
-2. 1절: TRACK_START 에 FC 모드 조건(Hold 또는 Position 에서 명시적으로 넘김)이 있는지 (#32 확인 필요).
+1. 해소 (0.3): 1절의 Offboard 진입 실패(요청 실패, ACK 실패, 실제 모드 확인 시간 초과)는 outcome=FAILED → ACK FAILED, `mission_state` FAULT (`icd.md` 4.2).
+2. 해소 (0.3): TRACK_START 는 FC 가 실제 Hold 이거나 유효한 Position 인계를 거쳤을 때만 수락 (`icd.md` 4.2 ⑥).
 3. 2절: `ctl` 이 `fc/attitude` 를 프레임 시각에 맞춰 쓰는지, 최신 표본을 쓰는지는 추적·추종 담당의 내부 설계.
 4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 onboard 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(2 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
 
@@ -152,3 +154,4 @@ sequenceDiagram
 |---|---|---|
 | 0.1 | 2026-10-19 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 탐지 쪽 참여자를 실제 클래스 이름으로 (`PerceptionWorker`, `PythonVisionAdapter`, #33 리뷰) |
+| 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드(1절), FC 표본은 프레임의 호스트 단조 시각으로 고르고 시각 차 50 ms·수신 후 경과 시간 200 ms(2절), FAULT 복구 조건과 onboard 독립 감시(4절) |

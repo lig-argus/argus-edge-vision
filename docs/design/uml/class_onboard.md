@@ -82,6 +82,16 @@ classDiagram
         +fcConnected bool
         +gcsLink bool
     }
+    class FcWriteAuthority {
+        +acquire(session) bool
+        +revoke(reason)
+        +mayWrite(session) bool
+    }
+    class OnboardWatchdog {
+        +allowSend(command) bool
+        +onRcOverride()
+        +isFault() bool
+    }
     FcTelemetry ..> IMavlinkIo : 수신
     FcTelemetry ..> IPublisher : fc/attitude, fc/state
     FcTelemetry ..> IClock : 2 s 두절
@@ -91,6 +101,12 @@ classDiagram
     SetpointRelay ..> IMavlinkIo : SET_POSITION_TARGET_LOCAL_NED
     SetpointRelay ..> IClock : valid_until
     SetpointRelay ..> ModeRequestServer : 유효 시간 초과 시 Hold
+    SetpointRelay ..> FcWriteAuthority : 송신 전 확인
+    SetpointRelay ..> OnboardWatchdog : 송신 전 확인
+    ModeRequestServer ..> FcWriteAuthority : 송신 전 확인
+    ModeRequestServer ..> OnboardWatchdog : 송신 전 확인
+    OnboardWatchdog ..> HealthState
+    OnboardWatchdog ..> IClock : heading 요청 감시 시간
     ModeRequestServer ..> IReplier : control/mode_request
     ModeRequestServer ..> IMavlinkIo : DO_SET_MODE, DO_REPOSITION
     ModeRequestServer ..> IPublisher : fc/mode_event
@@ -103,6 +119,8 @@ classDiagram
 | `SetpointRelay` | `control/setpoint` 를 SET_POSITION_TARGET_LOCAL_NED 로 20 Hz 송신. `valid_until_monotonic_ns` 가 지나면 속도 0 을 보내고 Hold 요청 | icd 2장, pi 6장 |
 | `ModeRequestServer` | `control/mode_request`(OFFBOARD·HOLD·heading) 를 DO_SET_MODE·DO_REPOSITION 으로 보내고 수락·거부 응답. 실제 전환·Offboard 이탈 원인은 `fc/mode_event` 로 발행 | pi 5.2, icd 4.3 |
 | `HealthState` | `ARGUS_STATUS.health` 비트의 현재 값 | icd 3.1 |
+| `FcWriteAuthority` | FC 제어 명령 송신권. 통제기 제어권(sysid 250)과 별개. 다른 소유자가 있으면 시작 요청을 거부하고, 세션 변경·RC 개입·폐기 뒤에는 이전 권한으로 보내지 못하게 함 | icd 5장, pi 6장 |
+| `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입·유효 시간을 스스로 확인해 위험한 송신을 막음. RC 개입 우선, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않음. Scan 회전 중 감시 시간 안에 새 heading 요청이 없으면 회전을 멈춤 | icd 6.6, 6.4 ⓒ, pi 6장 |
 
 ## 3. 통제기 통신 (compid 195)
 
@@ -127,9 +145,9 @@ classDiagram
         +has(sensor, generation, class_id, track_id) bool
     }
     class FollowCommandClient {
-        +trackStart(...) Result
-        +stop(reason) Result
-        +search(range, rate, timeout) Result
+        +trackStart(...) FollowResult
+        +stop(reason) FollowResult
+        +search(range, rate, timeout) FollowResult
     }
     class ArgusStatusReporter {
         +onFollowStatus(follow/status)
@@ -178,7 +196,7 @@ classDiagram
 | `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사 | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
-| `FollowCommandClient` | `follow/command` REQ, `command_id` 발급, 응답 시간 초과 → failed | pi 5.2, 6장 |
+| `FollowCommandClient` | `follow/command` REQ. `command_id`·세션·`fc_epoch`·유효 기한을 넣어 보냄. 첫 결과는 REP 의 `follow/result`(outcome·request_accepted)에서, 이후 진행은 `follow/status.command_results` 에서 같은 command_id 로 찾음. 통제기 재전송은 같은 command_id·같은 내용으로. 응답 시간 초과 → FAILED | pi 5.2.1, 6장 |
 | `ArgusStatusReporter` | `follow/status` 의 `mission_state`·`target_state`·`selected` 를 ARGUS_STATUS 로 1 Hz + 변경 시 1회. `follow/status` 3 s 두절 → FAULT 보고와 Hold 요청 | icd 3.1, 6.4 |
 | `SensorStatusReporter` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시 | icd 3.1 |
 | `SensorMap` | `source` 문자열 ↔ `ARGUS_SENSOR` 대응표 (onboard 설정) | pi 3장 |
@@ -206,3 +224,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 1절 제목 "공통 경계" → "공통 인터페이스" |
+| 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): `FcWriteAuthority`(FC 제어 명령 송신권)와 `OnboardWatchdog`(onboard 독립 감시) 추가, `FollowCommandClient` 의 결과를 outcome·request_accepted 로 |

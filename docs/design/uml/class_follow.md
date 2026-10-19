@@ -20,15 +20,15 @@ classDiagram
     }
     class IModeControl {
         <<interface>>
-        +requestOffboard() Result
-        +requestHold() Result
-        +requestHeading(rad) Result
+        +requestOffboard() ModeReply
+        +requestHold() ModeReply
+        +requestHeading(rad, valid_until) ModeReply
     }
     class IFollowCommand {
         <<interface>>
-        +trackStart(sensor, generation, class_id, track_id, label) Result
-        +stop(reason) Result
-        +search(yaw_range, yaw_rate, timeout) Result
+        +trackStart(sensor, generation, class_id, track_id, label) FollowResult
+        +stop(reason) FollowResult
+        +search(yaw_range, yaw_rate, timeout) FollowResult
     }
     class FollowController {
         -missionState
@@ -92,7 +92,7 @@ classDiagram
 ## 검토 필요 사항
 
 1. `IVehicleState.attitudeAt` 의 보간 방식과 이력 길이 — 추적기와 공용으로 둘지 (`class_tracker.md` 의 `VehicleStateSubscriber` 와 같은 구현을 공유할 수 있다).
-2. `Result` 의 값 집합 — `pending`·`accepted`·`failed` + reason (pi 미결 1).
+2. 해소 (0.3): `FollowResult` 는 `follow/result` 의 outcome(IN_PROGRESS·SUCCEEDED·REJECTED·FAILED)·request_accepted·reason (pi 5.2.1). `ModeReply` 는 `control/mode_request` 의 응답으로, 필드는 pi 미결 1.
 3. `FollowController` 내부 Class Diagram — 추적·추종 담당.
 
 ## 변경 이력
@@ -101,3 +101,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스". 인터페이스(`argus::vehicle_api`)와 ZeroMQ 어댑터(`argus::vehicle_api_zmq`)를 CMake 타깃으로 분리 (#35 리뷰) |
+| 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰) |

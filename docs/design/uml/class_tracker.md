@@ -13,7 +13,7 @@ classDiagram
     }
     class VehicleStateSubscriber {
         -history ring buffer
-        +attitudeAt(frame unix_ns) optional~Attitude~
+        +attitudeAt(frame received_monotonic_ns) optional~VehicleSample~
         +fcFresh() bool
     }
     class UcmcTracker {
@@ -40,7 +40,7 @@ classDiagram
 | 클래스 | 구현 담당 | 책임 | 출처 |
 |---|---|---|---|
 | `ObservationSubscriber` | 추적·추종 | 탐지 결과 수신. frame_id 가 건너뛸 수 있음 | pi 5.1 |
-| `VehicleStateSubscriber` | 추적·추종 (통신과 공유 가능) | FC 표본 이력 보관, 프레임 시각에 가장 가까운 표본(차 50 ms 이내)을 줌. 없으면 `fc_fresh = false` | pi 5.1, icd 2장 |
+| `VehicleStateSubscriber` | 추적·추종 (통신과 공유 가능) | FC 표본 이력 보관. 표본은 자세, local NED 위치, 하향 거리, 표본 원수신 시각(`received_monotonic_ns`), 각 값의 유효성. 프레임의 호스트 단조 시각(`received_monotonic_ns`)에 가장 가까운 표본을 주되, 시각 차 50 ms 이내이고 쓰는 시점의 수신 후 경과 시간 200 ms 이내여야 한다. 없으면 `fc_fresh = false`. `unix_ns` 는 시스템 시각 보정의 영향을 받아 단조 시각과 비교할 수 없으므로 쓰지 않는다 | pi 5.1, icd 2장 |
 | `UcmcTracker` | 추적·추종 | 프레임 사이 객체 연결, track_id·generation(재시작마다 증가), CMC → `cmc_valid` | pi 2장 |
 | `TracksPublisher` | 추적·추종 | `tracking/tracks` v5. 탐지 결과 프레임마다 | pi 5.1.1 |
 | `TrackingStatusPublisher` | 추적·추종 | `tracking/status` 1 Hz | pi 5.1.3 |
@@ -58,3 +58,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스" |
+| 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): FC 표본 입력 항목과 유효성, 프레임의 호스트 단조 시각으로 표본 선택 |
