@@ -6,7 +6,7 @@
 | 표기 | Mermaid `classDiagram`. `<<interface>>` 는 순수 가상 클래스. `<\|..` 구현, `*--` 소유, `..>` 사용. 멤버는 책임을 보이는 것만 적고 전체 목록이 아니다 |
 | 범위 | onboard 프로세스 하나. 추종 제어 쪽 어댑터는 `class_follow.md`, 영상 송신부는 `class_video.md` |
 
-## 1. 공통 경계 (MAVLink, ZeroMQ, 시계)
+## 1. 공통 인터페이스 (MAVLink, ZeroMQ, 시계)
 
 ```mermaid
 classDiagram
@@ -205,3 +205,4 @@ classDiagram
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
+| 0.2 | 2026-10-19 | 1절 제목 "공통 경계" → "공통 인터페이스" |

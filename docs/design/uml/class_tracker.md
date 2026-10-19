@@ -1,10 +1,10 @@
-# Class Diagram — UCMC 추적기 경계
+# Class Diagram — UCMC 추적기의 외부 인터페이스
 
 | 항목 | 내용 |
 |---|---|
 | 참조 문서 | `docs/spec/process_interfaces.md` 2장, 5.1 (`perception/observations`, `tracking/tracks` v5, `tracking/status`, `fc/attitude`·`fc/state`) |
 | 표기 | Mermaid `classDiagram` |
-| 범위 | 추적기가 바깥과 만나는 경계만. `UcmcTracker` 내부(객체 연결, CMC)는 추적·추종 담당이 채운다 |
+| 범위 | 추적기가 다른 프로세스와 주고받는 토픽만. `UcmcTracker` 내부(객체 연결, CMC)는 추적·추종 담당이 채운다 |
 
 ```mermaid
 classDiagram
@@ -57,3 +57,4 @@ classDiagram
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
+| 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스" |

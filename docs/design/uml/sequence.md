@@ -54,7 +54,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant vis as ObservationPublisher (탐지)
+    participant vis as PerceptionWorker (탐지)
     participant trk as UcmcTracker (추적기)
     participant vss as VehicleStateSubscriber (추적기)
     participant ctl as FollowController (추종 제어)
@@ -85,8 +85,8 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant fp as FramePublisher (탐지)
-    participant op as ObservationPublisher (탐지)
+    participant fp as PythonVisionAdapter (탐지)
+    participant op as PerceptionWorker (탐지)
     participant tp as TracksPublisher (추적기)
     participant mj as MessageJoiner (영상 송신부)
     participant vs as VideoSender (영상 송신부)
@@ -151,3 +151,4 @@ sequenceDiagram
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-19 | 초안 (#31) |
+| 0.2 | 2026-10-19 | 탐지 쪽 참여자를 실제 클래스 이름으로 (`PerceptionWorker`, `PythonVisionAdapter`, #33 리뷰) |

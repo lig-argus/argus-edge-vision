@@ -1,10 +1,10 @@
-# Class Diagram — 추종 제어 경계
+# Class Diagram — 추종 제어의 외부 인터페이스
 
 | 항목 | 내용 |
 |---|---|
 | 참조 문서 | `docs/spec/process_interfaces.md` 4장 (C++ 인터페이스), 5.1·5.2 (토픽·REQ/REP), 6장 (두절) |
 | 표기 | Mermaid `classDiagram`. `<\|..` 구현, `..>` 사용 |
-| 범위 | 추종 제어가 바깥과 만나는 경계만. `FollowController` 내부(추종·Scan 판단, setpoint 계산)는 추적·추종 담당이 채운다 |
+| 범위 | 추종 제어가 다른 프로세스와 주고받는 인터페이스와 그 ZeroMQ 어댑터만. `FollowController` 내부(추종·Scan 판단, setpoint 계산)는 추적·추종 담당이 채운다 |
 
 ```mermaid
 classDiagram
@@ -73,6 +73,7 @@ classDiagram
 | `IModeControl` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading. 수락은 동기 응답, 완료는 이벤트 | pi 4장, 5.2 |
 | `IFollowCommand` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 표적 존재·상태·FC 조건 검사는 구현이 한다 | pi 4장, icd 4.1 |
 | `Zmq*` 어댑터 | 통신 | 위 인터페이스를 `process_interfaces.md` 5장 토픽·REQ/REP 로 구현 | pi 2장 |
+| (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(의존성 없음), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 `Fake*` 단위 테스트는 `vehicle_api` 만 링크해 ZeroMQ·MessagePack 에 의존하지 않는다 (#35 리뷰) | — |
 | `FollowCommandServer` | 통신 | `follow/command` REP 를 받아 `IFollowCommand` 호출, result·reason 응답 | pi 5.2 |
 | `FollowStatusPublisher` | 통신 | `follow/status` 1 Hz + 변경 시, `command_results` 포함 | pi 5.1.2 |
 | `FollowController` | 추적·추종 | 임무·표적 상태(`state_machine.md`), setpoint 계산. 내부 구조는 담당자가 `class_follow.md` 에 추가 | pi 2장 |
@@ -86,7 +87,7 @@ classDiagram
 | O | `IFollowCommand` | 새 행동(예: Scan 변형)은 메서드 추가로, FC 통신 코드는 바꾸지 않음 (pi 4장) |
 | L | `Zmq*` ↔ `Fake*` | 같은 계약(즉시 반환, 유효 시간, 응답 코드) |
 | I | 인터페이스 넷으로 분리 | 추적기는 `IVehicleState` 만, 추종 제어는 넷 모두 (pi 4장 "인터페이스 분리") |
-| D | `FollowController` | 인터페이스에만 의존. 프로세스 배치를 바꿔도(onboard 안으로 합쳐도) 추종 제어 코드는 그대로 (pi 2.1 "의존 역전") |
+| D | `FollowController`, CMake 타깃 | 인터페이스에만 의존하고, 빌드에서도 `vehicle_api`(인터페이스)만 링크한다. 프로세스 배치를 바꿔도(onboard 안으로 합쳐도) 추종 제어 코드는 그대로 (pi 2.1 "의존 역전") |
 
 ## 검토 필요 사항
 
@@ -99,3 +100,4 @@ classDiagram
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
+| 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스". 인터페이스(`argus::vehicle_api`)와 ZeroMQ 어댑터(`argus::vehicle_api_zmq`)를 CMake 타깃으로 분리 (#35 리뷰) |
