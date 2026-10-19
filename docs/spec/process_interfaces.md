@@ -103,7 +103,7 @@ flowchart LR
 
 | 토픽 | 발행 → 구독 | 주기 | 필드 |
 |---|---|---|---|
-| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus.vision.frame.v1`. 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][MessagePack 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + encoding("gray8"), stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 다만 탐지 쪽 송신 경로(Python 인코더 → C++ 어댑터)의 큐 크기가 1 이라, 막히면 프레임이 버려져 공개 버스에 발행되지 않는다. 그래서 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 우선 기존 버스 **[미결 3]** |
+| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus.vision.frame.v1`. 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][MessagePack 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + encoding("gray8"), stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
 | `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
 | `vision/npu_input/jpeg` | 탐지 → (진단용, 현재 구독자 없음) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 입력 640×640 레터박스 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 박스 좌표계가 원본 픽셀과 다르다 |
 | `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
@@ -219,7 +219,10 @@ flowchart LR
 
 1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 schema 이름·필드 고정, 두 REQ/REP 의 타임아웃, `fc/mode_event` 의 발행 엔드포인트. `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. — 추적·추종·통신
 2. 해소 (0.8): `follow/status` 발행 주기(1 Hz + 변경 시), 세션 필드의 뜻, `scan_config` SI 필드를 5.1·5.1.2 에 반영함. — 추적·추종
-3. `vision/frame/gray8` 의 전송 경로: 우선 기존 버스(5555/5556). 프레임당 307 KB 가 Python → C++ 어댑터 → 프록시로 복사되므로 Pi 에서 FPS·CPU 를 재 보고 무거우면 IPC 직결. — 탐지
+3. 해소 (0.8): `vision/frame/gray8` 의 전송 경로는 기존 버스(5555/5556)로 확정. — 탐지
+   - 측정(2026-10-19, drone Pi 5): 전송 경로만 따로 잰 결과 기존 버스(Python PUSH → 어댑터 → XSUB/XPUB 프록시 → SUB)는 버림 0, 지연 p50 1.5 ms 로 IPC 직결(p50 0.4 ms)과 약 1 ms 차이.
+   - 탐지·추적·추종을 함께 켜고 gray8 끔/켬을 5회씩 120 초 비교: 탐지·추적 30 FPS, gray8·overlay·npu_input 버림 0, `perception/observations` 지연 p50 0.85 → 0.95 ms, 카메라 수신 → `tracking/tracks` 도착 p50 25.0 → 26.3 ms, CPU 코어 하나 기준 +24 %p(Pi 전체의 약 6 %).
+   - 조건: 카메라 대신 RAW14 녹화 재생, FC 대신 가상 기체(MAVLink 연결 없음), 영상 송신부 없음. 추적기는 gray8 을 구독하지 않아 gray8 은 프록시에서 걸러졌다. 영상 송신부를 구현하면 gray8 을 실제로 받는 구독자가 생기므로 같은 방법으로 다시 측정한다.
 4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
 5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
@@ -237,4 +240,4 @@ flowchart LR
 | 0.5 | 2026-10-15 | `follow/status`·`tracking/status` 실제 schema 반영(5.1.2·5.1.3), `follow/command` action·result 이름을 구현에 맞춤, 단위 변환 규칙 보완, 7장 1·2 갱신 |
 | 0.6 | 2026-10-15 | 영상 소스를 비압축 프레임 토픽으로 바꾸고 전송 코덱 인코딩을 영상 송신부로 (5.1·5.3·7장 3) |
 | 0.7 | 2026-10-16 | 비압축 프레임 토픽을 `vision/frame/gray8` 로 확정(schema·헤더·픽셀 정의, 기본 꺼짐), overlay 는 지상 미리보기용으로 당분간 유지, 7장 3 을 전송 경로 확인으로 교체 |
-| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, 7장 1 갱신·2 해소·8 추가 |
+| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), 7장 1 갱신·2·3 해소·8 추가 |
