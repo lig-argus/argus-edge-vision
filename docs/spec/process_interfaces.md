@@ -72,7 +72,12 @@ flowchart LR
 - 전송: ZeroMQ + MessagePack. 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **PUB/SUB**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **REQ/REP**. REQ/REP 는 중복 실행과 오래된 명령 실행을 막는다.
 - multipart 구성: `[0] 토픽`, `[1] MessagePack 본문`, 필요하면 `[2] 바이너리`.
 - 공통 필드: 모든 메시지에 `schema`(`argus.<영역>.<이름>.vN`), `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`.
-- 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(`follow/status` 의 같은 이름 필드, 뜻은 **[미결 9]**), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
+- 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(요청을 만들 때 onboard 가 `fc/attitude`·`fc/state` 에 발행하고 있는 현재 값, 아래), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
+- `fc_epoch`: FC 연결의 epoch(uint64). onboard 가 FC 와 연결을 새로 맺거나 FC 재부팅을 감지할 때마다 1 증가시킨다. `fc/attitude`·`fc/state` 메시지와 요청이 같은 FC 연결·같은 FC 부팅 구간에서 나온 것인지 확인하는 데 쓴다. 추적기 `generation` 과 같은 방식이지만 세는 대상(추적기 재시작이 아니라 FC 연결·FC 부팅)이 다르다. FC 시각, MAVLink 패킷 번호와도 다르다.
+  - onboard(FC 통신)가 1 증가시키는 때: FC 연결을 새로 구성하거나 다시 연결할 때, FC 부팅 후 경과 시간(`time_boot_ms`)이 직전 메시지보다 작아져 FC 재부팅을 감지하고 보관 중인 FC 데이터를 지울 때. 메시지마다, 일반 모드 변경마다 바꾸지 않는다.
+  - onboard 가 다시 시작하면 처음 값부터 다시 셀 수 있으므로 `onboard_session` 과 함께 비교한다.
+  - 받는 쪽은 세션과 `fc_epoch` 를 검사한다. 값이 바뀌면 바뀌기 전 구간의 `fc/attitude`·`fc/state` 메시지, FC 제어 명령 송신권(6장), 진행 중 요청을 이어 쓰지 않는다.
+  - 오래된 요청의 `fc_epoch` 만 최신 값으로 바꿔 다시 보내지 않는다. 바뀐 `fc_epoch` 의 `fc/attitude`·`fc/state` 메시지를 받아 조건을 다시 확인한 뒤 새 요청(새 `command_id`)으로 보낸다.
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
 - 버전: 필드 추가는 같은 버전, 필드 삭제·의미 변경은 `vN` 증가. 받는 쪽은 모르는 필드를 무시한다 (`tracking/tracks` v5 수신기는 이미 그렇게 동작).
 - 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽(onboard)이 받을 때 rad·m·s 로 바꾼다. `follow/status` 의 `scan_config` 는 SI 필드(`yaw_rate_rad_s`, `sweep_rad`, `timeout_s`)를 쓴다 (5.1.2).
@@ -86,7 +91,7 @@ flowchart LR
 
 | 인터페이스 | 구현 | 사용 | 내용 |
 |---|---|---|---|
-| `IVehicleState` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어, 추적기 | 기체 상태 스냅샷과 자세·위치 표본 (5.1 `fc/attitude`·`fc/state` 와 같은 값) |
+| `IVehicleState` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어, 추적기 | 기체 상태 스냅샷과 자세·위치 메시지 (5.1 `fc/attitude`·`fc/state` 와 같은 값) |
 | `IVelocitySetpoint` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | FRD 전진·우측·하강 속도(m/s), yaw 회전 속도(rad/s), 유효 시간. 매 주기 호출, 즉시 반환 |
 | `IModeControl` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 수락은 동기 응답, 전환 완료·Offboard 이탈은 이벤트 |
 | `IFollowCommand` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
@@ -107,15 +112,15 @@ flowchart LR
 | `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
 | `tracking/status` | 추적기 → onboard | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
-| `fc/attitude` | onboard → 추적기, 추종 제어 | FC 자세 표본마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid. 필드 이름은 **[미결 7]** |
-| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, 표본별 원수신 시각. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
+| `fc/attitude` | onboard → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
+| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, 메시지별 원수신 시각, fc_epoch(3장). 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → onboard | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
 | `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
 | `fc/mode_event` | onboard → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
 - 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 기존 6357 추적기 bind. 탐지 토픽은 기존 버스 5556. `fc/mode_event` 의 발행 엔드포인트는 **[미결 1]**.
-- 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. onboard 는 표본을 그대로 넘긴다.
-- `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 FC 표본 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
+- 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. onboard 는 FC 메시지를 그대로 넘긴다.
+- `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
 #### 5.1.1 `tracking/tracks` v5 필드 (2026-10-15 기준)
 
@@ -134,7 +139,7 @@ flowchart LR
 | tracks[].real_detection, last_real_detection_monotonic_ns | bool, int64 | |
 | tracks[].ground, ground_anchor | [N, E, varN, covNE, varE, alignment_ms], [anchor_y, height_m] | 지면 투영 |
 
-- 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 FC 표본 없음).
+- 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
 
 #### 5.1.2 `follow/status` v1 필드 (2026-10-16 기준)
@@ -225,11 +230,11 @@ flowchart LR
    - 탐지·추적·추종을 함께 켜고 gray8 끔/켬을 5회씩 120 초 비교: 탐지·추적 30 FPS, gray8·overlay·npu_input 버림 0, `perception/observations` 지연 p50 0.85 → 0.95 ms, 카메라 수신 → `tracking/tracks` 도착 p50 25.0 → 26.3 ms, CPU 코어 하나 기준 +24 %p(Pi 전체의 약 6 %).
    - 조건: 카메라 대신 RAW14 녹화 재생, FC 대신 가상 기체(MAVLink 연결 없음), 영상 송신부 없음. 추적기는 gray8 을 구독하지 않아 gray8 은 프록시에서 걸러졌다. 영상 송신부를 구현하면 gray8 을 실제로 받는 구독자가 생기므로 같은 방법으로 다시 측정한다.
 4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신·추종
-5. FC 표본 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
+5. `fc/attitude`·`fc/state` 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 `fc/attitude`·`fc/state` 메시지의 시각 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신·추적
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기·추적
-7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 표본별 원수신 시각)은 합의됨. — 통신·추적
+7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 메시지별 원수신 시각)은 합의됨. — 통신·추적
 8. 해소 (0.8): 추종 제어의 거부 이유 "another writer owns FC" 는 onboard 가 관리하는 FC 제어 명령 송신권을 다른 소유자가 가진 경우다 (6장). — 추적·추종·통신
-9. `fc_epoch` 의 뜻(무엇이 바뀌면 값이 바뀌는지)과 요청에 넣을 값. — 추적·추종
+9. 해소 (0.8): `fc_epoch` 는 FC 연결의 epoch(FC 와 새로 연결하거나 FC 재부팅을 감지할 때마다 1 증가)이고, 요청에는 onboard 가 발행하는 현재 값을 넣는다 (3장). — 추적·추종·통신
 
 ## 변경 이력
 
@@ -242,4 +247,4 @@ flowchart LR
 | 0.5 | 2026-10-15 | `follow/status`·`tracking/status` 실제 schema 반영(5.1.2·5.1.3), `follow/command` action·result 이름을 구현에 맞춤, 단위 변환 규칙 보완, 7장 1·2 갱신 |
 | 0.6 | 2026-10-15 | 영상 소스를 비압축 프레임 토픽으로 바꾸고 전송 코덱 인코딩을 영상 송신부로 (5.1·5.3·7장 3) |
 | 0.7 | 2026-10-16 | 비압축 프레임 토픽을 `vision/frame/gray8` 로 확정(schema·헤더·픽셀 정의, 기본 꺼짐), overlay 는 지상 미리보기용으로 당분간 유지, 7장 3 을 전송 경로 확인으로 교체 |
-| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가, 2.1 그림의 화살표를 onboard 안 FC 통신·통제기 통신에 직접 연결 |
+| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가, 2.1 그림의 화살표를 onboard 안 FC 통신·통제기 통신에 직접 연결, `fc_epoch` 정의와 증가 조건·검사 규칙(3장), `fc/attitude`·`fc/state` 에 `fc_epoch` 추가(5.1), 7장 9 해소, "FC 표본" 을 "FC 메시지"·"`fc/attitude`·`fc/state` 메시지" 로 |
