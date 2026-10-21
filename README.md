@@ -19,6 +19,46 @@
 - 폴더 이름: 역할을 나타내는 폴더는 단수(`src`, `include`, `test`), 같은 종류를 모아 둔 폴더는 복수(`docs`, `tools`, `models`).
 - 커밋·PR 규칙, 코딩 컨벤션: [CONTRIBUTING.md](CONTRIBUTING.md)
 
+## onboard 구조와 빌드 (`onboard/`)
+
+Raspberry Pi 에서 도는 프로세스 5개(onboard, 영상 송신부, 추종 제어, 추적기, 탐지)의 코드를 모두 `onboard/` 아래에 둔다.
+`onboard/` 는 RPi 패키지 전체를 가리키고, onboard 프로세스(FC 통신·통제기 통신)는 `onboard/apps/onboard/` 이다.
+
+```
+onboard/
+  CMakeLists.txt          # 상위 CMake 프로젝트 하나, 실행 파일 여러 개
+  cmake/                  # CMake 함수 (argus_add_test)
+  libs/                   # 프로세스들이 함께 쓰는 라이브러리
+    core/                 # IClock 등 공통 기반
+    bus/                  # ZeroMQ PUB/SUB·REQ/REP 인터페이스와 구현, MessagePack 메시지 타입
+    vehicle_api/          # IVehicleState·IVelocitySetpoint·IModeControl·IFollowCommand 순수 인터페이스 (의존성 없음)
+    vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크)
+  apps/                   # 실행 파일. 프로세스 하나에 폴더 하나
+    onboard/              # onboard 프로세스 (통신 담당)
+    video_sender/         # 영상 송신부 (통신 담당)
+    follow_controller/    # 추종 제어 (추적·추종 담당)
+    tracker/              # UCMC 추적기 (추적·추종 담당)
+  vision/                 # 탐지 프로세스. Python + C++ 어댑터 (탐지 담당)
+  config/                 # 설정 파일 (mavlink-router, onboard, 센서 대응표)
+```
+
+- RPi 프로세스끼리만 사용하는 것은 `onboard/libs/`, onboard 와 통제기가 함께 사용하는 것(MAVLink, 영상 메타데이터 형식)은 `common/` 에 둔다.
+- 모듈 규칙(폴더, 헤더 경로, namespace, 테스트 등록)은 CONTRIBUTING.md 0.4.
+- 클래스와 인터페이스 설계는 `docs/design/uml/`.
+
+의존성은 Ubuntu 24.04 apt 패키지를 사용한다 (RPi 와 CI 가 같음).
+
+| OS | 설치 |
+|---|---|
+| Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libmsgpack-cxx-dev libgtest-dev` |
+| macOS (개발용) | `brew install cmake ninja zeromq cppzmq msgpack-cxx googletest` |
+
+```bash
+cmake -S onboard -B build/onboard -G Ninja
+cmake --build build/onboard
+ctest --test-dir build/onboard --output-on-failure
+```
+
 ## 통제기 빌드 (`gcs/`)
 
 Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.
@@ -43,7 +83,7 @@ python3 -m venv ~/.venvs/mavgen && ~/.venvs/mavgen/bin/pip install -r tools/requ
 MAVGEN_PYTHON=~/.venvs/mavgen/bin/python tools/generate_mavlink.sh
 ```
 
-- 순서: `argus.xml` 수정 → 재생성 → `docs/ICD.md` 수정 → onboard·통제기 코드 수정. 한 PR 에 함께 넣는다.
+- 순서: `argus.xml` 수정 → 재생성 → `docs/spec/icd.md` 수정 → onboard·통제기 코드 수정. 한 PR 에 함께 넣는다.
 - `common/mavlink/generated/`는 직접 수정하지 않는다. CI 의 `mavlink` 작업이 같은 버전으로 다시 생성해 커밋본과 비교하므로, 재생성을 하지 않으면 PR 이 실패한다.
 - 통째로 다시 만드는 이유: `argus.xml` 에서 메시지를 지웠을 때 옛 헤더가 남지 않게 한다.
 - pymavlink 버전을 올릴 때: `tools/requirements-mavgen.txt` 를 수정하고 재생성해 헤더 변경과 한 커밋으로 올린다.
