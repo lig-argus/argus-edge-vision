@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.1 (팀 검토 전 초안) |
+| 문서 버전 | 0.2 (팀 검토 전 초안) |
 | 패킷 형식 | `common/mavlink/message_definitions/argus.xml` (argus dialect) + 표준 `common.xml`. 3·4장의 argus 메시지·명령 정의는 `argus.xml` 보다 앞서 있으며, `argus.xml` 반영은 #21 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 7장의 검토 항목 번호 |
@@ -98,7 +98,7 @@ flowchart LR
 | HEARTBEAT (0) | 모든 MAVLink 노드 → 전체 | 1 Hz | 생존·비행 모드·armed 상태. 통제기는 `custom_mode` 로 PX4 모드를 해석한다 (부록 A) |
 | SYS_STATUS (1) | FC → 전체 | 1 Hz | 센서 상태, 배터리 |
 | GPS_RAW_INT (24) | FC → 전체 | 1 Hz | 위성 수, fix 종류 |
-| ATTITUDE (30) | FC → 전체 | **30 Hz 이상** | 자세. onboard 가 표본마다 수신 시각을 붙여 추적기·추종 제어에 넘긴다. 2026-10-15 기체 실측 약 100 Hz 수신 |
+| ATTITUDE (30) | FC → 전체 | **30 Hz 이상** | 자세. onboard 가 ATTITUDE 메시지마다 수신 시각을 붙여 추적기·추종 제어에 넘긴다. 2026-10-15 기체 실측 약 100 Hz 수신 |
 | LOCAL_POSITION_NED (32) | FC → 전체 | 30 Hz | local NED 위치·속도. 추적기의 지면 투영. 2026-10-15 기체 실측 약 30 Hz 수신 |
 | GLOBAL_POSITION_INT (33) | FC → 전체 | 30 Hz | 위치·고도·속도. 2026-10-15 실측에서 미수신 → 스트림 설정 확인 [미결 D5] |
 | DISTANCE_SENSOR (132) | FC → 전체 | 30 Hz (센서가 있을 때) | 지면 기준 높이(하향 거리). 추적기가 쓴다. 2026-10-15 실측에서 미수신 → 센서 유무·스트림 설정 확인 [미결 D5] |
@@ -115,7 +115,7 @@ flowchart LR
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
 
 - telemetry 주기는 PX4 가 TELEM2 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
-- 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 표본 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 표본이 있었으며 그 표본의 수신 후 경과 시간이 200 ms 를 넘지 않았다 (200 ms 의 기준 시점은 확인 중). 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 로 TELEM2 921600 bps(약 115 kB/s) 안이다.
+- 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 메시지(ATTITUDE, LOCAL_POSITION_NED 등) 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 메시지가 있었으며 추적기가 그 메시지를 고른 시점에서 그 메시지의 호스트 수신 시각을 뺀 값이 200 ms 를 넘지 않았다. 이 결과는 읽기 전용 계측이며, 실제 추적·추종 실행이나 거리 센서를 포함한 지면 투영까지 검증한 것은 아니다. 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 로 TELEM2 921600 bps(약 115 kB/s) 안이다.
 - PX4 는 Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 Offboard 에 들어가고 유지한다. setpoint 가 끊긴 뒤 `COM_OF_LOSS_T` (기체 FC 1.0 s, PX4 v1.16 기본값과 같음, 2026-10-06 FC 에서 읽음)가 지나면 `COM_OBL_RC_ACT` 동작으로 Offboard 를 빠져나간다. onboard 는 추종 중 20 Hz 를 유지한다.
 - `COM_OBL_RC_ACT` 는 5(Hold)로 설정한다. 2026-10-06 FC 에서 읽은 값은 0(Position)이었으므로 기체 FC 에 적용됐는지 확인이 필요하다 [미결 D4].
 
@@ -152,7 +152,7 @@ flowchart LR
 
 | 명령 | param | 조건 | 결과 |
 |---|---|---|---|
-| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값 | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입 성공 시 ACCEPTED(FOLLOW_ACTIVE), 실패 시 FAILED |
+| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값 | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold. Position 모드라는 것만으로는 허용하지 않는다. Position 모드에서 조종을 넘기는 절차는 후속 항목이다 [E5] | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT) |
 | MAV_CMD_ARGUS_TRACK_STOP (45001) | 없음 | 보낸 sysid 가 제어권 통제기 | 추종 또는 스캔 중이면 끝내고 Hold 로 바꾼 뒤 ACCEPTED (HOLD_TRANSITION → HOLD_WAIT). 둘 다 아니어도 ACCEPTED |
 | MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 onboard 설정 기본값(2π, 10 deg/s 상당, 60 s) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 FC 모드가 Hold ④ 매개변수가 범위 안 | 조건 불충족 → DENIED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 운용자가 TRACK_START 로 선택해야 추종이 시작된다 |
 
@@ -199,6 +199,7 @@ sequenceDiagram
 
 - **제어권**은 sysid 250 통제기 하나가 가진다. onboard 는 다른 sysid 가 보낸 TRACK_START/STOP·SCAN_START 를 DENIED 로 거부하고 `ARGUS_STATUS.control_sysid` 에 250 을 넣는다.
 - 통제기 두 대가 동시에 붙는 경우는 지원하지 않는다 [미결 D2].
+- 통제기 제어권과 별개로, FC 로 setpoint·모드·heading 을 보낼 **FC 제어 명령 송신권**은 onboard 가 관리한다. 다른 소유자가 있으면 추종 시작을 거부하고, 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다 (`docs/spec/process_interfaces.md` 6장).
 - onboard 는 통제기의 HEARTBEAT 를 받아 `ARGUS_HEALTH_GCS_LINK` 를 유지한다 (6.1).
 - 모든 송신자는 MAVLink 2 의 `seq` 를 1 씩 올린다. 수신자는 송신자(sysid, compid)별 `seq` 빈칸으로 손실률을 센다. 라우터 때문에 "자기에게 오지 않는 메시지" 도 빈칸으로 보이므로, 링크 품질은 HEARTBEAT 수신률(1 Hz 기대)로 판단한다.
 
@@ -209,11 +210,13 @@ sequenceDiagram
 | 6.1 통제기 → onboard | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
 | 6.2 onboard → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
-| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청의 유효 시간이 지남 | ⓐ·ⓒ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. 모두 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장) |
+| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청을 FC 로 보내기 전에 그 요청의 `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음)가 지남 | ⓐ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: onboard 가 그 요청을 FC 로 보내지 않고 거부한다. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
+| 6.6 onboard 독립 감시 | 추종 제어의 상태 보고와 관계없이 onboard 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
 
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). onboard 의 6.1 과 독립이다.
 - 두절 시간 값은 Wi-Fi 끊김 길이 측정 뒤 조정한다 [미결 D3].
+- FAULT·MANUAL 에서의 복구: 통신이나 조건이 회복된 것만으로는 복구하지 않는다. 운용자의 명시적 TRACK_STOP 을 받고, 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤 HOLD_WAIT 로 돌아간다. 다시 추종하려면 표적을 새로 고르고 TRACK_START 를 보내야 한다.
 
 ## 7. 검토 필요 사항
 
@@ -222,7 +225,7 @@ sequenceDiagram
 | A1 | 카메라 화각·장착각 | 측정 중. 값이 나오면 추종 제어의 거리·각도 계산에 사용 | 통제기·제어 |
 | A3 | 추종 속도·거리 제한 | 최대 속도, 접근 거리. 제어 설계값 | 제어 |
 | A4 | 거리 추정 방식 | 바운딩 박스 크기 vs 지면 투영 | 제어·탐지 |
-| B2 | 시각 기준 | 영상 프레임 시각은 RPi 수신 시각(노출 시각은 카메라 SDK 가 주지 않음). RPi 시계와 FC `time_boot_ms` 의 차이는 onboard(FC_RX) 가 `TIMESYNC` 로 구해 표본마다 넘긴다. 노출 시각 적용은 제조사 타임스탬프 정의 확인 뒤 | 제어·탐지 |
+| B2 | 시각 기준 | 영상 프레임 시각은 RPi 수신 시각(노출 시각은 카메라 SDK 가 주지 않음). RPi 시계와 FC `time_boot_ms` 의 차이는 onboard(FC_RX) 가 `TIMESYNC` 로 구해 FC 메시지마다 넘긴다. 노출 시각 적용은 제조사 타임스탬프 정의 확인 뒤 | 제어·탐지 |
 | B3 | 센서 상태 항목 | flags 4 개 외에 필요한 것 (온도, 프레임 드롭) | 탐지 |
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 (`docs/spec/video.md`) | 탐지 |
@@ -231,9 +234,11 @@ sequenceDiagram
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
-| D5 | FC 표본 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
-| E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함 | 통제기·제어 |
+| D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
+| E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차도 이 시험에서 정함 (6.4 ⓒ). 감시 시간 안에 새 heading 요청이 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 FC 정지 명령 방식은 이 시험으로 정한다 | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
+| E5 | Position 모드에서 조종을 넘기는 절차 (후속) | 지금 TRACK_START 는 FC 가 실제 Hold 일 때만 허용하고 ①~⑤ 와 FC 제어 명령 송신권 검사는 그대로다 (4.2, 5장). Position 모드에서 조종을 넘기는 절차는 통제기가 보낼 요청 형식이 아직 없으므로 후속 항목으로 두고, 지원할 때 준비·취소·유효 시간·RC 개입 처리를 함께 정한다 | 통제기·제어 |
+| E6 | 규약에 없는 임무 상태 변화 | 해소 (0.2): Offboard 요청·ACK 실패, 실제 모드 확인 시간 초과는 FAULT (4.2). MANUAL·FAULT 의 복구는 6장 아래 항목 | — |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
 
@@ -264,8 +269,8 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | HOLD_TRANSITION | 추종·스캔 을 끝내고 Hold 로 전환 중 | 전환 중 |
 | HOLD_WAIT | FC 가 Hold 인 것을 확인하고 대기. 자동으로 추종을 재개하지 않는다 | 선택 가능 |
 | SCAN_ACTIVE | yaw 스캔 중 | 스캔 중 |
-| MANUAL | 조종사(RC) 또는 통제기가 모드를 바꿔 추종이 끝남 | 수동 |
-| FAULT | FC 두절, 추종 제어 두절 등 고장으로 멈춤. 복구 뒤 운용자가 다시 시작 | 경고 |
+| MANUAL | 조종사(RC) 또는 통제기가 모드를 바꿔 추종이 끝남. 복구 조건은 6장 | 수동 |
+| FAULT | FC 두절, 추종 제어 두절, Offboard 진입 실패 등 고장으로 멈춤. 복구 조건은 6장 | 경고 |
 
 | `target_state` | 뜻 |
 |---|---|
@@ -279,3 +284,4 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종·스캔 명령 절차, 임무·표적 상태(부록 B), 두절 판단, 미결 항목 |
+| 0.2 | 2026-10-19 | #30 리뷰 답변 반영(#32): 2장 200 ms 의 기준 시점과 계측 범위, 6.4 ⓒ 를 FC 로 보내기 전 `valid_until_monotonic_ns` 검사로 한정하고 보낸 뒤 회전 중 새 heading 요청이 오지 않는 경우는 E3 으로, 7장 E5·E6 추가, 4.2 TRACK_START 조건 ⑥(FC 실제 Hold, Position 모드에서 조종을 넘기는 절차는 E5)과 Offboard 성공·실패 조건, 5장 FC 제어 명령 송신권, 6.6 onboard 독립 감시, FAULT·MANUAL 복구 조건, E3 회전 중 새 heading 요청이 오지 않을 때 onboard 독립 정지, E5 를 "Position 모드에서 조종을 넘기는 절차" 로 좁힘, E6 해소, 4.2 ⑥ 을 FC 실제 Hold 만으로 확정하고 E5 를 후속 항목으로, "FC 표본" 을 "FC 메시지" 로 |
