@@ -68,7 +68,7 @@ classDiagram
 
 | 클래스 | 구현 담당 | 책임 | 출처 |
 |---|---|---|---|
-| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷, 프레임 시각에 맞춘 자세 표본(보간용 이력은 구현이 보관), 모드 이벤트 | pi 4장, 5.1 |
+| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷, 프레임 시각에 맞춘 `fc/attitude` 메시지(보간용 이력은 구현이 보관), 모드 이벤트 | pi 4장, 5.1 |
 | `IVelocitySetpoint` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환 | pi 4장 |
 | `IModeControl` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading. 수락은 동기 응답, 완료는 이벤트 | pi 4장, 5.2 |
 | `IFollowCommand` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 표적 존재·상태·FC 조건 검사는 구현이 한다 | pi 4장, icd 4.1 |
@@ -101,4 +101,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스". 인터페이스(`argus::vehicle_api`)와 ZeroMQ 어댑터(`argus::vehicle_api_zmq`)를 CMake 타깃으로 분리 (#35 리뷰) |
-| 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰) |
+| 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰), "FC 표본" 을 "fc/attitude 메시지" 로 |

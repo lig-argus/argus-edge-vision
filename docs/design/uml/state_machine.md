@@ -67,8 +67,8 @@ stateDiagram-v2
     [*] --> NONE
     NONE --> CONFIRMED : TRACK_START 수락
     CONFIRMED --> PREDICTED : 검출 없음
-    PREDICTED --> CONFIRMED : 검출 다시 연결
-    PREDICTED --> LOST : 예측 유지 한도 초과
+    PREDICTED --> CONFIRMED : 같은 표적 다시 검출
+    PREDICTED --> LOST : 예측 유지 기한 만료·표적 무효
     CONFIRMED --> NONE : TRACK_STOP
     PREDICTED --> NONE : TRACK_STOP
     LOST --> NONE : Hold 전환 완료
@@ -77,19 +77,20 @@ stateDiagram-v2
 | transition | event | guard | effect | 출처 |
 |---|---|---|---|---|
 | NONE → CONFIRMED | TRACK_START 수락 | 표적이 최신 검출과 연결됨 | — | `icd.md` 4.2 |
-| CONFIRMED → PREDICTED | 검출 없음 | — | 예측으로 유지 | `argus.xml` |
-| PREDICTED → CONFIRMED | 검출이 다시 연결됨 | — | — | `argus.xml` |
-| PREDICTED → LOST | 예측 유지 한도 초과 | 한도는 `system_architecture.md` 2.7, 값은 `icd.md` 미결 E4 | 추종 제어가 Hold 요청 | `argus.xml`, `icd.md` 부록 B |
-| CONFIRMED·PREDICTED → NONE | TRACK_STOP 수신 | — | Hold 전환 완료 뒤 | `icd.md` 4.2 Sequence Diagram |
+| CONFIRMED → PREDICTED | 검출 없음 | 선택된 표적이 있고 그 표적의 마지막 상태 기록을 보관 중이며, 추종 제어 내부 단계가 GAP_HOLD·REACQUIRE·CONFIRM(검출이 끊긴 뒤 같은 표적을 다시 찾는 동안의 단계) 중 하나 | 예측으로 유지. 수평·yaw 출력 0, 고도는 기존 정책 | `argus.xml`, #33 리뷰 (추적·추종 담당) |
+| PREDICTED → CONFIRMED | 같은 표적 다시 검출 | 다시 검출한 관측이 연속 확인 조건을 충족 | — | `argus.xml`, #33 리뷰 |
+| PREDICTED → LOST | 예측 유지 기한 만료, 또는 선택 표적과 그 표적 기록이 무효가 됨 (무효가 되는 조건은 추종 제어 내부 구현) | 기한은 마지막으로 검증된 실제 관측 기준이며, 반복 조회나 빈 프레임 수신으로 늘리지 않는다. 기한 값은 `icd.md` 미결 E4 | 추종 제어가 Hold 요청 | `argus.xml`, `icd.md` 부록 B, #33 리뷰 |
+| CONFIRMED·PREDICTED → NONE | TRACK_STOP 을 수락(ICD 4.2 조건 통과)해 표적 선택에 적용함 | — | 표적 선택 해제. Hold 전환 완료를 기다리지 않는다 | `icd.md` 4.2, #33 리뷰 |
 | LOST → NONE | Hold 전환 완료 | — | — | `argus.xml` |
 
+- TRACK_STOP 뒤에는 `target_state` NONE 과 `mission_state` HOLD_TRANSITION 이 함께 보고될 수 있다. 표적 해제는 TRACK_STOP 을 적용한 때, 기체 정지 완료는 FC 실제 Hold 를 확인해 `mission_state` 가 HOLD_WAIT 가 된 때다.
+- PREDICTED 보고와 제어 허가는 별개다. PREDICTED 여도 `fc/attitude`·`fc/state` 메시지 조건(프레임 시각과의 차 50 ms 이내, 수신 후 200 ms 이내), RC 개입, FC 제어 명령 송신권, 명령 유효 기한 검사는 그대로 적용한다.
 - LOST 가 되면 추종 제어가 Hold 로 전환한다. 그래서 `mission_state` 의 FOLLOW_ACTIVE → HOLD_TRANSITION 조건에 target_state LOST 가 들어간다.
 
 ## 3. 검토 필요 사항
 
 - 해소 (0.2): 앞의 미결 A(PREPARING 에서 Offboard 진입 실패 뒤 상태)는 FAULT, 미결 B(MANUAL·FAULT 의 복구)는 명시적 TRACK_STOP 과 안전 조건 확인 뒤 HOLD_WAIT 로 정했다 (`icd.md` 4.2·6장, #33·#36 리뷰).
-- **[미결 C]** 표적 상태가 NONE 이 되는 시점: TRACK_STOP 을 받은 때인지, Hold 전환이 끝난 때(HOLD_WAIT)인지. 그림은 CONFIRMED·PREDICTED → NONE 을 TRACK_STOP 으로 그렸다. — 추적·추종
-- **[미결 D]** PREDICTED 를 유지하는 조건: 예측 유지 한도 외에 어떤 조건(FC 표본의 유효성, 프레임 시각과 FC 표본 시각의 차 등)이 맞아야 PREDICTED 로 남는지. — 추적·추종
+- 해소 (0.2): 미결 C(표적 상태가 NONE 이 되는 시점)는 TRACK_STOP 을 적용한 때, 미결 D(PREDICTED 유지 조건)는 선택 표적과 그 표적 기록 보관 + 같은 표적을 다시 찾는 단계 + 예측 유지 기한 이내로 정했다 (2절, #33 리뷰).
 - `follow/status` 의 `target_phase` 는 이 두 상태와 별개 필드다 (`process_interfaces.md` 5.1.2). 값이 확정되면 이 문서에 추가한다.
 
 ## 변경 이력
@@ -97,4 +98,4 @@ stateDiagram-v2
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
-| 0.2 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드, 실패는 FAULT, PREPARING 중 TRACK_STOP, MANUAL·FAULT 복구는 TRACK_STOP + 안전 조건 → HOLD_WAIT. 미결 A·B 해소, C·D 추가 |
+| 0.2 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드, 실패는 FAULT, PREPARING 중 TRACK_STOP, MANUAL·FAULT 복구는 TRACK_STOP + 안전 조건 → HOLD_WAIT. 미결 A·B 해소, C·D 추가 후 해소(표적 NONE 시점, PREDICTED 유지 조건) |
