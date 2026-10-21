@@ -82,4 +82,32 @@ jobs:
         # 마지막 인자: Qt moc 가 만든 소스(*_autogen/mocs_compilation.cpp)는 검사하지 않는다
         run: run-clang-tidy.py -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'
 
-  # onboard 빌드·gtest·clang-tidy 작업은 onboard/ 에 CMake 프로젝트가 생길 때 gcs 와 같은 모양으로 추가한다
+  onboard:
+    name: onboard build · test · clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        # Ubuntu 24.04 apt: ZeroMQ + cppzmq(C++ 바인딩), msgpack-cxx, gtest. RPi(Ubuntu 24.04)와 같은 패키지
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libmsgpack-cxx-dev libgtest-dev
+          pip install clang-tidy==22.1.8
+      - name: Configure
+        run: cmake -S onboard -B build/onboard -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/onboard
+      - name: Test
+        run: ctest --test-dir build/onboard --output-on-failure
+      - name: clang-tidy
+        # compile_commands.json 에 있는 소스를 병렬로 검사. 경고도 실패로 (clang-tidy 는 경고만으로는 exit 0).
+        # 컴파일할 소스가 하나도 없으면 CMake 가 compile_commands.json 을 만들지 않으므로 건너뛴다
+        run: |
+          if [ -f build/onboard/compile_commands.json ]; then
+            run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*'
+          else
+            echo "compile_commands.json 없음: 컴파일할 소스가 없어 건너뜀"
+          fi

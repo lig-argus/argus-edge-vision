@@ -41,7 +41,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙
 
 - clang-format 은 23 이어야 합니다 (버전마다 결과가 다릅니다). `apt install clang-tidy` 는 18 이라 `gcs/.clang-tidy` 를 읽지 못하므로 쓰지 않습니다.
 - pip 으로 설치하면 `run-clang-tidy` 대신 `run-clang-tidy.py` 입니다. `clang-format` 이 PATH 에 있어야 hook 이 찾습니다.
-- 커밋할 때 `.husky/pre-commit` 이 스테이징한 C++ 파일의 형식을 검사합니다. 거부되면 `clang-format -i <파일>` 로 고친 뒤 다시 `git add` 합니다. PR 에서는 CI(`.github/workflows/ci.yml`)가 형식을 다시 검사합니다. 빌드·gtest·clang-tidy 작업은 CMake 프로젝트가 생기는 PR 에서 추가합니다.
+- 커밋할 때 `.husky/pre-commit` 이 스테이징한 C++ 파일의 형식을 검사합니다. 거부되면 `clang-format -i <파일>` 로 고친 뒤 다시 `git add` 합니다. PR 에서는 CI(`.github/workflows/ci.yml`)가 형식을 다시 검사합니다. 빌드·테스트·clang-tidy 는 CI 의 `gcs`·`onboard` 작업이 합니다.
 
 **IDE 에서 형식 정리하기**
 
@@ -131,6 +131,25 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 ```
 
 - clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 합니다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙입니다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생깁니다.
+
+## 0.4 onboard 모듈 규칙
+
+`onboard/libs/` 와 `onboard/apps/` 아래 폴더 하나가 모듈 하나이다.
+
+| 항목 | 규칙 | 예 (`libs/bus`) |
+|---|---|---|
+| 폴더 | `include/ · src/ · test/` | `onboard/libs/bus/{include,src,test}/` |
+| 헤더 경로 | `include/argus/<모듈>/` | `onboard/libs/bus/include/argus/bus/publisher.hpp` |
+| include | 모듈 이름부터 사용한다 | `#include "argus/bus/publisher.hpp"` |
+| namespace | `argus::<모듈>` | `argus::bus::IPublisher` |
+| CMake 타깃 | 라이브러리 `argus_<모듈>` + 별칭 `argus::<모듈>`, 실행 파일 `argus_<모듈>` | `target_link_libraries(... argus::bus)` |
+| 테스트 | gtest. `test/<이름>_test.cpp` 마다 `argus_add_test` 한 번 | `argus_add_test(bus_publisher_test SOURCES test/publisher_test.cpp LIBS argus::bus)` |
+
+- 헤더 경로에 `argus/<모듈>/` 을 넣는 이유: 모듈마다 같은 파일 이름(`types.hpp` 등)이 있어도 include 가 겹치지 않고, 어느 모듈의 헤더인지 include 문만 보고 알 수 있습니다 (ROS 2 `rclcpp` 의 `include/rclcpp/` 와 같은 방식).
+- 모듈이 다른 모듈을 쓸 때는 `target_link_libraries` 로 연결합니다. 다른 모듈의 `src/` 나 상대 경로(`../`)로 헤더를 부르지 않습니다.
+- 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꿉니다.
+- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ·MessagePack)에 의존하지 않습니다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 가짜 구현 테스트가 인터페이스 모듈만 링크하게 합니다.
+- 빌드·테스트 명령과 의존성 설치는 README.md "onboard 구조와 빌드" 확인.
 
 ---
 
