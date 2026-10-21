@@ -1,9 +1,9 @@
-# Deployment Diagram — 장비, 실행 환경, 산출물
+# Deployment Diagram — 장비, 실행 환경, artifact
 
 | 항목 | 내용 |
 |---|---|
 | 참조 문서 | `docs/spec/icd.md` 1장 (노드·링크), `docs/spec/video.md` 1장 (GStreamer, Ubuntu 24.04)·8장 (모델 파일), `docs/spec/process_interfaces.md` 2장 (프로세스), 5.1 (Hailo 입력) |
-| 표기 | Mermaid 에 deployment 전용 문법이 없어 flowchart 로 그린다. 상자 = 장비(node)와 그 OS, 네모 = 그 위에 설치되는 산출물(실행 파일·설정·모델. 둘째 줄은 실행 환경·런타임), 원통 = 파일·장치. 선 = 통신 경로(프로토콜). `~~~` 는 선 없이 배치 순서만 정하는 Mermaid 표기 |
+| 표기 | Mermaid 에 deployment 전용 문법이 없어 flowchart 로 그린다. 상자 = 장비(node)와 그 OS, 네모 = 그 위에 설치되는 artifact(실행 파일·설정·모델. 둘째 줄은 실행 환경·런타임), 원통 = 파일·장치. 선 = 통신 경로(프로토콜). `~~~` 는 선 없이 배치 순서만 정하는 Mermaid 표기 |
 | 범위 | 설치 대상만 적는다. 빌드에만 쓰는 것(`argus.xml` 생성 헤더, CMake)은 적지 않는다 |
 
 ```mermaid
@@ -41,9 +41,9 @@ flowchart LR
     relay -->|Wi-Fi UDP 미리보기 JPEG| gcs
 ```
 
-## 산출물
+## artifact
 
-| 장비 | 실행 환경 | 산출물 | 담당 | 비고 |
+| 장비 | 실행 환경 | artifact | 담당 | 비고 |
 |---|---|---|---|---|
 | FC 보드 | — | PX4 v1.16 펌웨어, 파라미터 | 통신 (설정) | 펌웨어 업데이트는 하지 않는다. 파라미터 변경은 배포 문서에 기록 |
 | Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 (UART ↔ UDP 14540·14550·14551, QGC 명령 필터) | 통신 | `icd.md` 1.2 |
@@ -78,4 +78,4 @@ flowchart LR
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
-| 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 카메라 USB 2.0, Hailo-8 PCIe Gen3 x1, 탐지 실행 환경(C++ + Python 3.12 venv, hailort 4.23.0, i3 SDK), `argus_preview_udp_relay` 추가. 검토 필요 사항 2·5 해소(5: 운용은 TELEM2, USB 는 벤치 테스트 구성), 4 추가 |
+| 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 카메라 USB 2.0, Hailo-8 PCIe Gen3 x1, 탐지 실행 환경(C++ + Python 3.12 venv, hailort 4.23.0, i3 SDK), `argus_preview_udp_relay` 추가. 검토 필요 사항 2·5 해소(5: 운용은 TELEM2, USB 는 벤치 테스트 구성), 4 추가, "산출물" 을 UML 요소 이름 artifact 로 |
