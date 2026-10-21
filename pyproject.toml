@@ -1,0 +1,34 @@
+# Python 형식·검사(Ruff)와 타입 검사(mypy) 설정. 규칙 설명은 CONTRIBUTING.md 0.2.
+# 스타일은 PEP 8, docstring 형식만 Google 방식(Args:·Returns:·Raises:).
+# 이 파일은 도구 설정만 담는다. 저장소는 설치 가능한 Python 패키지가 아니다.
+
+[tool.ruff]
+line-length = 88              # Ruff·Black 기본값. PEP 8 이 허용하는 99 이하
+target-version = "py312"      # RPi 탐지 venv 가 Python 3.12
+# 검사 대상은 .py·.pyi 만. Ruff 기본값은 Markdown 안의 Python 코드 블록과 .ipynb 도 포함하므로 좁힌다
+include = ["*.py", "*.pyi"]
+extend-exclude = ["common/mavlink/generated"]
+
+[tool.ruff.lint]
+# E·W pycodestyle(PEP 8), F pyflakes(기본 오류), N pep8-naming(이름 규칙), I isort(import 순서),
+# B bugbear(버그 위험), UP pyupgrade(최신 문법), PERF 성능, D pydocstyle(docstring)
+select = ["E", "W", "F", "N", "I", "B", "UP", "PERF", "D"]
+# D100·D104: 모듈·패키지 docstring 은 요구하지 않는다 (공개 함수·클래스에는 필수)
+ignore = ["D100", "D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# 테스트는 docstring 을 요구하지 않는다
+"test_*.py" = ["D"]
+"**/test/**/*.py" = ["D"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ["^common/mavlink/generated/", "^build/", "^node_modules/"]
+# 타입 정보가 없는 외부 패키지는 패키지별로만 예외를 둔다 (전체 ignore_missing_imports 는 사용하지 않는다). 예:
+# [[tool.mypy.overrides]]
+# module = ["hailo_platform.*"]
+# ignore_missing_imports = true

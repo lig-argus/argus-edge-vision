@@ -67,6 +67,44 @@ IDE 는 루트의 `.clang-format` 을 자동으로 읽어 저장할 때 또는 �
 
 확인 방법: `common/mavlink/message_definitions/argus.xml` 에서 Enter 를 누르면 2칸, `.cpp` 에서는 4칸 들여쓰기가 되면 적용된 것입니다.
 
+**Python 형식·검사·타입 검사 (Ruff, mypy)**
+
+Python 은 PEP 8 스타일을 따르고, docstring 형식만 Google 방식(`Args:`·`Returns:`·`Raises:`)을 사용합니다. 형식과 규칙 검사는 Ruff, 타입 검사는 mypy(strict)로 합니다. 규칙은 루트 `pyproject.toml` 이고, 도구 버전은 `tools/requirements-lint.txt` 에 고정되어 CI 와 같습니다.
+
+| OS | 설치 |
+|---|---|
+| macOS·Linux | `python3.12 -m venv ~/.venvs/lint && ~/.venvs/lint/bin/pip install -r tools/requirements-lint.txt` 뒤 `.zshrc`(또는 `.bashrc`)에 `export PATH="$HOME/.venvs/lint/bin:$PATH"` |
+| Windows | `py -3.12 -m venv %USERPROFILE%\.venvs\lint` → `%USERPROFILE%\.venvs\lint\Scripts\pip install -r tools/requirements-lint.txt`, 명령은 Git Bash 에서 실행합니다 |
+
+- `ruff`·`mypy` 가 PATH 에 있어야 커밋 hook 이 찾습니다.
+- 커밋할 때 `.husky/pre-commit` 이, 스테이징한 `.py` 가 있으면 그 파일을 `ruff format --check`·`ruff check` 로 검사하고, git 이 관리하는 `.py` 전체를 `mypy` 로 검사합니다. 거부되면 0.3 의 정리 명령으로 수정한 뒤 다시 `git add` 합니다.
+- 한 줄은 88 자, 들여쓰기 4칸입니다. 이름은 클래스 `CamelCase`, 함수·변수 `snake_case`, 상수 `UPPER_CASE` (PEP 8).
+- 공개 함수·클래스에는 docstring 이 필요합니다. 모듈·패키지 docstring 과 테스트 파일은 요구하지 않습니다.
+- mypy 는 모든 함수에 타입 힌트를 요구합니다. 타입 정보가 없는 외부 패키지(예: HailoRT Python)는 `pyproject.toml` 의 `[[tool.mypy.overrides]]` 에 패키지별로만 예외를 둡니다.
+
+| IDE | 설정 |
+|---|---|
+| VS Code | 확장 "Ruff"(Astral)와 "Mypy Type Checker"(Microsoft) 설치. 두 확장이 `~/.venvs/lint` 의 도구를 사용하도록 인터프리터 경로를 지정하고 `editor.formatOnSave: true` |
+| PyCharm | 플러그인 "Ruff" 설치, Settings > Tools > Ruff 에서 `~/.venvs/lint/bin/ruff` 지정. 타입 검사는 PyCharm 자체 검사와 0.3 의 mypy 명령으로 확인 |
+
+Google 형식 docstring 예:
+
+```python
+def make_header(frame_id: int, unix_ns: int) -> FrameHeader:
+    """vision/frame/gray8 메시지 헤더를 만든다.
+
+    Args:
+        frame_id: 탐지 결과와 같은 프레임 번호.
+        unix_ns: RPi 수신 시각.
+
+    Returns:
+        만든 헤더.
+
+    Raises:
+        ValueError: frame_id 가 음수일 때.
+    """
+```
+
 ## 0.3 형식 검사 직접 실행하기
 
 저장소 루트에서 실행합니다 (hook·CI 와 같은 명령).
@@ -81,6 +119,15 @@ git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang
 # clang-tidy: 빌드 폴더의 compile_commands.json 에 있는 소스를 검사. 경고도 실패로
 run-clang-tidy -p build/onboard -quiet -warnings-as-errors='*'
 run-clang-tidy -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'   # 통제기: Qt moc 가 만든 소스 제외
+
+# Python 형식 검사: 수정할 곳이 있으면 exit 1 (hook·CI 가 사용하는 명령)
+ruff format --check .
+# Python 형식 정리: 파일에 덮어쓴다 (직접 수정할 때)
+ruff format .
+# Python 규칙 검사. --fix 를 붙이면 자동으로 수정할 수 있는 것은 수정한다
+ruff check .
+# Python 타입 검사: git 이 관리하는 .py 전체 (hook·CI 와 같은 범위)
+git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 ```
 
 - clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 합니다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙입니다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생깁니다.

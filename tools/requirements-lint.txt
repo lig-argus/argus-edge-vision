@@ -1,0 +1,4 @@
+# Python 형식·검사(Ruff)와 타입 검사(mypy) 도구 (.husky/pre-commit, CI 의 python lint 작업이 사용).
+# 규칙은 루트 pyproject.toml. 버전을 올리면 로컬과 CI 가 함께 바뀐다
+ruff==0.17.1
+mypy==2.4.0
