@@ -26,23 +26,21 @@
 ```mermaid
 flowchart LR
     det[탐지] -->|perception/observations| trk[UCMC 추적기]
+    det -->|vision/frame/gray8,<br>perception/observations| vtx[영상 송신부]
+    trk -->|tracking/tracks| vtx
     trk -->|tracking/tracks| ctl[추종 제어]
-    trk -->|tracking/tracks| onb
-    trk -->|tracking/status| onb
-    ctl -->|control/setpoint, follow/status| onb
-    onb -->|follow/command REQ| ctl
-    ctl -->|control/mode_request REQ| onb
-    onb -->|fc/mode_event| ctl
     subgraph onb [onboard]
         fc[FC 통신]
         gcs[통제기 통신]
     end
+    trk -->|tracking/tracks,<br>tracking/status| gcs
     fc -->|fc/attitude, fc/state| trk
-    fc -->|fc/attitude, fc/state| ctl
+    fc -->|fc/attitude, fc/state,<br>fc/mode_event| ctl
+    ctl -->|control/setpoint,<br>control/mode_request REQ| fc
+    gcs -->|follow/command REQ| ctl
+    ctl -->|follow/status| gcs
     fc <-->|MAVLink| router[mavlink-router]
     gcs <-->|MAVLink| router
-    det -->|vision/frame/gray8, perception/observations| vtx[영상 송신부]
-    trk -->|tracking/tracks| vtx
 ```
 
 | 프로세스 | 책임 | 담당 |
@@ -244,4 +242,4 @@ flowchart LR
 | 0.5 | 2026-10-15 | `follow/status`·`tracking/status` 실제 schema 반영(5.1.2·5.1.3), `follow/command` action·result 이름을 구현에 맞춤, 단위 변환 규칙 보완, 7장 1·2 갱신 |
 | 0.6 | 2026-10-15 | 영상 소스를 비압축 프레임 토픽으로 바꾸고 전송 코덱 인코딩을 영상 송신부로 (5.1·5.3·7장 3) |
 | 0.7 | 2026-10-16 | 비압축 프레임 토픽을 `vision/frame/gray8` 로 확정(schema·헤더·픽셀 정의, 기본 꺼짐), overlay 는 지상 미리보기용으로 당분간 유지, 7장 3 을 전송 경로 확인으로 교체 |
-| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가 |
+| 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가, 2.1 그림의 화살표를 onboard 안 FC 통신·통제기 통신에 직접 연결 |
