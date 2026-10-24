@@ -39,7 +39,7 @@ public:
 
     // 실제 비행 모드가 바뀔 때마다 handler 를 부른다. 여러 번 등록하면 모두 부른다.
     // handler 는 구현이 받은 메시지를 처리할 때 불린다.
-    // ZeroMQ 구현은 bus 의 spin_once() 안에서, spin_once() 를 부른 스레드에서 부른다.
+    // ZeroMQ 구현은 IBusPoller::process_messages() 안에서, 그 함수를 부른 스레드에서 부른다.
     // 다른 메시지 처리가 밀리지 않게 오래 걸리는 일을 하지 않는다.
     virtual void on_mode_event(ModeEventHandler handler) = 0;
 };
