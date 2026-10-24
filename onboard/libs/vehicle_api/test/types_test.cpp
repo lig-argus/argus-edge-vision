@@ -4,10 +4,12 @@
 
 #include "argus/mavlink.h"
 // 인터페이스 헤더가 ZeroMQ·MessagePack 없이 각각 컴파일되는지 함께 확인한다
-#include "argus/vehicle_api/follow_command.hpp"
-#include "argus/vehicle_api/mode_control.hpp"
-#include "argus/vehicle_api/vehicle_state.hpp"
-#include "argus/vehicle_api/velocity_setpoint_sender.hpp"
+#include "argus/vehicle_api/flight_mode_control.hpp"
+#include "argus/vehicle_api/flight_mode_control_client.hpp"
+#include "argus/vehicle_api/follow_control.hpp"
+#include "argus/vehicle_api/follow_control_client.hpp"
+#include "argus/vehicle_api/vehicle_telemetry.hpp"
+#include "argus/vehicle_api/velocity_setpoint_sink.hpp"
 
 namespace argus::vehicle_api {
 namespace {
@@ -51,9 +53,16 @@ TEST(RequestIdTest, ComparesEveryField) {
 TEST(FollowResultTest, DefaultsToRejectedAndNotAccepted) {
     const FollowResult result;
 
-    EXPECT_EQ(result.outcome, Outcome::Rejected);
+    EXPECT_EQ(result.outcome, FollowOutcome::Rejected);
     EXPECT_FALSE(result.request_accepted);
     EXPECT_EQ(result.id, RequestId{});
+}
+
+TEST(FlightModeReplyTest, DefaultsToNotAcceptedWithoutCommandId) {
+    const FlightModeReply reply;
+
+    EXPECT_FALSE(reply.accepted);
+    EXPECT_FALSE(reply.id.has_value());
 }
 
 TEST(VehicleStateTest, EveryValueIsEmptyUntilReceived) {
