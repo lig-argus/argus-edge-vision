@@ -1,4 +1,4 @@
-# IVehicleState·IVelocitySetpoint·IModeControl·IFollowCommand 순수 인터페이스와 값 타입
+# IVehicleState·IVelocitySetpointSender·IModeControl·IFollowCommand 순수 인터페이스와 값 타입
 # (docs/design/uml/class_follow.md, docs/spec/process_interfaces.md 4장)
 # 다른 모듈에 의존하지 않는다. 추종 제어 알고리즘과 그 단위 테스트는 이 타깃과 테스트용 Fake
 # (libs/vehicle_api_testing)만 링크해 ZeroMQ·MessagePack 없이 빌드된다. ZeroMQ 어댑터는 libs/vehicle_api_zmq

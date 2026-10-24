@@ -7,7 +7,7 @@
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_testing/fake_mode_control.hpp"
 #include "argus/vehicle_api_testing/fake_vehicle_state.hpp"
-#include "argus/vehicle_api_testing/fake_velocity_setpoint.hpp"
+#include "argus/vehicle_api_testing/fake_velocity_setpoint_sender.hpp"
 
 namespace argus::vehicle_api_testing {
 namespace {
@@ -74,8 +74,8 @@ TEST(FakeVehicleStateTest, EmitModeEventCallsEveryHandler) {
     EXPECT_EQ(second, std::vector<FlightMode>{FlightMode::Offboard});
 }
 
-TEST(FakeVelocitySetpointTest, RecordsSentSetpointsInOrder) {
-    FakeVelocitySetpoint setpoint;
+TEST(FakeVelocitySetpointSenderTest, RecordsSentSetpointsInOrder) {
+    FakeVelocitySetpointSender setpoint;
     VelocitySetpoint first;
     first.forward_m_s = 1.0;
     VelocitySetpoint second;

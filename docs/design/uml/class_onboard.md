@@ -147,7 +147,7 @@ classDiagram
     class FollowCommandClient {
         +track_start(...) FollowResult
         +stop(reason) FollowResult
-        +search(range, rate, timeout) FollowResult
+        +scan_start(range, rate, timeout) FollowResult
     }
     class ArgusStatusReporter {
         +on_follow_status(follow/status)
@@ -225,4 +225,4 @@ classDiagram
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 1절 제목 "공통 경계" → "공통 인터페이스" |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): `FcWriteAuthority`(FC 제어 명령 송신권)와 `OnboardWatchdog`(onboard 독립 감시) 추가, `FollowCommandClient` 의 결과를 outcome·request_accepted 로 |
-| 0.4 | 2026-10-21 | 메서드·멤버 이름을 snake_case 로 (onboard C++ 이름 규칙, #39) |
+| 0.4 | 2026-10-21 | 메서드·멤버 이름을 snake_case 로 (onboard C++ 이름 규칙, #39), `FollowCommandClient.search` → `scan_start` |

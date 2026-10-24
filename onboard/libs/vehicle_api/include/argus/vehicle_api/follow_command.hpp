@@ -27,9 +27,11 @@ public:
     IFollowCommand& operator=(IFollowCommand&&) = delete;
 
     // FC 가 실제로 Hold 일 때만 수락한다 (docs/spec/icd.md 4.2 조건 ⑥)
-    virtual FollowResult track_start(const RequestMeta& meta, const TrackTarget& target) = 0;
-    virtual FollowResult stop(const RequestMeta& meta, StopReason reason) = 0;
-    virtual FollowResult search(const RequestMeta& meta, const ScanRequest& scan) = 0;
+    virtual FollowResult track_start(const RequestHeader& header, const TrackTarget& target) = 0;
+    virtual FollowResult stop(const RequestHeader& header, StopReason reason) = 0;
+    // Scan(Hold 상태 yaw 회전 탐색) 시작. follow/command 메시지의 action 이름은 "search" 이며
+    // 변환은 ZeroMQ 어댑터가 한다
+    virtual FollowResult scan_start(const RequestHeader& header, const ScanRequest& scan) = 0;
 };
 
 }  // namespace argus::vehicle_api

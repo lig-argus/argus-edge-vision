@@ -123,7 +123,7 @@ struct ModeReply {
 };
 
 // 요청 공통 필드 (process_interfaces.md 3장). 받는 쪽은 결과에 이 값들을 그대로 남긴다
-struct RequestMeta {
+struct RequestHeader {
     CommandId command_id;
     std::string session_id;
     std::uint64_t seq = 0;

@@ -7,7 +7,7 @@
 #include "argus/vehicle_api/follow_command.hpp"
 #include "argus/vehicle_api/mode_control.hpp"
 #include "argus/vehicle_api/vehicle_state.hpp"
-#include "argus/vehicle_api/velocity_setpoint.hpp"
+#include "argus/vehicle_api/velocity_setpoint_sender.hpp"
 
 namespace argus::vehicle_api {
 namespace {
