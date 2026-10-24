@@ -50,8 +50,8 @@ classDiagram
     HailoInference ..> OverlayEncoder : 박스
     OverlayEncoder ..> PythonVisionAdapter : ipc PUSH 미리보기 SNDHWM 4
     PythonVisionAdapter ..> PerceptionWorker : 탐지 결과
-    PythonVisionAdapter ..> IPublisher : vision/frame/gray8, vision/overlay/jpeg, vision/npu_input/jpeg
-    PerceptionWorker ..> IPublisher : perception/observations
+    PythonVisionAdapter ..> ITopicPublisher : vision/frame/gray8, vision/overlay/jpeg, vision/npu_input/jpeg
+    PerceptionWorker ..> ITopicPublisher : perception/observations
 ```
 
 | 클래스 | 언어 | 책임 | 출처 |
@@ -79,3 +79,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 실제 C++ 클래스(`I3SdkFrameSource`, `PythonVisionAdapter`, `PerceptionWorker`)와 Python 처리로 나눠 다시 그림, 발행 토픽 4개, 전처리 순서, RAW14 640×480, 미리보기 SNDHWM 4·rcvhwm 4. 제목 "경계" → "외부 인터페이스" |
+| 0.3 | 2026-10-25 | bus 인터페이스 이름 `IPublisher`→`ITopicPublisher` (#40) |
