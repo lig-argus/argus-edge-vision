@@ -1,4 +1,4 @@
-# Google C++ 스타일을 기본으로 두고 프로젝트 규칙(docs/CODING_STYLE.md 3장)에 필요한 것만 바꾼다.
+# Google C++ 스타일을 기본으로 두고 프로젝트 규칙(CONTRIBUTING.md 0.2)에 필요한 것만 바꾼다.
 # 나머지는 Google 기본값 그대로다 (clang-format --style=Google --dump-config 로 확인).
 BasedOnStyle: Google
 Standard: c++17

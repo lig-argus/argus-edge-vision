@@ -43,6 +43,28 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙
 - pip 으로 설치하면 `run-clang-tidy` 대신 `run-clang-tidy.py` 입니다. `clang-format` 이 PATH 에 있어야 hook 이 찾습니다.
 - 커밋할 때 `.husky/pre-commit` 이 스테이징한 C++ 파일의 형식을 검사합니다. 거부되면 `clang-format -i <파일>` 로 고친 뒤 다시 `git add` 합니다. PR 에서는 CI(`.github/workflows/ci.yml`)가 형식을 다시 검사합니다. 빌드·테스트·clang-tidy 는 CI 의 `gcs`·`onboard` 작업이 합니다.
 
+**C++ 이름 규칙**
+
+`.clang-tidy` 의 `readability-identifier-naming` 이 아래 규칙을 검사합니다. 통제기(`gcs/`)는 Qt 에 맞춰 함수·변수만 camelCase 입니다 (`gcs/.clang-tidy`).
+
+| 대상 | 규칙 | 예 |
+|---|---|---|
+| 클래스·구조체·enum·타입 별칭 | `CamelCase` | `VehicleState`, `CommandId` |
+| 인터페이스 (순수 가상 함수만 있는 클래스) | `I` + `CamelCase` | `IVehicleState` |
+| enum 값 | `CamelCase` | `FlightMode::Hold`, `Outcome::InProgress` |
+| 함수·메서드 | `snake_case` | `attitude_at()`, `request_hold()` |
+| 변수·매개변수·구조체의 public 멤버 | `snake_case` | `valid_until_monotonic_ns` |
+| private·protected 멤버 변수 | `snake_case` + `_` | `latest_`, `handlers_` |
+| 상수 (`constexpr`·전역·static) | `k` + `CamelCase` | `kAttitudeMatchToleranceNs` |
+| 매크로 | `UPPER_CASE` | `ARGUS_ENABLE_TRACE` |
+| 헤더 가드 | include 경로를 대문자로, `/`·`.` 은 `_`, 끝에 `_` (Google 방식) | `argus/vehicle_api/types.hpp` → `ARGUS_VEHICLE_API_TYPES_HPP_` |
+| namespace | `snake_case` | `argus::vehicle_api` |
+| 파일 | `snake_case`, 헤더 `.hpp`, 소스 `.cpp`, 테스트 `<이름>_test.cpp` | `vehicle_state.hpp` |
+
+- 형식은 Google 스타일이지만 이름은 Google 규칙(함수 `PascalCase`)을 따르지 않습니다. 함께 쓰는 라이브러리와 같은 분야 프로젝트가 함수·변수를 snake_case 로 쓰기 때문입니다: C++ 표준 라이브러리(`push_back()`), cppzmq(`send()`), MAVSDK(`Action::arm()`, `Telemetry::subscribe_position()`), ArduPilot(`get_position()`), ROS 2 `rclcpp`(`create_publisher()`).
+- Python(PEP 8)도 함수·변수가 snake_case 라서 C++ 과 Python 의 이름 모양이 같습니다.
+- 헤더는 `#ifndef`·`#define`·`#endif` include guard 를 쓰고 `#pragma once` 는 쓰지 않습니다. `#pragma once` 는 C++ 표준이 아니고, 방산 코딩 표준인 JSF AV C++ Rule 27 이 include guard 외의 방법을 금지하기 때문입니다.
+
 **IDE 에서 형식 정리하기**
 
 IDE 는 루트의 `.clang-format` 을 자동으로 읽어 저장할 때 또는 단축키로 정리합니다. 평소에는 이것으로 충분하고, 아래 0.3 의 명령은 전체를 한 번에 확인할 때 씁니다. 단, **IDE 가 쓰는 clang-format 이 23 이 아니면 결과가 달라 hook 에서 거부**되므로 위에 설치한 clang-format 23 을 쓰도록 지정합니다.

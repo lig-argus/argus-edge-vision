@@ -1,4 +1,4 @@
-# clang-tidy 설정. 규칙 설명은 docs/CODING_STYLE.md.
+# clang-tidy 설정. 이름 규칙 설명은 CONTRIBUTING.md 0.2 "C++ 이름 규칙".
 # 검사 묶음은 버그·성능·현대화·정적 분석 네 가지만 켜고(Catch2·gRPC와 같은 골격),
 # 이름 규칙은 readability-identifier-naming 옵션으로 둔다(LLVM·Envoy 방식).
 # 끄는 검사 세 개와 이유 (Catch2·gRPC도 같은 것을 끈다):
@@ -19,7 +19,7 @@ Checks: >
 WarningsAsErrors: ''
 HeaderFilterRegex: '/(onboard|common|simulation)/.*'
 
-# 이름 규칙 (docs/CODING_STYLE.md 2장): 타입 CamelCase, 함수·변수 snake_case,
+# 이름 규칙 (CONTRIBUTING.md 0.2 "C++ 이름 규칙"): 타입 CamelCase, 함수·변수 snake_case,
 # private·protected 멤버 `_` 접미사, 상수 k 접두사 + CamelCase, 인터페이스 I 접두사, 매크로 대문자
 CheckOptions:
   readability-identifier-naming.NamespaceCase: lower_case
@@ -44,3 +44,5 @@ CheckOptions:
   readability-identifier-naming.StaticConstantCase: CamelCase
   readability-identifier-naming.StaticConstantPrefix: k
   readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
+  # 헤더 가드는 Google 방식으로 끝에 _ 를 붙인다 (CONTRIBUTING.md 0.2 "C++ 이름 규칙")
+  readability-identifier-naming.MacroDefinitionIgnoredRegexp: '^ARGUS_[A-Z0-9_]+_HPP_$'
