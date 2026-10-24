@@ -64,33 +64,33 @@ classDiagram
 ```mermaid
 classDiagram
     class FcTelemetry {
-        +onMessage(ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT)
-        +fcConnected() bool
+        +on_message(ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT)
+        +fc_connected() bool
     }
     class TimeSync {
-        +requestPeriodically()
-        +onTimesync(TIMESYNC)
+        +request_periodically()
+        +on_timesync(TIMESYNC)
     }
     class SetpointRelay {
-        +onSetpoint(control/setpoint)
+        +on_setpoint(control/setpoint)
         +tick() 20 Hz
     }
     class ModeRequestServer {
-        +onRequest(control/mode_request) Reply
+        +on_request(control/mode_request) Reply
     }
     class HealthState {
-        +fcConnected bool
-        +gcsLink bool
+        +fc_connected bool
+        +gcs_link bool
     }
     class FcWriteAuthority {
         +acquire(session) bool
         +revoke(reason)
-        +mayWrite(session) bool
+        +may_write(session) bool
     }
     class OnboardWatchdog {
-        +allowSend(command) bool
-        +onRcOverride()
-        +isFault() bool
+        +allow_send(command) bool
+        +on_rc_override()
+        +is_fault() bool
     }
     FcTelemetry ..> IMavlinkIo : 수신
     FcTelemetry ..> IPublisher : fc/attitude, fc/state
@@ -133,35 +133,35 @@ classDiagram
     }
     class CommandDispatcher {
         -handlers map~MAV_CMD, ICommandHandler~
-        +onCommandLong(msg)
+        +on_command_long(msg)
     }
     class TrackStartHandler
     class TrackStopHandler
     class ScanStartHandler
     class ControlAuthority {
-        +isController(sysid) bool
+        +is_controller(sysid) bool
     }
     class LatestTracks {
         +has(sensor, generation, class_id, track_id) bool
     }
     class FollowCommandClient {
-        +trackStart(...) FollowResult
+        +track_start(...) FollowResult
         +stop(reason) FollowResult
         +search(range, rate, timeout) FollowResult
     }
     class ArgusStatusReporter {
-        +onFollowStatus(follow/status)
+        +on_follow_status(follow/status)
         +tick() 1 Hz
     }
     class SensorStatusReporter {
-        +onTrackingStatus(tracking/status)
+        +on_tracking_status(tracking/status)
         +tick() 1 Hz
     }
     class SensorMap {
-        +toEnum(source) ARGUS_SENSOR
+        +to_enum(source) ARGUS_SENSOR
     }
     class GcsLinkMonitor {
-        +onHeartbeat(sysid 250)
+        +on_heartbeat(sysid 250)
         +tick()
     }
 
@@ -192,7 +192,7 @@ classDiagram
 | 클래스 | 책임 | 출처 |
 |---|---|---|
 | `CommandDispatcher` | `target_component = 195` 인 COMMAND_LONG 을 `MAV_CMD` 로 핸들러에 넘기고 결과를 COMMAND_ACK 로, DENIED·FAILED 이유를 STATUSTEXT 로 보낸다. 모르는 명령은 UNSUPPORTED | icd 4.1 |
-| `TrackStartHandler` | 조건 ①(제어권) ③(FOLLOWABLE) ④(최신 추적 결과) ⑤(`mission_state`) 와 매개변수 범위 검사 → `FollowCommandClient.trackStart` → IN_PROGRESS, 이후 `command_results` 로 ACCEPTED·FAILED | icd 4.2 |
+| `TrackStartHandler` | 조건 ①(제어권) ③(FOLLOWABLE) ④(최신 추적 결과) ⑤(`mission_state`) 와 매개변수 범위 검사 → `FollowCommandClient.track_start` → IN_PROGRESS, 이후 `command_results` 로 ACCEPTED·FAILED | icd 4.2 |
 | `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사 | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
@@ -225,3 +225,4 @@ classDiagram
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 1절 제목 "공통 경계" → "공통 인터페이스" |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): `FcWriteAuthority`(FC 제어 명령 송신권)와 `OnboardWatchdog`(onboard 독립 감시) 추가, `FollowCommandClient` 의 결과를 outcome·request_accepted 로 |
+| 0.4 | 2026-10-21 | 메서드·멤버 이름을 snake_case 로 (onboard C++ 이름 규칙, #39) |

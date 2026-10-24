@@ -9,12 +9,12 @@
 ```mermaid
 classDiagram
     class ObservationSubscriber {
-        +onObservations(perception/observations)
+        +on_observations(perception/observations)
     }
     class VehicleStateSubscriber {
         -history ring buffer
-        +attitudeAt(frame received_monotonic_ns) optional~VehicleSample~
-        +fcFresh() bool
+        +attitude_at(frame received_monotonic_ns) optional~VehicleSample~
+        +fc_fresh() bool
     }
     class UcmcTracker {
         -generation
@@ -59,3 +59,4 @@ classDiagram
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스" |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): FC 표본 입력 항목과 유효성, 프레임의 호스트 단조 시각으로 표본 선택, "FC 표본" 을 "fc/attitude·fc/state 메시지" 로, "단조 시각" 을 monotonic clock 으로 |
+| 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙, #39) |
