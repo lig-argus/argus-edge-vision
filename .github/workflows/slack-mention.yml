@@ -1,5 +1,5 @@
 # 위치: 각 프로젝트 저장소의 .github/workflows/slack-mention.yml (반드시 main 브랜치)
-name: Slack mentions
+name: slack mentions
 
 on:
   pull_request_target:            # 리뷰어 지정, PR 담당자 지정
