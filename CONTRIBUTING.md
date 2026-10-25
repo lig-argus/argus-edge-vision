@@ -50,8 +50,8 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙
 | 대상 | 규칙 | 예 |
 |---|---|---|
 | 클래스·구조체·enum·타입 별칭 | `CamelCase` | `VehicleState`, `CommandId` |
-| 인터페이스 (순수 가상 함수만 있는 클래스) | `I` + `CamelCase` | `IVehicleState` |
-| enum 값 | `CamelCase` | `FlightMode::Hold`, `Outcome::InProgress` |
+| 인터페이스 (순수 가상 함수만 있는 클래스) | `I` + `CamelCase` | `IVehicleTelemetry` |
+| enum 값 | `CamelCase` | `FlightMode::Hold`, `FollowOutcome::InProgress` |
 | 함수·메서드 | `snake_case` | `attitude_at()`, `request_hold()` |
 | 변수·매개변수·구조체의 public 멤버 | `snake_case` | `valid_until_monotonic_ns` |
 | private·protected 멤버 변수 | `snake_case` + `_` | `latest_`, `handlers_` |
@@ -59,11 +59,28 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙
 | 매크로 | `UPPER_CASE` | `ARGUS_ENABLE_TRACE` |
 | 헤더 가드 | include 경로를 대문자로, `/`·`.` 은 `_`, 끝에 `_` (Google 방식) | `argus/vehicle_api/types.hpp` → `ARGUS_VEHICLE_API_TYPES_HPP_` |
 | namespace | `snake_case` | `argus::vehicle_api` |
-| 파일 | `snake_case`, 헤더 `.hpp`, 소스 `.cpp`, 테스트 `<이름>_test.cpp` | `vehicle_state.hpp` |
+| 파일 | `snake_case`, 헤더 `.hpp`, 소스 `.cpp`, 테스트 `<이름>_test.cpp` | `vehicle_telemetry.hpp` |
 
 - 형식은 Google 스타일이지만 이름은 Google 규칙(함수 `PascalCase`)을 따르지 않습니다. 함께 쓰는 라이브러리와 같은 분야 프로젝트가 함수·변수를 snake_case 로 쓰기 때문입니다: C++ 표준 라이브러리(`push_back()`), cppzmq(`send()`), MAVSDK(`Action::arm()`, `Telemetry::subscribe_position()`), ArduPilot(`get_position()`), ROS 2 `rclcpp`(`create_publisher()`).
 - Python(PEP 8)도 함수·변수가 snake_case 라서 C++ 과 Python 의 이름 모양이 같습니다.
 - 헤더는 `#ifndef`·`#define`·`#endif` include guard 를 쓰고 `#pragma once` 는 쓰지 않습니다. `#pragma once` 는 C++ 표준이 아니고, 방산 코딩 표준인 JSF AV C++ Rule 27 이 include guard 외의 방법을 금지하기 때문입니다.
+
+**클래스 이름 짓기**
+
+`.clang-tidy` 가 검사하지 않는, 이름의 뜻에 대한 규칙입니다.
+
+| 대상 | 규칙 | 예 |
+|---|---|---|
+| 인터페이스 | `I` + 역할 이름. 값 타입과 같은 이름은 쓰지 않습니다 | `IVehicleTelemetry` (값 타입 `VehicleState` 와 구분), `IVelocitySetpointSink` (값 타입 `VelocitySetpoint` 와 구분) |
+| 구현 클래스 | 방식 + 인터페이스 이름에서 `I` 를 뺀 것. 방식은 전송·기술 이름(`Zmq`, `Udp`, `Mavlink`, `Steady`, `Fake`)이고 대상 이름(`Fc`)은 방식이 아닙니다 | `ZmqRpcClient`, `UdpMavlinkConnection`, `MavlinkFlightModeControl`, `SteadyClock`, `FakeClock` |
+| 테스트용 구현 | `Fake` + 인터페이스 이름에서 `I` 를 뺀 것 | `FakeMavlinkConnection`, `FakeFollowControl` |
+| RPC 의 두 쪽 | 구현하는 쪽(동기, 결과를 바로 반환)은 역할 이름, 호출하는 쪽(비동기, 응답은 handler 로)은 `…Client` | `IFollowControl` / `IFollowControlClient`, `IFlightModeControl` / `IFlightModeControlClient` |
+| 받는 쪽 어댑터 | 응답하면 `…Server`, 받아서 다른 곳으로 넘기면 `…Receiver`, 최신 값을 들고 나눠 주면 `…Subscriber` | `ZmqFollowControlServer`, `ZmqVelocitySetpointReceiver`, `ZmqFollowStatusSubscriber` |
+| 보내는 쪽 | ZeroMQ 토픽 발행은 `…Publisher`, MAVLink 로 통제기에 보고는 `…Reporter`, 받은 값을 밖으로 내보내는 끝은 `…Sink` | `FcTelemetryPublisher`, `ArgusStatusReporter`, `MavlinkVelocitySetpointSink` |
+| `Argus` 접두사 | MAVLink 메시지 이름(`ARGUS_STATUS` 등)을 딴 클래스에만 씁니다. 프로젝트 이름으로 붙이지 않습니다(namespace `argus` 가 그 역할) | `ArgusStatusReporter`, `ArgusSensorStatusReporter` |
+| 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 풀림). `on_…(handler)` 처럼 해제 수단이 없는 형태는 쓰지 않습니다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
+
+- 구현 이름을 "방식 + 인터페이스" 로 하는 이유: 같은 인터페이스의 구현이 여럿일 때(ZeroMQ·MAVLink·Fake) 이름만 보고 무엇을 어떻게 구현했는지 알 수 있습니다. MAVSDK 의 `Connection`/`UdpConnection`/`TcpConnection`, PX4 의 `MavlinkStream…` 과 같은 방식입니다.
 
 **IDE 에서 형식 정리하기**
 
@@ -161,16 +178,18 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 | 항목 | 규칙 | 예 (`libs/bus`) |
 |---|---|---|
 | 폴더 | `include/ · src/ · test/` | `onboard/libs/bus/{include,src,test}/` |
-| 헤더 경로 | `include/argus/<모듈>/` | `onboard/libs/bus/include/argus/bus/publisher.hpp` |
-| include | 모듈 이름부터 사용한다 | `#include "argus/bus/publisher.hpp"` |
-| namespace | `argus::<모듈>` | `argus::bus::IPublisher` |
+| 헤더 경로 | `include/argus/<모듈>/` | `onboard/libs/bus/include/argus/bus/topic_publisher.hpp` |
+| include | 모듈 이름부터 사용한다 | `#include "argus/bus/topic_publisher.hpp"` |
+| namespace | `argus::<모듈>` | `argus::bus::ITopicPublisher` |
 | CMake 타깃 | 라이브러리 `argus_<모듈>` + 별칭 `argus::<모듈>`, 실행 파일 `argus_<모듈>` | `target_link_libraries(... argus::bus)` |
-| 테스트 | gtest. `test/<이름>_test.cpp` 마다 `argus_add_test` 한 번 | `argus_add_test(bus_publisher_test SOURCES test/publisher_test.cpp LIBS argus::bus)` |
+| 테스트 | gtest. `test/<이름>_test.cpp` 마다 `argus_add_test` 한 번 | `argus_add_test(bus_topic_publisher_test SOURCES test/topic_publisher_test.cpp LIBS argus::bus)` |
 
 - 헤더 경로에 `argus/<모듈>/` 을 넣는 이유: 모듈마다 같은 파일 이름(`types.hpp` 등)이 있어도 include 가 겹치지 않고, 어느 모듈의 헤더인지 include 문만 보고 알 수 있습니다 (ROS 2 `rclcpp` 의 `include/rclcpp/` 와 같은 방식).
 - 모듈이 다른 모듈을 쓸 때는 `target_link_libraries` 로 연결합니다. 다른 모듈의 `src/` 나 상대 경로(`../`)로 헤더를 부르지 않습니다.
 - 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꿉니다.
-- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ·MessagePack)에 의존하지 않습니다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 가짜 구현 테스트가 인터페이스 모듈만 링크하게 합니다.
+- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ·MessagePack)에 의존하지 않고 `core`(`Subscription`)에만 의존합니다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 테스트용 구현이 인터페이스 모듈만 링크하게 합니다.
+- 테스트용 구현(`Fake…`)의 위치: 여러 모듈의 테스트가 쓰면 `<모듈>_testing` 모듈(`core_testing`, `bus_testing`, `vehicle_api_testing`)에, 한 모듈만 쓰면 그 모듈의 `test/` 에 둡니다(`apps/onboard/test/fake_mavlink_connection.hpp`). 제품 실행 파일은 `*_testing` 을 링크하지 않습니다.
+- 모든 handler(토픽 구독, RPC 응답, MAVLink 메시지, 주기 작업)는 `core::IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불립니다. 프로세스는 스레드 하나로 돌고, handler 는 짧게 끝내야 합니다 (`docs/design/uml/class_onboard.md` 1절).
 - 빌드·테스트 명령과 의존성 설치는 README.md "onboard 구조와 빌드" 확인.
 
 ---
