@@ -48,8 +48,8 @@ TEST_F(FakeMavlinkConnectionTest, DeliversOnlyMatchingMsgidInsideProcessEvents) 
     const core::Subscription subscription = connection_.subscribe(
         MAVLINK_MSG_ID_ATTITUDE, [&](const mavlink_message_t& m) { received.push_back(m.msgid); });
 
-    connection_.push_incoming(heartbeat_from(kFcSysid));
-    connection_.push_incoming(attitude_from_fc());
+    connection_.simulate_message_received(heartbeat_from(kFcSysid));
+    connection_.simulate_message_received(attitude_from_fc());
     EXPECT_TRUE(received.empty());
 
     process();
@@ -66,8 +66,8 @@ TEST_F(FakeMavlinkConnectionTest, EveryHandlerOfSameMsgidReceives) {
         MAVLINK_MSG_ID_HEARTBEAT,
         [&](const mavlink_message_t& m) { gcs_link_sysids.push_back(m.sysid); });
 
-    connection_.push_incoming(heartbeat_from(kFcSysid));
-    connection_.push_incoming(heartbeat_from(kGcsSysid));
+    connection_.simulate_message_received(heartbeat_from(kFcSysid));
+    connection_.simulate_message_received(heartbeat_from(kGcsSysid));
     process();
 
     EXPECT_EQ(telemetry_sysids, (std::vector<std::uint8_t>{kFcSysid, kGcsSysid}));
@@ -80,7 +80,7 @@ TEST_F(FakeMavlinkConnectionTest, ReleasedSubscriptionStopsDelivery) {
         MAVLINK_MSG_ID_HEARTBEAT, [&](const mavlink_message_t&) { ++received; });
 
     subscription.reset();
-    connection_.push_incoming(heartbeat_from(kFcSysid));
+    connection_.simulate_message_received(heartbeat_from(kFcSysid));
     process();
 
     EXPECT_EQ(received, 0);

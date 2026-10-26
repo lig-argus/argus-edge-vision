@@ -65,7 +65,7 @@ public:
 
     // 실제 구현은 process_events() 안에서 handler 를 부른다. 이 Fake 는 테스트가 부른 자리에서
     // 바로 부른다. handler 가 등록을 풀거나 더해도 안전하도록 복사본을 돈다
-    void emit_flight_mode_event(const vehicle_api::FlightModeEvent& event) const {
+    void simulate_flight_mode_event(const vehicle_api::FlightModeEvent& event) const {
         const auto snapshot = handlers_->by_id;
         for (const auto& [id, handler] : snapshot) {
             if (handlers_->by_id.count(id) != 0) {

@@ -79,6 +79,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 합니다. 규칙
 | 보내는 쪽 | ZeroMQ 토픽 발행은 `…Publisher`, MAVLink 로 통제기에 보고는 `…Reporter`, 받은 값을 밖으로 내보내는 끝은 `…Sink` | `FcTelemetryPublisher`, `ArgusStatusReporter`, `MavlinkVelocitySetpointSink` |
 | `Argus` 접두사 | MAVLink 메시지 이름(`ARGUS_STATUS` 등)을 딴 클래스에만 씁니다. 프로젝트 이름으로 붙이지 않습니다(namespace `argus` 가 그 역할) | `ArgusStatusReporter`, `ArgusSensorStatusReporter` |
 | 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 풀림). `on_…(handler)` 처럼 해제 수단이 없는 형태는 쓰지 않습니다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
+| 테스트용 구현의 함수 | 메시지 수신, 응답 도착, 모드 변경처럼 바깥에서 일어나는 일을 테스트가 대신 일으키는 함수는 `simulate_` + 도착한 메시지, 응답, 이벤트의 이름. 반환값을 미리 정하는 함수는 `set_` + 그 값의 이름 (Chromium 의 Fake 관례 `Simulate…`, `Set…`) | `simulate_message_received(message)`, `simulate_frame_received(frame)`, `simulate_reply(result)`, `simulate_flight_mode_event(event)`, `set_send_result(false)` |
 
 - 구현 이름을 "방식 + 인터페이스" 로 하는 이유: 같은 인터페이스의 구현이 여럿일 때(ZeroMQ·MAVLink·Fake) 이름만 보고 무엇을 어떻게 구현했는지 알 수 있습니다. MAVSDK 의 `Connection`/`UdpConnection`/`TcpConnection`, PX4 의 `MavlinkStream…` 과 같은 방식입니다.
 

@@ -53,7 +53,9 @@ public:
 
     // 테스트용: 가장 오래 기다린 명령에 결과를 넣는다 (다음 process_events() 에서 전달).
     // 기다리는 명령이 없으면 false
-    bool reply(vehicle_api::FollowResult result) { return pending_.reply(std::move(result)); }
+    bool simulate_reply(vehicle_api::FollowResult result) {
+        return pending_.reply(std::move(result));
+    }
 
     const std::vector<FollowCommandRecord>& commands() const { return commands_; }
     std::size_t pending_count() const { return pending_.pending_count(); }

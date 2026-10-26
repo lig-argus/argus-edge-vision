@@ -37,8 +37,9 @@ public:
         });
     }
 
-    // 테스트용: FC 나 통제기가 보낸 메시지가 도착한 것처럼 넣는다 (다음 process_events() 에서 전달)
-    void push_incoming(const mavlink_message_t& message) {
+    // 테스트용: FC 나 통제기가 보낸 메시지 하나를 도착한 것으로 등록한다 (다음 process_events()
+    // 에서 전달)
+    void simulate_message_received(const mavlink_message_t& message) {
         const std::weak_ptr<Handlers> weak = handlers_;
         const auto shared_message = std::make_shared<const mavlink_message_t>(message);
         poller_.post([weak, shared_message] {
