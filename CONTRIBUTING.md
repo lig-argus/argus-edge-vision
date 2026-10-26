@@ -197,6 +197,7 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 - 테스트용 구현(`Fake…`)의 위치: 여러 모듈의 테스트가 사용하면 `<모듈>_testing` 모듈(`core_testing`, `bus_testing`, `vehicle_api_testing`)에, 한 모듈만 사용하면 그 모듈의 `test/` 에 둔다(`apps/onboard/test/fake_mavlink_connection.hpp`). 제품 실행 파일은 `*_testing` 을 링크하지 않는다.
 - (모든 프로세스) `vehicle_api` 와 `bus` 의 handler(토픽 구독, RPC 응답, 모드 이벤트, 주기 작업)는 그 통신 객체를 소유한 스레드의 `core::IPoller::process_events()` 안에서만 불리고, 짧게 끝내야 한다. `Subscription` 의 해제도 같은 스레드에서 한다. 추적기와 추종 제어가 통신 스레드와 감시 스레드를 따로 두는 구조는 이 규칙만 지키면 된다.
 - (onboard 프로세스만) onboard 프로세스(`onboard/apps/onboard`. FC 와 통제기 통신, FC 로 가는 명령 검사를 맡는 프로세스)는 MAVLink 메시지 handler 까지 포함해 프로세스 전체가 스레드 하나로 돈다 (`docs/design/uml/class_onboard.md` 1절). 추론처럼 오래 걸리는 작업은 별도 프로세스(탐지)에 두고 결과만 버스로 받는다.
+- 통제기(`gcs/`)는 실행 파일 하나라 모듈을 나누지 않는다. 헤더는 `gcs/include/argus/gcs/`, 소스는 `gcs/src/`, 테스트용 구현(`Fake…`)과 Qt Test 는 `gcs/test/` 에 둔다. 라이브러리 타깃은 `argus_gcs_interfaces`(`QObject` 가 있어 STATIC), 테스트는 `argus_gcs_add_test(이름 SOURCES …)` 로 등록한다. 이름 규칙은 Qt 에 맞춰 함수와 변수만 camelCase 이다 (0.2).
 - 빌드와 테스트 명령, 의존성 설치는 README.md "onboard 구조와 빌드" 확인.
 
 ---
