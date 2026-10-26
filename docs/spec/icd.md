@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.2 (팀 검토 전 초안) |
+| 문서 버전 | 0.3 (팀 검토 전 초안) |
 | 패킷 형식 | `common/mavlink/message_definitions/argus.xml` (argus dialect) + 표준 `common.xml`. 3·4장의 argus 메시지·명령 정의는 `argus.xml` 보다 앞서 있으며, `argus.xml` 반영은 #21 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 7장의 검토 항목 번호 |
@@ -30,7 +30,7 @@
 | 노드 | 실행 위치 | MAVLink sysid | compid | 역할 |
 |---|---|---|---|---|
 | FC | 기체 비행 제어기 (PX4 v1.16) | 1 | 1 (MAV_COMP_ID_AUTOPILOT1) | 비행 제어, telemetry |
-| onboard: 명령·setpoint (MAVSDK) | RPi, onboard 프로세스 | 1 | 195 (MAV_COMP_ID_PATHPLANNER, MAVSDK 보조 컴퓨터 기본값) | 통제기 명령 처리, ARGUS_* 송신, FC 로 setpoint·모드 요청 |
+| onboard: 명령, setpoint (compid 195) | RPi, onboard 프로세스 | 1 | 195 (MAV_COMP_ID_PATHPLANNER) | 통제기 명령 처리, ARGUS_* 송신, FC 로 setpoint, 모드 요청. MAVLink 는 생성 C 헤더를 직접 사용하며 MAVSDK 는 사용하지 않는다 |
 | onboard: FC 관측·TIMESYNC (FC_RX) | RPi, onboard 프로세스 | 1 | 191 (MAV_COMP_ID_ONBOARD_COMPUTER) | telemetry 수신, TIMESYNC 요청. 명령·setpoint 는 보내지 않는다 |
 | 탐지 프로세스 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 카메라 프레임 추론. 탐지 결과를 추적기와 영상 송신부에 발행 |
 | UCMC 추적기 | RPi, 별도 프로세스 | MAVLink 노드 아님 | — | 탐지 결과에 track_id 부여, 추적 결과(`tracking/tracks`) 발행. FC 자세·위치는 onboard 에서 받는다 |
@@ -84,11 +84,12 @@ flowchart LR
 | FC ↔ RPi | UART (PX4 TELEM2), 921600 bps | `/dev/ttyAMA0` | 모든 MAVLink 트래픽. RPi 쪽은 mavlink-router 만 연다 |
 | RPi 라우터 ↔ onboard | UDP, RPi 안 | `127.0.0.1:14540` | onboard 가 FC·통제기와 주고받는 모든 메시지 |
 | RPi 라우터 ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (서버) | 통제기가 먼저 보내면 라우터가 그 주소로 응답 |
-| RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 라우터가 QGC 의 명령을 FC 로 보내지 않도록 필터 |
+| RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 비행 중에는 라우터가 QGC(sysid 255)가 보낸 패킷을 모두 폐기하므로 QGC 는 telemetry 만 수신한다. 파라미터, 보정은 정비 절차(`onboard/config/mavlink-router/README.md`)로 |
 | onboard ↔ 추적기·추종 제어, 탐지 → 추적기·영상 송신부 | ZeroMQ, RPi 안 | `docs/spec/process_interfaces.md` | 기체 상태, 탐지·추적 결과, 추종 명령·setpoint·모드 요청 |
 | 영상 송신부 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/spec/video.md` | JPEG 영상 트랙(박스 없는 비압축 프레임을 영상 송신부가 인코딩) + ONVIF XML 메타데이터 트랙(`tracking/tracks` 의 추적 박스). 통제기가 메타데이터로 박스를 그린다. 동기화 방법은 `docs/spec/video.md` 4장 |
 
 - mavlink-router 가 FC 의 UART 를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 그래서 onboard 와 통제기는 서로의 메시지도 받는다 (sysid·compid 로 걸러 쓴다).
+- mavlink-router 설정 파일은 `onboard/config/mavlink-router/main.conf`(비행)와 `config.d/qgc-maintenance.conf`(정비 때만 설치)다. 시동, 이륙, 모드 변경, 보정 명령이 모두 `COMMAND_LONG` 한 메시지로 가므로 라우터는 메시지 id 로 비행 명령만 골라 차단할 수 없고, 보낸 쪽 sysid 로 QGC 의 입력을 모두 차단한다. 통제기(sysid 250)의 명령은 onboard 가 제어권으로 검사한다 (5장).
 - 프로토콜은 **MAVLink 2** 만 쓴다. 메시지 id 45000 번대는 MAVLink 1 로 보낼 수 없다. 서명(signing)은 쓰지 않는다 [미결 D1].
 
 ## 2. 표준 메시지 사용 목록
@@ -230,7 +231,7 @@ sequenceDiagram
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 (`docs/spec/video.md`) | 탐지 |
 | C | 영상 전송 | RTSP + RTP/JPEG + ONVIF XML 메타데이터 트랙으로 정함. 영상 소스는 박스 없는 비압축 프레임(`vision/frame/gray8`)이며 영상 송신부가 4:2:0 JPEG 으로 인코딩한다 (#28). 남은 항목(RTSP 서버, 통제기 수신, 포트, Extension 요소 이름 등)은 `docs/spec/video.md` 9장 | 통제기·탐지 |
-| D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명 | 통제기 |
+| D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. 라우터의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 onboard 가 거부한다 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
@@ -285,3 +286,4 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 |---|---|---|
 | 0.1 | 2026-10-13 | 팀 검토 전 초안. 통신 참여 프로그램과 연결 구간, 메시지 주기, 추종·스캔 명령 절차, 임무·표적 상태(부록 B), 두절 판단, 미결 항목 |
 | 0.2 | 2026-10-19 | #30 리뷰 답변 반영(#32): 2장 200 ms 의 기준 시점과 계측 범위, 6.4 ⓒ 를 FC 로 보내기 전 `valid_until_monotonic_ns` 검사로 한정하고 보낸 뒤 회전 중 새 heading 요청이 오지 않는 경우는 E3 으로, 7장 E5·E6 추가, 4.2 TRACK_START 조건 ⑥(FC 실제 Hold, Position 모드에서 조종을 넘기는 절차는 E5)과 Offboard 성공·실패 조건, 5장 FC 제어 명령 송신권, 6.6 onboard 독립 감시, FAULT·MANUAL 복구 조건, E3 회전 중 새 heading 요청이 오지 않을 때 onboard 독립 정지, E5 를 "Position 모드에서 조종을 넘기는 절차" 로 좁힘, E6 해소, 4.2 ⑥ 을 FC 실제 Hold 만으로 확정하고 E5 를 후속 항목으로, "FC 표본" 을 "FC 메시지" 로 |
+| 0.3 | 2026-10-26 | 1.1 onboard 행의 MAVSDK 표기 제거(onboard 는 생성 C 헤더 사용), 1.2 QGC 행과 mavlink-router 설정 파일 bullet(비행 중 QGC 입력 차단, 정비 절차), 7장 D1 에 14550 노출과 서명의 효과 (#42) |
