@@ -10,7 +10,7 @@ Checks: >
   -clang-analyzer-cplusplus.NewDeleteLeaks
 # 루트의 HeaderFilterRegex는 onboard 폴더만 가리킨다. 통제기 헤더도 검사한다.
 # moc 생성물(build/gcs/.../*_autogen/.../*.moc)은 뺀다. 생성물을 고치면 빌드가 깨진다
-HeaderFilterRegex: '/gcs/(src|test)/.*'
+HeaderFilterRegex: '/gcs/(include|src|test)/.*'
 ExcludeHeaderFilterRegex: '_autogen/'
 CheckOptions:
   readability-identifier-naming.FunctionCase: camelBack
