@@ -49,7 +49,9 @@ public:
 
     // 테스트용: 가장 오래 기다린 요청에 응답을 넣는다 (다음 process_events() 에서 전달).
     // 기다리는 요청이 없으면 false
-    bool reply(vehicle_api::FlightModeReply reply) { return pending_.reply(std::move(reply)); }
+    bool simulate_reply(vehicle_api::FlightModeReply reply) {
+        return pending_.reply(std::move(reply));
+    }
 
     const std::vector<FlightModeRequestRecord>& requests() const { return requests_; }
     std::size_t pending_count() const { return pending_.pending_count(); }

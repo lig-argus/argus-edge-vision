@@ -169,11 +169,11 @@ TEST(FakeVehicleTelemetryTest, EmitFlightModeEventCallsEverySubscribedHandler) {
 
     FlightModeEvent event;
     event.mode = FlightMode::Offboard;
-    vehicle.emit_flight_mode_event(event);
+    vehicle.simulate_flight_mode_event(event);
 
     second_subscription.reset();  // 등록을 풀면 더 받지 않는다
     event.mode = FlightMode::Hold;
-    vehicle.emit_flight_mode_event(event);
+    vehicle.simulate_flight_mode_event(event);
 
     EXPECT_EQ(first, (std::vector<FlightMode>{FlightMode::Offboard, FlightMode::Hold}));
     EXPECT_EQ(second, std::vector<FlightMode>{FlightMode::Offboard});
@@ -285,7 +285,7 @@ TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
     in_progress.id.command_id = CommandId{5};
     in_progress.outcome = FollowOutcome::InProgress;
     in_progress.request_accepted = true;
-    EXPECT_TRUE(client.reply(in_progress));
+    EXPECT_TRUE(client.simulate_reply(in_progress));
     EXPECT_TRUE(results.empty());  // process_events() 전에는 전달되지 않는다
 
     process();
@@ -293,7 +293,7 @@ TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
     ASSERT_TRUE(results[0].has_value());
     EXPECT_EQ(results[0]->outcome, FollowOutcome::InProgress);
     EXPECT_EQ(client.pending_count(), 0U);
-    EXPECT_FALSE(client.reply({}));  // 기다리는 명령이 없다
+    EXPECT_FALSE(client.simulate_reply({}));  // 기다리는 명령이 없다
 }
 
 TEST_F(FakeClientTest, FollowControlClientTimesOutWithNullopt) {
@@ -310,7 +310,7 @@ TEST_F(FakeClientTest, FollowControlClientTimesOutWithNullopt) {
     ASSERT_EQ(results.size(), 1U);
     EXPECT_FALSE(results[0].has_value());
 
-    EXPECT_TRUE(client.reply({}) == false);  // 시간 초과 뒤에는 기다리는 명령이 없다
+    EXPECT_TRUE(client.simulate_reply({}) == false);  // 시간 초과 뒤에는 기다리는 명령이 없다
 }
 
 TEST_F(FakeClientTest, ReleasedSubscriptionIsNeverCalled) {
@@ -320,7 +320,7 @@ TEST_F(FakeClientTest, ReleasedSubscriptionIsNeverCalled) {
         client.request_offboard(header_with_id(7), std::chrono::milliseconds{100},
                                 [&calls](const std::optional<FlightModeReply>&) { ++calls; });
 
-    EXPECT_TRUE(client.reply(flight_mode_reply(CommandId{7}, true, "")));
+    EXPECT_TRUE(client.simulate_reply(flight_mode_reply(CommandId{7}, true, "")));
     call.reset();
     process_until(std::chrono::milliseconds{200});
 
@@ -340,8 +340,8 @@ TEST_F(FakeClientTest, FlightModeControlClientRepliesOldestRequestFirst) {
     const core::Subscription heading =
         client.request_heading(header_with_id(2), 0.5, std::chrono::milliseconds{500}, record);
 
-    EXPECT_TRUE(client.reply(flight_mode_reply(CommandId{1}, true, "")));
-    EXPECT_TRUE(client.reply(flight_mode_reply(CommandId{2}, false, "busy")));
+    EXPECT_TRUE(client.simulate_reply(flight_mode_reply(CommandId{1}, true, "")));
+    EXPECT_TRUE(client.simulate_reply(flight_mode_reply(CommandId{2}, false, "busy")));
     process();
 
     ASSERT_EQ(replied.size(), 2U);

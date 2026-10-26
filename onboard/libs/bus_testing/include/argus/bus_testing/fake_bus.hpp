@@ -1,7 +1,7 @@
-// 테스트용 bus. 한 객체가 토픽 발행, 구독, RPC 요청, 응답을 모두 흉내 낸다.
-// 발행하거나 넣은(inject) 메시지는 FakePoller 에 쌓였다가 process_events() 안에서 구독자에게 간다.
-// RPC 요청은 같은 FakeBus 에 serve() 로 등록한 handler 가 응답하고, 없으면 timeout 뒤 nullopt 가
-// 된다.
+// 테스트용 bus. 한 객체가 토픽 발행, 구독, RPC 요청, 응답을 모두 맡는다.
+// 발행하거나 simulate_message_received() 로 도착한 것으로 등록한 메시지는 FakePoller 에 쌓였다가
+// process_events() 안에서 구독자에게 간다. RPC 요청은 같은 FakeBus 에 serve() 로 등록한 handler 가
+// 응답하고, 없으면 timeout 뒤 nullopt 가 된다.
 #ifndef ARGUS_BUS_TESTING_FAKE_BUS_HPP_
 #define ARGUS_BUS_TESTING_FAKE_BUS_HPP_
 
@@ -92,7 +92,7 @@ public:
     }
 
     // 테스트용: 다른 프로그램이 보낸 메시지가 도착한 것처럼 넣는다
-    void inject(const bus::BusMessage& message) { deliver(message); }
+    void simulate_message_received(const bus::BusMessage& message) { deliver(message); }
 
     // 테스트용: publish() 로 발행된 메시지 기록
     const std::vector<bus::BusMessage>& published() const { return published_; }

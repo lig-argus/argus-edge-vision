@@ -132,7 +132,7 @@ enum class OffboardExitCause : std::uint8_t {
     Unknown,
 };
 
-// 실제 비행 모드가 바뀐 사건 (`fc/mode_event`)
+// 실제 비행 모드가 바뀌었음을 알리는 메시지 (`fc/mode_event`)
 struct FlightModeEvent {
     FlightMode mode = FlightMode::Unknown;
     // 이 모드 변경이 응답한 모드 요청의 command_id. 요청 없이 바뀌었으면(조종사, failsafe) nullopt

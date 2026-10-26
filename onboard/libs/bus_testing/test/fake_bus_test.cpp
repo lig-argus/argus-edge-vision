@@ -52,8 +52,8 @@ TEST_F(FakeBusTest, MatchesTopicExactly) {
     const core::Subscription subscription =
         bus_.subscribe("fc/state", [&](const BusMessage&) { ++received; });
 
-    bus_.inject(message("fc/state_extra", 1));  // 앞부분만 같은 토픽
-    bus_.inject(message("fc", 1));
+    bus_.simulate_message_received(message("fc/state_extra", 1));  // 앞부분만 같은 토픽
+    bus_.simulate_message_received(message("fc", 1));
     process();
 
     EXPECT_EQ(received, 0);
@@ -66,7 +66,7 @@ TEST_F(FakeBusTest, CallsEverySubscriberInOrder) {
     const core::Subscription second =
         bus_.subscribe("t", [&](const BusMessage&) { order.push_back(2); });
 
-    bus_.inject(message("t", 0));
+    bus_.simulate_message_received(message("t", 0));
     process();
 
     EXPECT_EQ(order, (std::vector<int>{1, 2}));
@@ -77,7 +77,7 @@ TEST_F(FakeBusTest, StopsDeliveringAfterSubscriptionReleased) {
     core::Subscription subscription = bus_.subscribe("t", [&](const BusMessage&) { ++received; });
 
     subscription.reset();
-    bus_.inject(message("t", 0));
+    bus_.simulate_message_received(message("t", 0));
     process();
 
     EXPECT_EQ(received, 0);
