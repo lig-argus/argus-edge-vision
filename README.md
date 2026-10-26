@@ -67,6 +67,15 @@ ctest --test-dir build/onboard --output-on-failure
 
 Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.
 
+```
+gcs/
+  include/argus/gcs/   # 인터페이스와 작은 구현 (IMavlinkConnection, IClock, SteadyClock)
+  src/                 # 실행 파일과 구현
+  test/                # 테스트용 구현 (FakeMavlinkConnection, FakeClock)과 Qt Test
+```
+
+통제기는 실행 파일 하나라 onboard 와 달리 모듈을 나누지 않는다 (CONTRIBUTING 0.4).
+
 ```bash
 cmake -S gcs -B build/gcs -DCMAKE_PREFIX_PATH=/opt/homebrew   # macOS (brew install qt). Windows: C:/Qt/6.x/msvc2022_64
 cmake --build build/gcs
