@@ -1,5 +1,6 @@
-// 테스트용 IFrameSource. 테스트가 넣은 프레임을 FakePoller 를 거쳐 process_events() 안에서 등록된
-// handler 에게 전달한다. 실제 구현과 같이 handler 는 process_events() 안에서만 불린다.
+// 테스트용 IFrameSource. 테스트가 simulate_frame_received() 로 등록한 프레임을 FakePoller 를 거쳐
+// process_events() 안에서 등록된 handler 에게 전달한다. 실제 구현과 같이 handler 는
+// process_events() 안에서만 불린다.
 #ifndef ARGUS_VIDEO_SENDER_TEST_FAKE_FRAME_SOURCE_HPP_
 #define ARGUS_VIDEO_SENDER_TEST_FAKE_FRAME_SOURCE_HPP_
 
@@ -31,9 +32,9 @@ public:
         });
     }
 
-    // 테스트용: 프레임이 도착한 것처럼 넣는다 (다음 process_events() 에서 전달).
-    // 전달 시점에 등록돼 있는 handler 에게만 간다
-    void push(perception_api::Frame frame) {
+    // 테스트용: 프레임 하나를 도착한 것으로 등록한다. 다음 process_events() 에서 handler 에
+    // 전달되며, 전달 시점에 등록돼 있는 handler 에게만 간다
+    void simulate_frame_received(perception_api::Frame frame) {
         const auto shared_frame = std::make_shared<const perception_api::Frame>(std::move(frame));
         const std::weak_ptr<Handlers> weak = handlers_;
         poller_.post([weak, shared_frame] {

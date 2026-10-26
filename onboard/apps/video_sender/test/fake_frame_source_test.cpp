@@ -46,8 +46,8 @@ TEST_F(FakeFrameSourceTest, DeliversPushedFramesInsideProcessEventsInOrder) {
     const core::Subscription subscription =
         source_.subscribe([&](const Frame& frame) { received.push_back(frame.frame_id); });
 
-    source_.push(frame_with_id(1));
-    source_.push(frame_with_id(2));
+    source_.simulate_frame_received(frame_with_id(1));
+    source_.simulate_frame_received(frame_with_id(2));
     EXPECT_TRUE(received.empty());  // process_events() 전에는 전달되지 않는다
 
     process();
@@ -64,7 +64,7 @@ TEST_F(FakeFrameSourceTest, EveryHandlerReceivesAndPixelsArrive) {
         pixel_bytes = frame.pixels.size();
     });
 
-    source_.push(frame_with_id(7));
+    source_.simulate_frame_received(frame_with_id(7));
     process();
 
     EXPECT_EQ(first, 1);
@@ -76,7 +76,7 @@ TEST_F(FakeFrameSourceTest, ReleasedSubscriptionStopsDelivery) {
     int received = 0;
     core::Subscription subscription = source_.subscribe([&](const Frame&) { ++received; });
 
-    source_.push(frame_with_id(1));
+    source_.simulate_frame_received(frame_with_id(1));
     subscription.reset();  // 전달 전에 해제
     process();
 
