@@ -277,7 +277,7 @@ TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
     std::vector<std::optional<FollowResult>> results;
     const core::Subscription call = client.track_start(
         header_with_id(5), TrackTarget{}, std::chrono::milliseconds{500},
-        [&results](std::optional<FollowResult> result) { results.push_back(result); });
+        [&results](const std::optional<FollowResult>& result) { results.push_back(result); });
 
     ASSERT_EQ(client.commands().size(), 1U);
     EXPECT_EQ(client.pending_count(), 1U);
@@ -291,7 +291,7 @@ TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
     process();
     ASSERT_EQ(results.size(), 1U);
     ASSERT_TRUE(results[0].has_value());
-    EXPECT_EQ(results[0]->outcome, FollowOutcome::InProgress);
+    EXPECT_EQ(results[0].value_or(FollowResult{}).outcome, FollowOutcome::InProgress);
     EXPECT_EQ(client.pending_count(), 0U);
     EXPECT_FALSE(client.simulate_reply({}));  // 기다리는 명령이 없다
 }
@@ -299,9 +299,9 @@ TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
 TEST_F(FakeClientTest, FollowControlClientTimesOutWithNullopt) {
     FakeFollowControlClient client(poller_, clock_);
     std::vector<std::optional<FollowResult>> results;
-    const core::Subscription call =
-        client.stop(header_with_id(6), StopReason::LinkLoss, std::chrono::milliseconds{500},
-                    [&results](std::optional<FollowResult> result) { results.push_back(result); });
+    const core::Subscription call = client.stop(
+        header_with_id(6), StopReason::LinkLoss, std::chrono::milliseconds{500},
+        [&results](const std::optional<FollowResult>& result) { results.push_back(result); });
 
     process_until(std::chrono::milliseconds{499});
     EXPECT_TRUE(results.empty());
