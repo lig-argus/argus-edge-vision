@@ -40,7 +40,7 @@ dtoverlay=disable-bt
 
 출처: PX4 user guide "Raspberry Pi Companion with Pixhawk" (Ubuntu 에서 `raspi-config` 설치와 `config.txt` 두 줄), ArduPilot wiki "Communicating with Raspberry Pi via MAVLink" (`raspi-config` 의 두 선택, mavlink-router `Baud = 921600`).
 
-설정 파일 설치 (저장소 루트에서):
+설정 파일 설치 (저장소 루트에서). `mavlink-routerd` 를 직접 실행하고 있으면 그 프로세스를 먼저 종료한다. 같은 UART 와 포트를 두 개가 열 수 없다.
 
 ```bash
 sudo mkdir -p /etc/mavlink-router/config.d
@@ -59,6 +59,7 @@ ss -ulnp | grep mavlink-routerd
 - `ss` 에 14550, 14551 이 표시되어야 한다 (14540 은 onboard 가 여는 포트라 라우터 쪽에는 표시되지 않는다).
 - 통제기를 RPi Wi-Fi 에 붙이고 14550 으로 HEARTBEAT 를 보내면 FC telemetry 가 통제기에 도착한다. 통제기가 먼저 보내야 라우터가 통제기 주소를 인식한다.
 - onboard 를 실행하면 14540 으로 FC 메시지가 수신된다.
+- QGC 입력 차단: 비행 설정(`main.conf` 만)에서 QGC 로 파라미터 하나를 바꾸면 FC 에 반영되지 않고, 정비 설정(`config.d/qgc-maintenance.conf` 추가)에서는 반영되어야 한다. 기체에서 확인한다.
 
 ## QGC 로 파라미터, 보정하기 (정비)
 
