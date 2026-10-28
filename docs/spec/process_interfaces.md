@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.10 (팀 검토 전 초안) |
+| 문서 버전 | 0.11 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -48,7 +48,7 @@ flowchart LR
 | 탐지 | 카메라 입력, 추론, 오버레이 JPEG | 탐지 |
 | UCMC 추적기 | 프레임 사이 객체 연결, track_id·generation 부여 | 추적·추종 |
 | 추종 제어 | 추종·Scan 판단, 속도 setpoint 계산, 임무·표적 상태 관리 | 추적·추종 |
-| onboard | FC 통신(MAVLink, 단일 소유), 통제기 통신, 명령 중재 | 통신 |
+| onboard | FC 통신(MAVLink, 단일 소유), 통제기 통신, FC 명령 검사 | 통신 |
 | 영상 송신부 | RTSP 영상·메타데이터 송신 (5.3) | 통신 |
 | mavlink-router | FC UART 와 로컬·통제기 UDP 중계 | 통신 (설정) |
 
@@ -256,4 +256,4 @@ flowchart LR
 | 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가, 2.1 그림의 화살표를 onboard 안 FC 통신·통제기 통신에 직접 연결, `fc_epoch` 정의와 증가 조건·검사 규칙(3장), `fc/attitude`·`fc/state` 에 `fc_epoch` 추가(5.1), 7장 9 해소, "FC 표본" 을 "FC 메시지"·"`fc/attitude`·`fc/state` 메시지" 로 |
 | 0.9 | 2026-10-25 | 4장 `IVelocitySetpoint` → `IVelocitySetpointSender` (값 타입 `VelocitySetpoint` 와 구분, #39), 7장 10(버스 프록시 담당), 11(토픽 연결 방식 통일) 추가, 7장 담당 표기를 담당 이름 안은 "/", 담당끼리는 ", " 로 |
 | 0.10 | 2026-10-29 | #39 리뷰 반영: 4장 `IVehicleState` 에 위치와 거리 조회, 선택 순서, 5.1 `fc/state` 의 값별 원수신 시각, 5.1.2 와 5.2.1 의 command_id 를 uint64 로, 5.2.1 에 요청 공통 필드(session_id, seq, fc_epoch)와 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과" 로, 7장 1 에 모드 요청 계약 항목, 7장 7 에 필드 이름 출처, 3장에 C++ 값 타입 `RequestId` 묶음 |
-| 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가 (#40) |
+| 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
