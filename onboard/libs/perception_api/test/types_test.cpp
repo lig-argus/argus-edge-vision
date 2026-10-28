@@ -33,11 +33,19 @@ TEST(PixelBoxTest, WidthAndHeightFromCorners) {
     EXPECT_DOUBLE_EQ(box.height(), 80.0);
 }
 
-TEST(ObservationsTest, DefaultsToNoDetections) {
+TEST(FrameTest, SessionAndReceiveTimeDefaultToEmpty) {
+    const Frame frame;
+
+    EXPECT_TRUE(frame.session_id.empty());
+    EXPECT_EQ(frame.received_monotonic_ns, 0);
+}
+
+TEST(ObservationsTest, DefaultsToNoDetectionsAndNoModel) {
     const Observations observations;
 
     EXPECT_TRUE(observations.detections.empty());
     EXPECT_EQ(observations.frame_id, 0U);
+    EXPECT_TRUE(observations.model.empty());
 }
 
 TEST(TrackTest, GroundProjectionIsEmptyUntilProvided) {

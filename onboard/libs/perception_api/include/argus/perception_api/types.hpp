@@ -17,11 +17,19 @@ namespace argus::perception_api {
 
 // 비압축 8 비트 흑백 프레임 (`vision/frame/gray8`). 박스를 그리지 않은 원본 픽셀 좌표계
 struct Frame {
-    std::string
-        source;  // 카메라 식별 문자열. ARGUS_SENSOR 와의 대응은 onboard 설정 (SensorSourceMap)
+    // 카메라 식별 문자열. ARGUS_SENSOR 와의 대응은 onboard 설정 (SensorSourceMap)
+    std::string source;
+
+    // 탐지 프로세스 실행마다 바뀌는 값. 바뀌면 frame_id 가 처음부터 다시 시작할 수 있으므로
+    // FrameCollector 는 보관 중인 메시지를 비운다
+    std::string session_id;
+
     std::uint64_t frame_id = 0;
-    std::int64_t unix_ns =
-        0;  // RPi 수신 시각 (wall clock). 영상·메타데이터 동기화 기준 (video.md 4장)
+
+    // RPi 수신 시각 (wall clock). 영상, 메타데이터 동기화 기준 (video.md 4장)
+    std::int64_t unix_ns = 0;
+
+    std::int64_t received_monotonic_ns = 0;  // RPi 수신 시각 (monotonic clock). 노출 시각이 아니다
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::uint32_t stride = 0;          // 한 줄의 바이트 수 (width 이상)
@@ -61,7 +69,12 @@ struct Detection {
 struct Observations {
     std::string source;
     std::uint64_t frame_id = 0;
-    std::int64_t sample_monotonic_ns = 0;  // 프레임 수신 시각
+
+    // 메시지의 received_monotonic_ns (RPi 수신 시각, 노출 시각이 아니다). 추적기가 FC 자세를
+    // 맞추는 기준
+    std::int64_t sample_monotonic_ns = 0;
+
+    std::string model;  // 추론한 모델(HEF) 이름. class_id 와 label 의 대응은 모델마다 다르다
     std::uint32_t image_width = 0;
     std::uint32_t image_height = 0;
     std::vector<Detection> detections;
