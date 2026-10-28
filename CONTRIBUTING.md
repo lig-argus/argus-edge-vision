@@ -83,6 +83,10 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 
 - 구현 이름을 "방식 + 인터페이스" 로 하는 이유: 같은 인터페이스의 구현이 여럿일 때(ZeroMQ, MAVLink, Fake) 이름만 보고 무엇을 어떻게 구현했는지 알 수 있다. MAVSDK 의 `Connection`/`UdpConnection`/`TcpConnection`, PX4 의 `MavlinkStream…` 과 같은 방식이다.
 
+**멤버 설명 주석**
+
+한 줄에 들어가는 짧은 사실(단위, 범위)만 선언과 같은 줄의 줄 끝 주석(trailing comment)으로 둔다. 두 줄 이상인 설명은 멤버 위 줄에 두고, 그 멤버 앞뒤를 빈 줄로 띄워 어느 멤버의 설명인지 드러낸다. 줄 끝 주석이 길면 clang-format 이 선언을 두 줄로 나누기 때문이다 (Chromium 의 방식).
+
 **IDE 에서 형식 정리하기**
 
 IDE 는 루트의 `.clang-format` 을 자동으로 읽어 저장할 때 또는 단축키로 정리한다. 평소에는 이것으로 충분하고, 아래 0.3 의 명령은 전체를 한 번에 확인할 때 사용한다. 단, **IDE 가 사용하는 clang-format 이 23 이 아니면 결과가 달라 hook 에서 거부**되므로 위에 설치한 clang-format 23 을 사용하도록 지정한다.
