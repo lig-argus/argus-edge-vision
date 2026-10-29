@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.11 (팀 검토 전 초안) |
+| 문서 버전 | 0.12 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -156,7 +156,7 @@ flowchart LR
 | status.selected | object 또는 null | 선택 표적: generation, track_id, class_id, label, sensor(문자열) → `ARGUS_STATUS.target_id`·`target_generation`, `active_sensor`(변환표) |
 | status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(uint64), action(`track_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 전체 최대 32개만 보관한다. 32개가 차면 완료된 기록부터 지우고 진행 중(IN_PROGRESS)인 기록은 남긴다. 32개를 넘겨 보관하지는 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
 | status.command_epoch, command_sent | uint64, bool | |
-| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용 |
+| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용. 7장 13 의 `scan_remaining_s` 를 추가할 때 Scan 중이 아니면 키를 빼거나 nil 로 보내고, 받는 쪽은 키 없음과 nil 을 모두 미제공으로 읽는다 (`ARGUS_STATUS` 로는 NaN) |
 
 #### 5.1.3 `tracking/status` v1 필드 (2026-10-15 기준)
 
@@ -257,3 +257,4 @@ flowchart LR
 | 0.9 | 2026-10-25 | 4장 `IVelocitySetpoint` → `IVelocitySetpointSender` (값 타입 `VelocitySetpoint` 와 구분, #39), 7장 10(버스 프록시 담당), 11(토픽 연결 방식 통일) 추가, 7장 담당 표기를 담당 이름 안은 "/", 담당끼리는 ", " 로 |
 | 0.10 | 2026-10-29 | #39 리뷰 반영: 4장 `IVehicleState` 에 위치와 거리 조회, 선택 순서, 5.1 `fc/state` 의 값별 원수신 시각, 5.1.2 와 5.2.1 의 command_id 를 uint64 로, 5.2.1 에 요청 공통 필드(session_id, seq, fc_epoch)와 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과" 로, 7장 1 에 모드 요청 계약 항목, 7장 7 에 필드 이름 출처, 3장에 C++ 값 타입 `RequestId` 묶음 |
 | 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
+| 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |

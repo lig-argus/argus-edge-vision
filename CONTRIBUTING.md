@@ -55,7 +55,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 | 함수, 메서드 | `snake_case` | `attitude_at()`, `request_hold()` |
 | 변수, 매개변수, 구조체의 public 멤버 | `snake_case` | `valid_until_monotonic_ns` |
 | private 와 protected 멤버 변수 | `snake_case` + `_` | `latest_`, `handlers_` |
-| 상수 (`constexpr`, 전역, static) | `k` + `CamelCase` | `kAttitudeMatchToleranceNs` |
+| 상수 (`constexpr`, 전역, static) | `k` + `CamelCase` | `kTelemetryMatchToleranceNs` |
 | 매크로 | `UPPER_CASE` | `ARGUS_ENABLE_TRACE` |
 | 헤더 가드 | include 경로를 대문자로, `/` 와 `.` 은 `_`, 끝에 `_` (Google 방식) | `argus/vehicle_api/types.hpp` → `ARGUS_VEHICLE_API_TYPES_HPP_` |
 | namespace | `snake_case` | `argus::vehicle_api` |
@@ -79,7 +79,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 | 받는 쪽 어댑터 | 응답하면 `…Server`, 받아서 다른 곳으로 넘기면 `…Receiver`, 최신 값을 들고 나눠 주면 `…Subscriber` | `ZmqFollowControlServer`, `ZmqVelocitySetpointReceiver`, `ZmqFollowStatusSubscriber` |
 | 보내는 쪽 | ZeroMQ 토픽 발행은 `…Publisher`, MAVLink 로 통제기에 보고는 `…Reporter`, 받은 값을 밖으로 내보내는 끝은 `…Sink` | `FcTelemetryPublisher`, `ArgusStatusReporter`, `MavlinkVelocitySetpointSink` |
 | `Argus` 접두사 | MAVLink 메시지 이름(`ARGUS_STATUS` 등)을 딴 클래스에만 사용한다. 프로젝트 이름으로 붙이지 않는다(namespace `argus` 가 그 역할) | `ArgusStatusReporter`, `ArgusSensorStatusReporter` |
-| 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 풀림). `on_…(handler)` 처럼 해제 수단이 없는 형태는 사용하지 않는다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
+| 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 해제됨). `on_…(handler)` 처럼 해제 수단이 없는 형태는 사용하지 않는다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
 | 테스트용 구현의 함수 | 메시지 수신, 응답 도착, 모드 변경처럼 바깥에서 일어나는 일을 테스트가 대신 일으키는 함수는 `simulate_` + 도착한 메시지, 응답, 이벤트의 이름. 반환값을 미리 정하는 함수는 `set_` + 그 값의 이름 (Chromium 의 Fake 관례 `Simulate…`, `Set…`) | `simulate_message_received(message)`, `simulate_frame_received(frame)`, `simulate_reply(result)`, `simulate_flight_mode_event(event)`, `set_send_result(false)` |
 
 - 구현 이름을 "방식 + 인터페이스" 로 하는 이유: 같은 인터페이스의 구현이 여럿일 때(ZeroMQ, MAVLink, Fake) 이름만 보고 무엇을 어떻게 구현했는지 알 수 있다. MAVSDK 의 `Connection`/`UdpConnection`/`TcpConnection`, PX4 의 `MavlinkStream…` 과 같은 방식이다.
@@ -195,8 +195,8 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 - 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꾼다.
 - 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ, MessagePack)에 의존하지 않고 `core`(`Subscription`)에만 의존한다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 테스트용 구현이 인터페이스 모듈만 링크하게 한다.
 - 테스트용 구현(`Fake…`)의 위치: 여러 모듈의 테스트가 사용하면 `<모듈>_testing` 모듈(`core_testing`, `bus_testing`, `vehicle_api_testing`)에, 한 모듈만 사용하면 그 모듈의 `test/` 에 둔다(`apps/onboard/test/fake_mavlink_connection.hpp`). 제품 실행 파일은 `*_testing` 을 링크하지 않는다.
-- 모든 handler(토픽 구독, RPC 응답, MAVLink 메시지, 주기 작업)는 `core::IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. 프로세스는 스레드 하나로 돌고, handler 는 짧게 끝내야 한다 (`docs/design/uml/class_onboard.md` 1절).
-  이 규칙은 onboard 프로세스(`onboard/apps/onboard`. FC 와 통제기 통신, FC 로 가는 명령 검사를 맡는 프로세스)에 적용한다. 추론처럼 오래 걸리는 작업은 별도 프로세스(탐지)에 두고 결과만 버스로 받는다.
+- (모든 프로세스) `vehicle_api` 와 `bus` 의 handler(토픽 구독, RPC 응답, 모드 이벤트, 주기 작업)는 그 통신 객체를 소유한 스레드의 `core::IPoller::process_events()` 안에서만 불리고, 짧게 끝내야 한다. `Subscription` 의 해제도 같은 스레드에서 한다. 추적기와 추종 제어가 통신 스레드와 감시 스레드를 따로 두는 구조는 이 규칙만 지키면 된다.
+- (onboard 프로세스만) onboard 프로세스(`onboard/apps/onboard`. FC 와 통제기 통신, FC 로 가는 명령 검사를 맡는 프로세스)는 MAVLink 메시지 handler 까지 포함해 프로세스 전체가 스레드 하나로 돈다 (`docs/design/uml/class_onboard.md` 1절). 추론처럼 오래 걸리는 작업은 별도 프로세스(탐지)에 두고 결과만 버스로 받는다.
 - 빌드와 테스트 명령, 의존성 설치는 README.md "onboard 구조와 빌드" 확인.
 
 ---
