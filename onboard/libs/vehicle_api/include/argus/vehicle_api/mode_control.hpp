@@ -15,6 +15,8 @@ namespace argus::vehicle_api {
 // 반환값은 onboard 가 요청을 받아들였는지(수락)만 뜻한다. FC 의 실제 모드 전환 완료와
 // Offboard 이탈은 IVehicleState::on_mode_event 로 온다.
 // valid_until_monotonic_ns 가 지난 요청은 onboard 가 FC 로 보내지 않고 거부한다.
+// 요청의 취소와, stop 이나 RC 개입 때 FC 로 보내려고 대기 중인 송신의 폐기는 onboard 가 맡는다.
+// 수락 뒤 실패의 전달과 늦게 도착한 응답의 무효화는 process_interfaces.md 미결 1 에서 정한다.
 class IModeControl {
 public:
     IModeControl() = default;

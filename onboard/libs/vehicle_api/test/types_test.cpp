@@ -37,16 +37,41 @@ TEST(FollowResultTest, DefaultsToRejectedAndNotAccepted) {
 
     EXPECT_EQ(result.outcome, Outcome::Rejected);
     EXPECT_FALSE(result.request_accepted);
+    EXPECT_TRUE(result.session_id.empty());
+    EXPECT_EQ(result.seq, 0U);
+    EXPECT_EQ(result.fc_epoch, 0U);
 }
 
-TEST(VehicleStateTest, OptionalFieldsAreEmptyUntilReceived) {
+TEST(VehicleStateTest, EveryValueIsEmptyUntilReceived) {
     const VehicleState state;
 
+    EXPECT_FALSE(state.attitude.has_value());
     EXPECT_FALSE(state.local.has_value());
-    EXPECT_FALSE(state.downward_distance_m.has_value());
+    EXPECT_FALSE(state.downward_distance.has_value());
     EXPECT_FALSE(state.global.has_value());
-    EXPECT_FALSE(state.attitude.fc_time_monotonic_ns.has_value());
-    EXPECT_EQ(state.mode, FlightMode::Unknown);
+    EXPECT_FALSE(state.status.has_value());
+}
+
+TEST(VehicleStateTest, EveryValueCarriesItsOwnReceiveTime) {
+    Attitude attitude;
+    attitude.received_monotonic_ns = 10;
+    LocalPosition local;
+    local.received_monotonic_ns = 20;
+    DownwardDistance distance;
+    distance.received_monotonic_ns = 30;
+    FlightStatus status;
+    status.received_monotonic_ns = 40;
+    VehicleState state;
+    state.attitude = attitude;
+    state.local = local;
+    state.downward_distance = distance;
+    state.status = status;
+
+    EXPECT_EQ(state.attitude.value_or(Attitude{}).received_monotonic_ns, 10);
+    EXPECT_EQ(state.local.value_or(LocalPosition{}).received_monotonic_ns, 20);
+    EXPECT_EQ(state.downward_distance.value_or(DownwardDistance{}).received_monotonic_ns, 30);
+    EXPECT_EQ(state.status.value_or(FlightStatus{}).received_monotonic_ns, 40);
+    EXPECT_EQ(state.status.value_or(FlightStatus{}).mode, FlightMode::Unknown);
 }
 
 }  // namespace
