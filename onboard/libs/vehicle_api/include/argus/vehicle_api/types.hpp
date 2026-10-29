@@ -141,12 +141,26 @@ struct ModeReply {
     std::string reason;
 };
 
-// 요청 공통 필드 (process_interfaces.md 3장). 받는 쪽은 결과에 이 값들을 그대로 남긴다
-struct RequestHeader {
+// 프로세스 사이 REQ/REP 요청 하나를 가리키는 값 (process_interfaces.md 3장 공통 필드).
+// command_id 가 어느 세션, 어느 FC 연결의 것인지 session_id, seq, fc_epoch 가 한정한다.
+// 받는 쪽은 결과에 이 값을 그대로 남기고, 응답을 요청에 맞출 때 비교한다.
+// 통제기의 MAVLink 명령(onboard 의 CommandRequest)의 식별자가 아니다
+struct RequestId {
     CommandId command_id;
     std::string session_id;
     std::uint64_t seq = 0;
-    std::uint64_t fc_epoch = 0;
+    std::uint64_t fc_epoch = 0;  // 요청을 만들 때의 FC 연결 epoch (process_interfaces.md 3장)
+
+    friend bool operator==(const RequestId& lhs, const RequestId& rhs) {
+        return lhs.command_id == rhs.command_id && lhs.session_id == rhs.session_id &&
+               lhs.seq == rhs.seq && lhs.fc_epoch == rhs.fc_epoch;
+    }
+    friend bool operator!=(const RequestId& lhs, const RequestId& rhs) { return !(lhs == rhs); }
+};
+
+// 요청 공통 필드 (process_interfaces.md 3장)
+struct RequestHeader {
+    RequestId id;
     std::int64_t valid_until_monotonic_ns = 0;  // 이 시각이 지나면 실행하지 않는다
 };
 
@@ -182,13 +196,9 @@ enum class Outcome : std::uint8_t {
     Failed,      // 수락 뒤 실행 실패, 취소, RC 및 모드 개입
 };
 
-// `follow/result` (process_interfaces.md 5.2.1).
-// command_id, session_id, seq, fc_epoch 는 요청의 공통 필드를 그대로 남긴 것이다 (3장)
+// `follow/result` (process_interfaces.md 5.2.1)
 struct FollowResult {
-    CommandId command_id;
-    std::string session_id;
-    std::uint64_t seq = 0;
-    std::uint64_t fc_epoch = 0;
+    RequestId id;  // 요청의 RequestId 그대로 (3장)
     Outcome outcome = Outcome::Rejected;
     bool request_accepted = false;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
     std::string reason;             // 사람이 읽는 이유. 판정에는 사용하지 않는다

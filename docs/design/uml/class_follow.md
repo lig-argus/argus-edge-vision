@@ -32,6 +32,27 @@ classDiagram
         +stop(RequestHeader, StopReason) FollowResult
         +scan_start(RequestHeader, ScanRequest) FollowResult
     }
+    class RequestId {
+        <<value>>
+        +command_id
+        +session_id
+        +seq
+        +fc_epoch
+    }
+    class RequestHeader {
+        <<value>>
+        +id RequestId
+        +valid_until_monotonic_ns
+    }
+    class FollowResult {
+        <<value>>
+        +id RequestId
+        +outcome
+        +request_accepted
+        +reason
+    }
+    RequestHeader *-- RequestId
+    FollowResult *-- RequestId
     class FollowController {
         -mission_state_
         -target_state_
@@ -106,3 +127,4 @@ classDiagram
 | 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰), "FC 표본" 을 "fc/attitude 메시지" 로 |
 | 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙), 인터페이스 인자를 `vehicle_api` 값 타입(`RequestMeta`·`TrackTarget`·`ScanRequest`·`VelocitySetpoint`)으로, `latest()` 는 optional, `Fake*` 를 `argus::vehicle_api_testing` 에 (#39), `IVelocitySetpoint` → `IVelocitySetpointSender`(값 타입 `VelocitySetpoint` 와 구분), `search` → `scan_start`, `RequestMeta` → `RequestHeader` |
 | 0.5 | 2026-10-29 | #39 리뷰 반영: `IVehicleState` 에 `local_position_at`, `downward_distance_at` 추가, 조회 선택 순서(200 ms 이내 → 최근접 → 50 ms)와 보관 책임 확정, 보간하지 않음, 검토 1 해소 |
+| 0.6 | 2026-10-29 | 요청 식별 필드(command_id, session_id, seq, fc_epoch)를 값 타입 `RequestId` 로 묶고 `RequestHeader` 와 `FollowResult` 가 포함(#39 리뷰 3항의 "헤더 보존" 을 한 멤버 복사로). 값 타입 셋을 그림에 추가 |

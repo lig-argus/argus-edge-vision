@@ -32,14 +32,28 @@ TEST(SensorTest, MatchesMavlinkArgusSensor) {
     EXPECT_EQ(static_cast<int>(Sensor::Eo), ARGUS_SENSOR_EO);
 }
 
+TEST(RequestIdTest, ComparesEveryField) {
+    RequestId lhs;
+    lhs.command_id = CommandId{1};
+    lhs.session_id = "s";
+    lhs.seq = 2;
+    lhs.fc_epoch = 3;
+    RequestId rhs = lhs;
+    EXPECT_EQ(lhs, rhs);
+
+    rhs.fc_epoch = 4;
+    EXPECT_NE(lhs, rhs);
+    rhs = lhs;
+    rhs.session_id = "t";
+    EXPECT_NE(lhs, rhs);
+}
+
 TEST(FollowResultTest, DefaultsToRejectedAndNotAccepted) {
     const FollowResult result;
 
     EXPECT_EQ(result.outcome, Outcome::Rejected);
     EXPECT_FALSE(result.request_accepted);
-    EXPECT_TRUE(result.session_id.empty());
-    EXPECT_EQ(result.seq, 0U);
-    EXPECT_EQ(result.fc_epoch, 0U);
+    EXPECT_EQ(result.id, RequestId{});
 }
 
 TEST(VehicleStateTest, EveryValueIsEmptyUntilReceived) {
