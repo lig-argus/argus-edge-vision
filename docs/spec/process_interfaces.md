@@ -180,7 +180,7 @@ flowchart LR
 | seq | uint64 | frame_id 와 같은 값 (호환용) |
 | image_width, image_height | uint32 | **원본 영상 크기** (IR 640, 480). 모델 입력 크기가 아니다 |
 | model | string | 추론에 쓴 모델(HEF) 이름. class_id 와 label 의 대응은 모델마다 다르다 (`docs/spec/video.md` 8장) |
-| inference_ms | float | NPU 추론 시간 (진단용) |
+| inference_ms | float64 | NPU 추론 시간 (진단용) |
 | coordinate_frame | string | `camera_pixel`. 박스 좌표가 원본 영상 픽셀이라는 뜻 (레터박스 좌표 아님) |
 | observation_kind | string | `IMAGE2D` |
 | received_unix_ns, received_monotonic_ns | int64, int64 | RPi 가 프레임을 받은 시각. **노출 시각이 아니다.** 추적기는 `received_monotonic_ns` 를 표본 시각으로 쓴다 |
@@ -193,11 +193,12 @@ flowchart LR
 | published_monotonic_ns | int64 | 발행 시각 |
 | t_infer_us, t_publish_us | int64, int64 | 추론 완료 시각, 발행 시각 (µs, 호환용) |
 | detections[] | | 아래. 객체가 없으면 `[]` |
-| detections[].class_id, label, confidence | int32, string, float | 모델의 class_id 와 라벨, 신뢰도(0~1) |
-| detections[].x1, y1, x2, y2 | float | 원본 영상 픽셀 |
+| detections[].class_id, label, confidence | int32, string, float64 | 모델의 class_id 와 라벨, 신뢰도(0~1) |
+| detections[].x1, y1, x2, y2 | int32 | 원본 영상 픽셀 (정수로 반올림해 원본 영상 안으로 자른 값) |
 | detections[].track_id | null | 탐지 단계에서는 항상 null. 추적 ID 는 `tracking/tracks` 에 있다 |
 
 - 신뢰도 경계값(현재 0.7) 아래의 박스는 발행하지 않는다.
+- 시각 필드는 5.1.5, `perception_api` 와 같게 int64 로 읽는다. 받는 쪽이 두 시각의 차를 계산할 때 부호 없는 값과 섞여 음수 차가 큰 양수가 되는 것을 막기 위해서다. 값은 모두 양수라 MessagePack 바이트는 발행 코드의 형과 상관없이 같다.
 - 지금 추적기의 역직렬화는 필드가 정확히 23개이고 `detections[]` 원소가 8개 필드일 때만 받고, 모르는 필드가 있으면 메시지를 버린다. 그래서 필드를 더하거나 빼면 schema 버전을 올리고 추적기 역직렬화를 같이 바꾼다.
 - 호환용 필드(seq, captured_*, t_infer_us, t_publish_us)는 다음 버전에서 뺄 수 있다.
 - 탐지 프로세스의 세션(`session_id`)은 C++ 탐지 프로세스가 시작할 때 만들어 Python 작업자와 미리보기 헤더에 이미 쓰고 있지만, 이 메시지에는 아직 없다 **[미결 14]**.
