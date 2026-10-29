@@ -33,7 +33,7 @@ public:
 
     // msgid 메시지가 오면 handler 를 부른다. 같은 msgid 에 여러 번 등록하면 등록한 순서대로 모두
     // 부른다. handler 는 core::IPoller::process_events() 안에서, 그 함수를 부른 스레드에서 불린다.
-    // 반환된 Subscription 이 사라지면 등록이 풀린다.
+    // 반환된 Subscription 이 사라지면 등록이 해제된다.
     [[nodiscard]] virtual core::Subscription subscribe(std::uint32_t msgid, Handler handler) = 0;
 };
 

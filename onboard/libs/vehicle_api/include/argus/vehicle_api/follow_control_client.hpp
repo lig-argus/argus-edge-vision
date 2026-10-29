@@ -19,9 +19,10 @@ namespace argus::vehicle_api {
 // 반환하며 응답은 handler 로 받는다. 받는 쪽(추종 제어)이 구현하는 IFollowControl 과 짝이다.
 // - handler 는 core::IPoller::process_events() 안에서 정확히 한 번 불린다.
 //   응답이 timeout 안에 오지 않으면 nullopt 로 불린다.
-// - 반환된 Subscription 이 먼저 사라지면 handler 는 불리지 않는다.
-// - 첫 결과만 이 handler 로 온다. 이후 진행은 follow/status 의 command_results 에서 같은
-//   command_id 로 찾는다 (IFollowControl 의 공통 계약과 같다).
+// - 반환된 Subscription 이 먼저 사라지면 handler 는 불리지 않는다. 보낸 요청은 취소되지 않는다.
+// - 요청을 받은 시점에 정해지는 결과(InProgress 또는 Rejected)만 이 handler 로 온다. 이후
+//   진행은 follow/status 의 command_results 에서 같은 command_id 로 찾는다 (IFollowControl 의
+//   공통 계약과 같다).
 class IFollowControlClient {
 public:
     using ResultHandler = std::function<void(std::optional<FollowResult>)>;

@@ -112,11 +112,11 @@ public:
     // 이 handler 가 처리하는 MAV_CMD 번호
     virtual std::uint16_t command() const = 0;
 
-    // 명령 하나를 처리한다. 결과는 반환값이 아니라 responder 로 보낸다. 첫 결과(IN_PROGRESS 또는
-    // DENIED)도 추종 제어의 응답을 받은 뒤에 정해지므로 process_events() 의 다음 호출에서 나올 수
-    // 있다. 같은 명령이 진행 중에 다시 오면 MavlinkCommandReceiver 가 TEMPORARILY_REJECTED 로
-    // 답하고 handler 를 부르지 않는다 (MAVLink command protocol). 완료 직후의 재전송에는 마지막
-    // 최종 결과를 다시 보낸다.
+    // 명령 하나를 처리한다. 결과는 반환값이 아니라 responder 로 보낸다. 통제기에 보내는 첫
+    // 응답(IN_PROGRESS 또는 DENIED)도 추종 제어의 응답을 받은 뒤에 정해지므로 process_events() 의
+    // 다음 호출에서 나올 수 있다. 같은 명령이 진행 중에 다시 오면 MavlinkCommandReceiver 가
+    // TEMPORARILY_REJECTED 로 답하고 handler 를 부르지 않는다 (MAVLink command protocol). 완료
+    // 직후의 재전송에는 마지막 최종 결과를 다시 보낸다.
     virtual void handle(const CommandRequest& request, CommandResponder responder) = 0;
 };
 

@@ -53,7 +53,13 @@ private:
         return reply;
     }
 
-    vehicle_api::FlightModeReply reply_{std::nullopt, true, ""};
+    static vehicle_api::FlightModeReply accepted_reply() {
+        vehicle_api::FlightModeReply reply;
+        reply.accepted = true;
+        return reply;
+    }
+
+    vehicle_api::FlightModeReply reply_ = accepted_reply();
     std::vector<FlightModeRequestRecord> requests_;
 };
 
