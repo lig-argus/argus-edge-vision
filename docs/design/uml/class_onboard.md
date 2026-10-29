@@ -196,7 +196,7 @@ classDiagram
 | `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사 | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
-| `FollowCommandClient` | `follow/command` REQ. `command_id`·세션·`fc_epoch`·유효 기한을 넣어 보냄. 첫 결과는 REP 의 `follow/result`(outcome·request_accepted)에서, 이후 진행은 `follow/status.command_results` 에서 같은 command_id 로 찾음. 통제기 재전송은 같은 command_id·같은 내용으로. 응답 시간 초과 → FAILED | pi 5.2.1, 6장 |
+| `FollowCommandClient` | `follow/command` REQ. `command_id`·세션·`fc_epoch`·유효 기한을 넣어 보냄. 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 의 `follow/result`(outcome·request_accepted)에서, 이후 진행(SUCCEEDED, FAILED)은 `follow/status.command_results` 에서 같은 command_id 로 찾음. 통제기 재전송은 같은 command_id·같은 내용으로. 응답 시간 초과 → FAILED | pi 5.2.1, 6장 |
 | `ArgusStatusReporter` | `follow/status` 의 `mission_state`·`target_state`·`selected` 를 ARGUS_STATUS 로 1 Hz + 변경 시 1회. `follow/status` 3 s 두절 → FAULT 보고와 Hold 요청 | icd 3.1, 6.4 |
 | `SensorStatusReporter` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시 | icd 3.1 |
 | `SensorMap` | `source` 문자열 ↔ `ARGUS_SENSOR` 대응표 (onboard 설정) | pi 3장 |
@@ -226,3 +226,4 @@ classDiagram
 | 0.2 | 2026-10-19 | 1절 제목 "공통 경계" → "공통 인터페이스" |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): `FcWriteAuthority`(FC 제어 명령 송신권)와 `OnboardWatchdog`(onboard 독립 감시) 추가, `FollowCommandClient` 의 결과를 outcome·request_accepted 로 |
 | 0.4 | 2026-10-21 | 메서드·멤버 이름을 snake_case 로 (onboard C++ 이름 규칙, #39), `FollowCommandClient.search` → `scan_start` |
+| 0.5 | 2026-10-29 | `FollowCommandClient` 의 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)" 로 (#39 리뷰 반영과 함께) |

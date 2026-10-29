@@ -12,6 +12,8 @@ classDiagram
         <<interface>>
         +latest() optional~VehicleState~
         +attitude_at(monotonic_ns) optional~Attitude~
+        +local_position_at(monotonic_ns) optional~LocalPosition~
+        +downward_distance_at(monotonic_ns) optional~DownwardDistance~
         +on_mode_event(handler)
     }
     class IVelocitySetpointSender {
@@ -68,7 +70,7 @@ classDiagram
 
 | 클래스 | 구현 담당 | 책임 | 출처 |
 |---|---|---|---|
-| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷, 프레임 시각에 맞춘 `fc/attitude` 메시지(보간용 이력은 구현이 보관), 모드 이벤트 | pi 4장, 5.1 |
+| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회, 모드 이벤트. 조회는 조회 시점 기준 200 ms 이내인 값 중 프레임 시각에 가장 가까운 것을 고르고 그 차가 50 ms 이내여야 한다. 보간하지 않는다. 최근 값의 보관과 조회 시점은 구현(`ZmqVehicleState`)이 맡는다 | pi 4장, 5.1, `class_tracker.md` |
 | `IVelocitySetpointSender` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환 | pi 4장 |
 | `IModeControl` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading. 수락은 동기 응답, 완료는 이벤트 | pi 4장, 5.2 |
 | `IFollowCommand` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 표적 존재·상태·FC 조건 검사는 구현이 한다 | pi 4장, icd 4.1 |
@@ -91,7 +93,7 @@ classDiagram
 
 ## 검토 필요 사항
 
-1. `IVehicleState.attitude_at` 의 보간 방식과 이력 길이 — 추적기와 공용으로 둘지 (`class_tracker.md` 의 `VehicleStateSubscriber` 와 같은 구현을 공유할 수 있다).
+1. 해소 (0.5): `IVehicleState` 의 프레임 시각에 맞는 값을 찾는 조회(`*_at`)는 보간하지 않고 가장 가까운 값 하나를 쓴다 (#39 리뷰: 추적기의 현재 선택 순서). 최근 값의 보관은 구현이 맡고, 추적기의 `VehicleStateSubscriber` 와 같은 구현을 공유한다 (`class_tracker.md`).
 2. 해소 (0.3): `FollowResult` 는 `follow/result` 의 outcome(IN_PROGRESS·SUCCEEDED·REJECTED·FAILED)·request_accepted·reason (pi 5.2.1). `ModeReply` 는 `control/mode_request` 의 응답으로, 필드는 pi 미결 1.
 3. `FollowController` 내부 Class Diagram — 추적·추종 담당.
 
@@ -103,3 +105,4 @@ classDiagram
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스". 인터페이스(`argus::vehicle_api`)와 ZeroMQ 어댑터(`argus::vehicle_api_zmq`)를 CMake 타깃으로 분리 (#35 리뷰) |
 | 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰), "FC 표본" 을 "fc/attitude 메시지" 로 |
 | 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙), 인터페이스 인자를 `vehicle_api` 값 타입(`RequestMeta`·`TrackTarget`·`ScanRequest`·`VelocitySetpoint`)으로, `latest()` 는 optional, `Fake*` 를 `argus::vehicle_api_testing` 에 (#39), `IVelocitySetpoint` → `IVelocitySetpointSender`(값 타입 `VelocitySetpoint` 와 구분), `search` → `scan_start`, `RequestMeta` → `RequestHeader` |
+| 0.5 | 2026-10-29 | #39 리뷰 반영: `IVehicleState` 에 `local_position_at`, `downward_distance_at` 추가, 조회 선택 순서(200 ms 이내 → 최근접 → 50 ms)와 보관 책임 확정, 보간하지 않음, 검토 1 해소 |
