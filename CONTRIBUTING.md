@@ -64,6 +64,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 - 형식은 Google 스타일이지만 이름은 Google 규칙(함수 `PascalCase`)을 따르지 않는다. 함께 사용하는 라이브러리와 같은 분야 프로젝트가 함수와 변수를 snake_case 로 사용하기 때문이다: C++ 표준 라이브러리(`push_back()`), cppzmq(`send()`), MAVSDK(`Action::arm()`, `Telemetry::subscribe_position()`), ArduPilot(`get_position()`), ROS 2 `rclcpp`(`create_publisher()`).
 - Python(PEP 8)도 함수와 변수가 snake_case 라서 같은 필드를 C++ 과 Python 에서 같은 이름으로 사용할 수 있다.
 - 헤더는 `#ifndef`, `#define`, `#endif` include guard 를 사용하고 `#pragma once` 는 사용하지 않는다. `#pragma once` 는 C++ 표준이 아니고, 방산 코딩 표준인 JSF AV C++ Rule 27 이 include guard 외의 방법을 금지하기 때문이다.
+- `continue` 와 `break`(`switch` 의 case 를 끝내는 것은 제외)는 사용을 최대한 지양한다. 조건을 합치거나 함수를 나누어 같은 흐름을 만든다. JSF AV C++ Rule 190, 191 이 둘을 금지하기 때문이다.
 
 **클래스 이름 짓기**
 
