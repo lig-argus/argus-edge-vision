@@ -56,7 +56,7 @@ public:
     // 실제 비행 모드가 바뀔 때마다 handler 를 부른다. 여러 번 등록하면 모두 부른다.
     // handler 는 core::IPoller::process_events() 안에서, 그 함수를 부른 스레드에서 불린다.
     // 다른 메시지 처리가 밀리지 않게 오래 걸리는 일을 하지 않는다.
-    // 반환된 Subscription 이 사라지면 그 handler 는 더 불리지 않는다.
+    // 반환된 Subscription 이 사라지면 그 handler 는 더 불리지 않는다 (등록 해제이지 취소가 아니다).
     [[nodiscard]] virtual core::Subscription subscribe_flight_mode_events(
         FlightModeEventHandler handler) = 0;
 };

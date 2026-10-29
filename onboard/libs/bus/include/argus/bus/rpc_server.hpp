@@ -27,7 +27,7 @@ public:
     // name 이름의 요청이 오면 handler 를 불러 그 반환값으로 응답한다. 한 이름에 handler 는
     // 하나이고, 같은 이름을 다시 등록하면 앞의 등록을 대신한다. 등록된 이름이 아닌 요청에는 parts
     // 가 빈 응답(topic = 요청 이름)을 보낸다. handler 는 core::IPoller::process_events() 안에서, 그
-    // 함수를 부른 스레드에서 불린다. 반환된 Subscription 이 사라지면 등록이 풀린다.
+    // 함수를 부른 스레드에서 불린다. 반환된 Subscription 이 사라지면 등록이 해제된다.
     [[nodiscard]] virtual core::Subscription serve(std::string_view name,
                                                    RequestHandler handler) = 0;
 };

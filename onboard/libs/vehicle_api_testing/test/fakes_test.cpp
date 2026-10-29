@@ -215,13 +215,28 @@ TEST(FakeFlightModeControlTest, AcceptsByDefaultAndRecordsRequestsWithCommandId)
 
 TEST(FakeFlightModeControlTest, ReturnsConfiguredReply) {
     FakeFlightModeControl mode;
-    mode.set_reply({std::nullopt, false, std::string("not armed")});
+    FlightModeReply denied;
+    denied.reason = "not armed";
+    mode.set_reply(denied);
 
     const auto reply = mode.request_hold(header_with_id(9));
 
     EXPECT_FALSE(reply.accepted);
     EXPECT_EQ(reply.reason, "not armed");
     EXPECT_EQ(command_id_of(reply), CommandId{9});
+}
+
+TEST(FakeFlightModeControlTest, ReplyKeepsRequestHeaderFields) {
+    FakeFlightModeControl mode;
+    RequestHeader header = header_with_id(10);
+    header.id.session_id = "follow-1";
+    header.id.seq = 3;
+    header.id.fc_epoch = 2;
+
+    const FlightModeReply reply = mode.request_offboard(header);
+
+    ASSERT_TRUE(reply.id.has_value());
+    EXPECT_EQ(reply.id.value_or(RequestId{}), header.id);
 }
 
 TEST(FakeFollowControlTest, InProgressByDefaultAndRecordsCommands) {
@@ -332,7 +347,7 @@ TEST_F(FakeClientTest, ReleasedSubscriptionIsNeverCalled) {
 TEST_F(FakeClientTest, FlightModeControlClientRepliesOldestRequestFirst) {
     FakeFlightModeControlClient client(poller_, clock_);
     std::vector<std::optional<CommandId>> replied;
-    const auto record = [&replied](std::optional<FlightModeReply> reply) {
+    const auto record = [&replied](const std::optional<FlightModeReply>& reply) {
         replied.push_back(command_id_of(reply));
     };
     const core::Subscription hold =
