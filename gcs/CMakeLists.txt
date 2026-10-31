@@ -25,8 +25,30 @@ elseif(MSVC)
     target_compile_options(argus_gcs_warnings INTERFACE /W4 /utf-8)
 endif()
 
-add_executable(argus_gcs src/main.cpp)
-target_link_libraries(argus_gcs PRIVATE Qt6::Widgets argus_mavlink argus_gcs_warnings)
+# 통신 클래스들이 쓰는 인터페이스 (IMavlinkConnection, IClock)와 작은 구현 (docs/design/uml/class_gcs.md).
+# IMavlinkConnection 은 QObject(signal)라 moc 가 필요하므로 STATIC 라이브러리다.
+# 헤더는 include/argus/gcs/ 에 두고 #include "argus/gcs/<파일>.hpp" 로 부른다. namespace 는 argus::gcs
+add_library(argus_gcs_interfaces STATIC
+    include/argus/gcs/mavlink_connection.hpp
+    include/argus/gcs/clock.hpp
+    src/mavlink_connection.cpp
+    src/steady_clock.cpp)
+target_include_directories(argus_gcs_interfaces PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(argus_gcs_interfaces PUBLIC Qt6::Core argus_mavlink argus_gcs_warnings)
 
-# Qt Test: test/<이름>_test.cpp 마다 add_test. 첫 통신 클래스와 함께 추가한다
+add_executable(argus_gcs src/main.cpp)
+target_link_libraries(argus_gcs PRIVATE Qt6::Widgets argus_gcs_interfaces argus_gcs_warnings)
+
+# Qt Test: test/<이름>_test.cpp 마다 실행 파일 하나와 add_test 하나. 테스트용 구현(Fake*)은 test/ 에 둔다
 include(CTest)
+# Q_OBJECT 가 있는 테스트용 헤더(Fake*)는 SOURCES 에 함께 적어야 AUTOMOC 가 moc 를 만든다
+function(argus_gcs_add_test name)
+    cmake_parse_arguments(ARG "" "" "SOURCES" ${ARGN})
+    add_executable(${name} ${ARG_SOURCES})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    target_link_libraries(${name} PRIVATE argus_gcs_interfaces Qt6::Test argus_gcs_warnings)
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+argus_gcs_add_test(gcs_mavlink_connection_test
+                   SOURCES test/mavlink_connection_test.cpp test/fake_mavlink_connection.hpp)
+argus_gcs_add_test(gcs_clock_test SOURCES test/clock_test.cpp test/fake_clock.hpp)
