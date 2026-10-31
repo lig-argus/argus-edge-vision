@@ -34,6 +34,7 @@ onboard/
     bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
     bus_testing/          # FakeBus
     protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수
+    perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, onboard, 추적기 공유. 의존성 없음)
     vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)
     vehicle_api_testing/  # vehicle_api 의 테스트용 구현
     vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크, 다음 PR)
