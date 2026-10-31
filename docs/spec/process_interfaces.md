@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.12 (팀 검토 전 초안) |
+| 문서 버전 | 0.13 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -107,10 +107,10 @@ flowchart LR
 
 | 토픽 | 발행 → 구독 | 주기 | 필드 |
 |---|---|---|---|
-| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus.vision.frame.v1`. 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][MessagePack 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + encoding("gray8"), stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
+| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus.vision.frame.v1` (헤더 필드는 5.1.5). 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][MessagePack 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + encoding("gray8"), stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
 | `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
-| `vision/npu_input/jpeg` | 탐지 → (진단용, 현재 구독자 없음) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 입력 640×640 레터박스 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 박스 좌표계가 원본 픽셀과 다르다 |
-| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
+| `vision/npu_input/jpeg` | 탐지 → (진단용, 현재 구독자 없음) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 에 넣은 입력 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 지금 실기체 HEF 는 입력 640×480 1채널이라 원본과 같은 크기의 흑백 JPEG 이고 lb_scale 1, 패딩 0 이다. 640×640 3채널 HEF 를 쓰면 레터박스 영상이 되어 박스 좌표계가 원본 픽셀과 다르다 |
+| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존, 5.1.4). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
 | `tracking/status` | 추적기 → onboard | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
 | `fc/attitude` | onboard → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
@@ -167,6 +167,60 @@ flowchart LR
 | generation | uint64 (1~16,777,215) | 현재 추적기 세대 |
 | fc_fresh, cmc_valid | bool | FC 데이터 최신 여부, 카메라 회전 보상 유효 여부. `ARGUS_SENSOR_STATUS.flags` 에 넣을지는 #21 후속 |
 | fps | number | 처리 FPS |
+
+#### 5.1.4 `perception/observations` v2 필드 (2026-10-29 기준)
+
+발행은 C++ `PerceptionWorker` 다. MessagePack map 하나이고 필드는 23개다.
+
+| 필드 | 형 | 뜻 |
+|---|---|---|
+| schema | string | `argus.perception.observations.v2` |
+| source | string | 카메라 식별 문자열. `tracking/tracks`, `vision/frame/gray8` 의 source 와 같은 값 |
+| frame_id | uint64 | 카메라 프레임 번호. 인지 큐에서 버린 프레임은 발행하지 않으므로 건너뛸 수 있다 |
+| seq | uint64 | frame_id 와 같은 값 (호환용) |
+| image_width, image_height | uint32 | **원본 영상 크기** (IR 640, 480). 모델 입력 크기가 아니다 |
+| model | string | 추론에 쓴 모델(HEF) 이름. class_id 와 label 의 대응은 모델마다 다르다 (`docs/spec/video.md` 8장) |
+| inference_ms | float64 | NPU 추론 시간 (진단용) |
+| coordinate_frame | string | `camera_pixel`. 박스 좌표가 원본 영상 픽셀이라는 뜻 (레터박스 좌표 아님) |
+| observation_kind | string | `IMAGE2D` |
+| received_unix_ns, received_monotonic_ns | int64, int64 | RPi 가 프레임을 받은 시각. **노출 시각이 아니다.** 추적기는 `received_monotonic_ns` 를 표본 시각으로 쓴다 |
+| captured_unix_ns, captured_monotonic_ns | int64, int64 | received_* 와 같은 값 (호환용 별칭) |
+| source_receive_monotonic_ns | int64 또는 null | 카메라 수신 helper 가 프레임 읽기를 마친 시각 |
+| exposure_monotonic_ns | int64 또는 null | 센서 노출 시각. 지금 카메라는 제공하지 않아 null |
+| exposure_time_valid | bool | exposure_monotonic_ns 가 있을 때만 true. 지금은 false |
+| timestamp_source | string | `host_receive`. 노출 시각이 있으면 `sensor_exposure` |
+| clock_domain | string | `host_monotonic` |
+| published_monotonic_ns | int64 | 발행 시각 |
+| t_infer_us, t_publish_us | int64, int64 | 추론 완료 시각, 발행 시각 (µs, 호환용) |
+| detections[] | | 아래. 객체가 없으면 `[]` |
+| detections[].class_id, label, confidence | int32, string, float64 | 모델의 class_id 와 라벨, 신뢰도(0~1) |
+| detections[].x1, y1, x2, y2 | int32 | 원본 영상 픽셀 (정수로 반올림해 원본 영상 안으로 자른 값) |
+| detections[].track_id | null | 탐지 단계에서는 항상 null. 추적 ID 는 `tracking/tracks` 에 있다 |
+
+- 신뢰도 경계값(현재 0.7) 아래의 박스는 발행하지 않는다.
+- 시각 필드는 5.1.5, `perception_api` 와 같게 int64 로 읽는다. 받는 쪽이 두 시각의 차를 계산할 때 부호 없는 값과 섞여 음수 차가 큰 양수가 되는 것을 막기 위해서다. 값은 모두 양수라 MessagePack 바이트는 발행 코드의 형과 상관없이 같다.
+- 지금 추적기의 역직렬화는 필드가 정확히 23개이고 `detections[]` 원소가 8개 필드일 때만 받고, 모르는 필드가 있으면 메시지를 버린다. 그래서 필드를 더하거나 빼면 schema 버전을 올리고 추적기 역직렬화를 같이 바꾼다.
+- 호환용 필드(seq, captured_*, t_infer_us, t_publish_us)는 다음 버전에서 뺄 수 있다.
+- 탐지 프로세스의 세션(`session_id`)은 C++ 탐지 프로세스가 시작할 때 만들어 Python 작업자와 미리보기 헤더에 이미 쓰고 있지만, 이 메시지에는 아직 없다 **[미결 14]**.
+
+#### 5.1.5 `vision/frame/gray8` v1 헤더 필드 (2026-10-29 기준, 구현 전)
+
+multipart `[토픽][MessagePack 헤더][픽셀 바이트]` 의 헤더다. 픽셀 바이트는 `stride × height` 바이트의 8 비트 흑백 영상이다. 아직 RPi 탐지 코드에 구현되지 않았고, 구현할 때 이 표에 맞춘다.
+
+| 필드 | 형 | 뜻 |
+|---|---|---|
+| schema | string | `argus.vision.frame.v1` |
+| source | string | 카메라 식별 문자열. `perception/observations` 와 같은 값 |
+| session_id | string | 탐지 프로세스가 시작할 때마다 새로 만드는 값. 재시작 뒤 frame_id 가 처음부터 다시 셀 수 있어 이전 실행의 프레임과 구분하는 데 쓴다 |
+| frame_id, seq | uint64, uint64 | `perception/observations` 와 같은 frame_id. seq 는 frame_id 와 같은 값 |
+| unix_ns | int64 | RPi 가 프레임을 받은 시각 (wall clock) |
+| received_monotonic_ns | int64 | RPi 가 프레임을 받은 시각 (monotonic). `perception/observations` 의 같은 필드와 같은 값 |
+| width, height, stride | uint32 | 640, 480, 640 |
+| encoding | string | `gray8` |
+| preprocess | string | 전처리 이름. 현재 `double_plateau_adaptive` |
+
+- `session_id` 는 `vision/overlay/jpeg`, `vision/npu_input/jpeg` 헤더의 session_id 와 같은 값이다.
+- 같은 프레임의 탐지 결과와 묶는 키는 `(source, session_id, frame_id)` 다. `perception/observations` 에 session_id 가 들어가기 전까지는 `(source, frame_id)` 로 묶고, 탐지 프로세스가 다시 시작된 직후에는 섞일 수 있다 **[미결 14]**.
 
 ### 5.2 REQ/REP
 
@@ -241,6 +295,7 @@ flowchart LR
 11. RPi 안 토픽 연결 방식 통일 여부. 지금은 직접 연결(발행자가 bind: 6370, 6372, 6357)과 프록시(탐지 토픽: 5555 / 5556)가 섞여 있어, 구독자가 주소를 여러 개 알아야 한다. 선택지는 (가) 모든 토픽을 직접 연결하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리, (나) 모든 토픽을 프록시로, (다) 지금처럼 유지. (가) 를 제안한다. 프로세스와 포트가 고정된 한 기기 안에서는 데이터를 직접 연결하고 주소 표를 한 곳에 두는 방식이 일반적이고(openpilot 의 서비스 표, ROS 2 의 직접 연결), 프록시가 SPOF가 되어 멈추면 탐지 토픽 전체가 끊기는 문제가 없어진다. 다만 탐지 쪽 발행 코드를 바꿔야 한다. — 통신, 탐지, 추적/추종
 12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
 13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. onboard 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
+14. `perception/observations` 에 `session_id` 추가. 탐지 프로세스가 다시 시작되면 frame_id 가 처음부터 다시 셀 수 있어, 세션 없이 `(source, frame_id)` 로 묶으면 이전 실행의 결과와 섞일 수 있다. 값은 탐지 프로세스가 이미 만들어 쓰는 세션(미리보기 헤더와 같은 값)이다. 지금 추적기 역직렬화가 필드 23개만 받으므로 `argus.perception.observations.v3` 로 올리고, 추적기가 v2 와 v3 를 함께 받도록 바꾼 뒤 탐지 발행을 v3 로 바꾼다. `tracking/tracks` 도 이 값을 그대로 옮길지 함께 정한다. — 탐지, 추적/추종, 통신
 
 ## 변경 이력
 
@@ -258,3 +313,4 @@ flowchart LR
 | 0.10 | 2026-10-29 | #39 리뷰 반영: 4장 `IVehicleState` 에 위치와 거리 조회, 선택 순서, 5.1 `fc/state` 의 값별 원수신 시각, 5.1.2 와 5.2.1 의 command_id 를 uint64 로, 5.2.1 에 요청 공통 필드(session_id, seq, fc_epoch)와 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과" 로, 7장 1 에 모드 요청 계약 항목, 7장 7 에 필드 이름 출처, 3장에 C++ 값 타입 `RequestId` 묶음 |
 | 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
 | 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |
+| 0.13 | 2026-10-29 | 5.1.4 `perception/observations` v2 필드 표, 5.1.5 `vision/frame/gray8` v1 헤더 필드 표 추가 (#46 리뷰 요청). 5.1 표에서 두 절을 가리킴. 7장 14(`perception/observations` 의 `session_id`) 추가. `vision/npu_input/jpeg` 를 실기체의 640×480 1채널 HEF 입력에 맞춤 |
