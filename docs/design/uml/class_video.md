@@ -16,7 +16,7 @@ classDiagram
     }
     class ZmqFrameSource
     class FileFrameSource
-    class MessageJoiner {
+    class FrameJoiner {
         -pending map~(source, frame_id), Partial~
         -max_pending, max_wait
         +on_frame(Frame)
@@ -51,11 +51,11 @@ classDiagram
     IFrameSource <|.. ZmqFrameSource
     IFrameSource <|.. FileFrameSource
     IMetadataEncoder <|.. OnvifXmlEncoder
-    ZmqFrameSource ..> ISubscriber : vision/frame/gray8
-    MessageJoiner ..> IFrameSource
-    MessageJoiner ..> ISubscriber : perception/observations, tracking/tracks
-    MessageJoiner ..> IClock : max_wait
-    VideoSender *-- MessageJoiner
+    ZmqFrameSource ..> ITopicSubscriber : vision/frame/gray8
+    FrameJoiner ..> IFrameSource
+    FrameJoiner ..> ITopicSubscriber : perception/observations, tracking/tracks
+    FrameJoiner ..> IClock : max_wait
+    VideoSender *-- FrameJoiner
     VideoSender *-- IMetadataEncoder
     VideoSender *-- MetadataRtpPacketizer
     VideoSender *-- RtspServer
@@ -65,7 +65,7 @@ classDiagram
 | 클래스 | 책임 | 출처 |
 |---|---|---|
 | `IFrameSource` / `ZmqFrameSource` / `FileFrameSource` | 비압축 프레임 공급. 구현 교체로 토픽·파일(테스트) 전환 | pi 5.3 |
-| `MessageJoiner` | 세 토픽을 `(source, frame_id)` 로 결합. 보관 개수·대기 시간 제한, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음 | pi 5.3 |
+| `FrameJoiner` | 세 토픽을 `(source, frame_id)` 로 결합. 보관 개수·대기 시간 제한, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음 | pi 5.3 |
 | `IMetadataEncoder` / `OnvifXmlEncoder` | `tracking/tracks` → ONVIF XML (`tt:Frame`, `tt:Object`, `argus:` 확장, 좌표 변환). 추적 결과 없는 프레임은 빈 `tt:Frame` | video 3장 |
 | `MetadataRtpPacketizer` | XML → RTP 패킷(헤더 12 B, 조각, 마지막 marker=1, 타임스탬프 = unix_ns × 90000 / 10^9) | video 3.1, 4장 |
 | `VideoTrackConfig` | 코덱별 GStreamer 요소 문자열·pt·품질. JPEG: `videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay pt=26` | video 2장, 5장 |
@@ -143,7 +143,7 @@ classDiagram
 ## 4. 검토 필요 사항
 
 1. `RtspReceiver` 의 메타데이터 경로 — `rtponvifmetadatadepay` 가 Windows 배포에 있는지 (video 미결 1).
-2. `MessageJoiner` 의 보관 개수·대기 시간 값 (pi 5.3).
+2. `FrameJoiner` 의 보관 개수·대기 시간 값 (pi 5.3).
 3. 녹화(`FileFrameSource` 입력 파일 형식)는 별도 결정.
 
 ## 변경 이력
@@ -152,3 +152,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-21 | 1절(영상 송신부) 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙, #39). 2절 통제기는 Qt camelCase 그대로 |
+| 0.3 | 2026-10-25 | `MessageJoiner`→`FrameJoiner` (#40), bus 인터페이스 이름 `IPublisher`·`ISubscriber`→`ITopicPublisher`·`ITopicSubscriber` (#40) |

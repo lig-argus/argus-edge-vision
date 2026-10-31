@@ -13,41 +13,43 @@ sequenceDiagram
     actor op as 운용자
     participant view as VideoView (gcs)
     participant cmd as CommandSender (gcs)
-    participant disp as CommandDispatcher (onboard)
+    participant disp as MavlinkCommandReceiver (onboard)
     participant ts as TrackStartHandler (onboard)
-    participant fcc as FollowCommandClient (onboard)
-    participant srv as FollowCommandServer (추종 제어)
+    participant fcc as ZmqFollowControlClient (onboard)
+    participant fss as ZmqFollowStatusSubscriber (onboard)
+    participant srv as ZmqFollowControlServer (추종 제어)
     participant ctl as FollowController (추종 제어)
-    participant mode as ModeRequestServer (onboard)
+    participant mode as MavlinkFlightModeControl (onboard)
     participant fc as FC
 
     op->>view: 박스 클릭
     view->>view: 클릭 시점 프레임의 메타데이터에서 박스 판정
     view->>cmd: trackStart(sensor, generation, class_id, track_id)
     cmd->>disp: COMMAND_LONG TRACK_START (compid 195)
-    disp->>ts: handle()
+    disp->>ts: handle(request, responder)
     ts->>ts: 제어권·FOLLOWABLE·최신 추적 결과·mission_state 검사
-    ts->>fcc: trackStart(...)
+    ts->>fcc: track_start(header, target, timeout, on_result)
     fcc->>srv: REQ follow/command (command_id)
-    srv->>ctl: trackStart()
+    srv->>ctl: track_start()
     ctl-->>srv: 수락
     srv-->>fcc: REP follow/result outcome=IN_PROGRESS
-    fcc-->>ts: IN_PROGRESS
-    ts-->>disp: IN_PROGRESS
-    disp-->>cmd: COMMAND_ACK IN_PROGRESS
-    ctl->>mode: REQ control/mode_request OFFBOARD
-    mode->>fc: DO_SET_MODE Offboard
+    fcc-->>ts: on_result(FollowResult IN_PROGRESS)
+    ts-->>disp: responder.send(IN_PROGRESS)
+    disp-->>cmd: COMMAND_ACK IN_PROGRESS (progress 255)
+    ctl->>mode: REQ control/mode_request OFFBOARD (ZmqFlightModeControlServer 경유)
+    mode->>fc: DO_SET_MODE Offboard (FcCommandGate 허용 뒤)
     fc-->>mode: COMMAND_ACK ACCEPTED
     fc-->>mode: HEARTBEAT 실제 모드 Offboard
     mode--)ctl: PUB fc/mode_event Offboard (ACK + 실제 모드 확인)
-    ctl--)fcc: PUB follow/status command_results outcome=SUCCEEDED, mission_state=FOLLOW_ACTIVE
-    fcc-->>disp: SUCCEEDED
+    ctl--)fss: PUB follow/status command_results outcome=SUCCEEDED, mission_state=FOLLOW_ACTIVE
+    fss-->>ts: 같은 command_id 의 결과
+    ts-->>disp: responder.send(ACCEPTED)
     disp-->>cmd: COMMAND_ACK ACCEPTED
 ```
 
 - 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
 - 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED, FAILED → FAILED.
-- 통제기가 ACK 를 1 s 안에 받지 못해 다시 보내면(`icd.md` 4.1), onboard 는 같은 command_id 로 요청한다. 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다.
+- 통제기가 ACK 를 1 s 안에 받지 못해 다시 보내면(`icd.md` 4.1), `MavlinkCommandReceiver` 가 handler 를 부르지 않고 답한다: 진행 중이면 TEMPORARILY_REJECTED, 완료 뒤 4 s 안이면 마지막 최종 ACK. 진행 중인 명령의 IN_PROGRESS 는 1 s 마다 다시 보낸다. 추종 제어로 다시 요청하지 않으므로 pi 5.2 의 같은 command_id 규칙은 두 번째 방어선이다.
 - onboard 검사(조건 ①③④⑤)에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK DENIED` + `STATUSTEXT` 로 답한다.
 - Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 PX4 가 Offboard 에 들어간다 (`icd.md` 2장). 그 흐름은 2절.
 
@@ -59,8 +61,8 @@ sequenceDiagram
     participant trk as UcmcTracker (추적기)
     participant vss as VehicleStateSubscriber (추적기)
     participant ctl as FollowController (추종 제어)
-    participant fct as FcTelemetry (onboard)
-    participant spr as SetpointRelay (onboard)
+    participant fct as FcTelemetryPublisher (onboard)
+    participant spr as ZmqVelocitySetpointReceiver·MavlinkVelocitySetpointSink (onboard)
     participant fc as FC
 
     loop fc/attitude·fc/state 메시지마다 (30 Hz 이상)
@@ -69,18 +71,18 @@ sequenceDiagram
         fct--)ctl: PUB fc/attitude, fc/state
     end
     vis--)trk: PUB perception/observations (frame_id, unix_ns)
-    trk->>vss: attitudeAt(프레임 received_monotonic_ns)
+    trk->>vss: attitude_at(프레임 received_monotonic_ns)
     vss-->>trk: 시각 차 50 ms 이내, 수신 후 경과 시간 200 ms 이내 메시지 (없으면 fc_fresh=false)
     trk--)ctl: PUB tracking/tracks
     ctl->>ctl: 표적 상태 갱신, 속도 계산
     ctl--)spr: PUB control/setpoint (valid_until)
     loop 20 Hz
-        spr->>fc: SET_POSITION_TARGET_LOCAL_NED
+        spr->>fc: SET_POSITION_TARGET_LOCAL_NED (FcCommandGate 허용 뒤)
     end
 ```
 
 - 추적기와 추종 제어는 FC 에 직접 보내지 않는다. FC 로 가는 것은 모두 onboard 를 거친다 (`process_interfaces.md` 2.1).
-- `SetpointRelay` 는 받은 최신 setpoint 를 20 Hz 로 보낸다. `valid_until` 이 지나면 4절과 같이 속도 0 과 Hold 요청.
+- `ZmqVelocitySetpointReceiver` 는 받은 최신 setpoint 를 20 Hz 로 `MavlinkVelocitySetpointSink` 에 넘기고, sink 는 `FcCommandGate` 가 허용하면 보낸다. `valid_until` 이 지나면 4절과 같이 속도 0 과 Hold 요청.
 
 ## 3. 영상 프레임 1장 송신·수신
 
@@ -89,7 +91,7 @@ sequenceDiagram
     participant fp as PythonVisionAdapter (탐지)
     participant op as PerceptionWorker (탐지)
     participant tp as TracksPublisher (추적기)
-    participant mj as MessageJoiner (영상 송신부)
+    participant mj as FrameJoiner (영상 송신부)
     participant vs as VideoSender (영상 송신부)
     participant rs as RtspServer (영상 송신부)
     participant rr as RtspReceiver (gcs)
@@ -111,7 +113,7 @@ sequenceDiagram
     fs->>view: VideoFrame
 ```
 
-- 세 토픽은 도착 순서가 보장되지 않는다. `MessageJoiner` 는 대기 시간 안에 짝이 모두 오지 않으면 버린다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다 (`process_interfaces.md` 5.3).
+- 세 토픽은 도착 순서가 보장되지 않는다. `FrameJoiner` 는 대기 시간 안에 짝이 모두 오지 않으면 버린다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다 (`process_interfaces.md` 5.3).
 - 영상 패킷을 먼저 보내고 메타데이터를 보낸다 (`video.md` 5장).
 - 메타데이터가 늦게 오면 통제기는 프레임을 박스 없이 표시하고, 늦게 온 메타데이터는 버린다 (`video.md` 6장).
 
@@ -120,8 +122,8 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant fc as FC
-    participant fct as FcTelemetry (onboard)
-    participant spr as SetpointRelay (onboard)
+    participant fct as FcTelemetryPublisher (onboard)
+    participant spr as MavlinkVelocitySetpointSink (onboard)
     participant ctl as FollowController (추종 제어)
     participant asr as ArgusStatusReporter (onboard)
     participant gcs as TelemetryModel·ArgusStatusModel (gcs)
@@ -129,7 +131,7 @@ sequenceDiagram
     Note over fc,fct: FC telemetry 가 오지 않음
     fct->>fct: 2 s 경과 → FC_CONNECTED = 0
     fct--)ctl: fc/attitude·fc/state 중단
-    spr->>spr: FC 연결 없음 → setpoint 송신 중단
+    spr->>spr: FcCommandGate 거부 (FC 연결 없음) → setpoint 송신 중단
     Note over fc: COM_OF_LOSS_T 1 s 뒤 Offboard 이탈, COM_OBL_RC_ACT 동작 (Hold, 미결 D4)
     ctl->>ctl: mission_state = FAULT
     ctl--)asr: PUB follow/status mission_state=FAULT
@@ -156,3 +158,4 @@ sequenceDiagram
 | 0.2 | 2026-10-19 | 탐지 쪽 참여자를 실제 클래스 이름으로 (`PerceptionWorker`, `PythonVisionAdapter`, #33 리뷰) |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드(1절), FC 표본은 프레임의 호스트 단조 시각으로 고르고 시각 차 50 ms·수신 후 경과 시간 200 ms(2절), FAULT 복구 조건과 onboard 독립 감시(4절), "FC 표본" 을 "fc/attitude·fc/state 메시지" 로 |
 | 0.4 | 2026-10-29 | "첫 결과" 를 "요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)" 로 (#39 리뷰 반영과 함께) |
+| 0.5 | 2026-10-25 | 참여자 이름을 `class_onboard.md` 0.5·`class_follow.md` 0.7 와 맞춤(#40). 1절에 `CommandResponder`, `ZmqFollowStatusSubscriber`, `progress`, 재전송 처리. 2·4절에 `FcCommandGate` |

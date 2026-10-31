@@ -26,15 +26,15 @@ classDiagram
     class TrackingStatusPublisher {
         +tick() 1 Hz
     }
-    ObservationSubscriber ..> ISubscriber : perception/observations
-    VehicleStateSubscriber ..> ISubscriber : fc/attitude, fc/state
+    ObservationSubscriber ..> ITopicSubscriber : perception/observations
+    VehicleStateSubscriber ..> ITopicSubscriber : fc/attitude, fc/state
     UcmcTracker ..> ObservationSubscriber
     UcmcTracker ..> VehicleStateSubscriber : 프레임 시각의 자세
     TracksPublisher ..> UcmcTracker
-    TracksPublisher ..> IPublisher : tracking/tracks 6357
+    TracksPublisher ..> ITopicPublisher : tracking/tracks 6357
     TrackingStatusPublisher ..> UcmcTracker : generation, cmc_valid, fps
     TrackingStatusPublisher ..> VehicleStateSubscriber : fc_fresh
-    TrackingStatusPublisher ..> IPublisher : tracking/status 6357
+    TrackingStatusPublisher ..> ITopicPublisher : tracking/status 6357
 ```
 
 | 클래스 | 구현 담당 | 책임 | 출처 |
@@ -45,11 +45,11 @@ classDiagram
 | `TracksPublisher` | 추적·추종 | `tracking/tracks` v5. 탐지 결과 프레임마다 | pi 5.1.1 |
 | `TrackingStatusPublisher` | 추적·추종 | `tracking/status` 1 Hz | pi 5.1.3 |
 
-- 추적기는 FC 로 아무것도 보내지 않는다. `IVehicleState` 중 읽기만 쓴다 (`class_follow.md`).
+- 추적기는 FC 로 아무것도 보내지 않는다. `IVehicleTelemetry` 중 읽기만 쓴다 (`class_follow.md`).
 
 ## 검토 필요 사항
 
-1. 해소 (0.5): `VehicleStateSubscriber` 는 `IVehicleState` 의 구현 `ZmqVehicleState` 와 같은 코드다 (통신 담당이 제공, 두 프로세스가 링크. `class_follow.md`, #39 리뷰).
+1. 해소 (0.5): `VehicleStateSubscriber` 는 `IVehicleTelemetry` 의 구현 `ZmqVehicleTelemetrySubscriber` 와 같은 코드다 (통신 담당이 제공, 두 프로세스가 링크. `class_follow.md`, #39 리뷰).
 2. `UcmcTracker` 내부 Class Diagram — 추적·추종 담당.
 
 ## 변경 이력
@@ -61,3 +61,4 @@ classDiagram
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): FC 표본 입력 항목과 유효성, 프레임의 호스트 단조 시각으로 표본 선택, "FC 표본" 을 "fc/attitude·fc/state 메시지" 로, "단조 시각" 을 monotonic clock 으로 |
 | 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙, #39) |
 | 0.5 | 2026-10-29 | #39 리뷰 반영: `VehicleStateSubscriber` 의 선택 순서를 200 ms 이내 → 최근접 → 50 ms 로 명시, 보간하지 않음, 검토 1 해소 |
+| 0.6 | 2026-10-25 | `IVehicleState`→`IVehicleTelemetry`, `ZmqVehicleState`→`ZmqVehicleTelemetrySubscriber` (#40), bus 인터페이스 이름 `IPublisher`·`ISubscriber`→`ITopicPublisher`·`ITopicSubscriber` (#40) |

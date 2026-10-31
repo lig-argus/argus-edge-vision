@@ -19,6 +19,23 @@ struct CommandId {
     friend bool operator!=(CommandId lhs, CommandId rhs) { return !(lhs == rhs); }
 };
 
+// 프로세스 사이 REQ/REP 요청 하나를 가리키는 값 (process_interfaces.md 3장 공통 필드).
+// command_id 가 어느 세션, 어느 FC 연결의 것인지 session_id, seq, fc_epoch 가 한정한다.
+// 받는 쪽은 결과에 이 값을 그대로 남기고, 응답을 요청에 맞출 때 비교한다.
+// 통제기의 MAVLink 명령(onboard 의 CommandRequest)의 식별자가 아니다
+struct RequestId {
+    CommandId command_id;
+    std::string session_id;
+    std::uint64_t seq = 0;
+    std::uint64_t fc_epoch = 0;  // 요청을 만들 때의 FC 연결 epoch (process_interfaces.md 3장)
+
+    friend bool operator==(const RequestId& lhs, const RequestId& rhs) {
+        return lhs.command_id == rhs.command_id && lhs.session_id == rhs.session_id &&
+               lhs.seq == rhs.seq && lhs.fc_epoch == rhs.fc_epoch;
+    }
+    friend bool operator!=(const RequestId& lhs, const RequestId& rhs) { return !(lhs == rhs); }
+};
+
 // 탐지 센서. 값은 MAVLink ARGUS_SENSOR 와 같다 (common/mavlink/message_definitions/argus.xml)
 enum class Sensor : std::uint8_t {
     Unknown = 0,
@@ -115,8 +132,8 @@ enum class OffboardExitCause : std::uint8_t {
     Unknown,
 };
 
-// 실제 비행 모드가 바뀐 이벤트 (`fc/mode_event`)
-struct ModeEvent {
+// 실제 비행 모드가 바뀌었음을 알리는 메시지 (`fc/mode_event`)
+struct FlightModeEvent {
     FlightMode mode = FlightMode::Unknown;
     // 이 모드 변경이 응답한 모드 요청의 command_id. 요청 없이 바뀌었으면(조종사, failsafe) nullopt
     std::optional<CommandId> request_command_id;
@@ -134,28 +151,14 @@ struct VelocitySetpoint {
     std::int64_t valid_until_monotonic_ns = 0;
 };
 
-// `control/mode_request` 의 응답. 수락만 뜻하며, 실제 전환 완료는 ModeEvent 로 온다
+// `control/mode_request` 의 응답. 수락만 뜻하며, 실제 전환 완료는 FlightModeEvent 로 온다
 // 필드는 process_interfaces.md 미결 1 에서 확정한다
-struct ModeReply {
+struct FlightModeReply {
+    // 요청의 RequestId 그대로 (process_interfaces.md 3장). 응답이 어느 요청의 것인지 맞출 때 쓴다.
+    // 요청과 맞출 수 없는 응답이면 nullopt
+    std::optional<RequestId> id;
     bool accepted = false;
-    std::string reason;
-};
-
-// 프로세스 사이 REQ/REP 요청 하나를 가리키는 값 (process_interfaces.md 3장 공통 필드).
-// command_id 가 어느 세션, 어느 FC 연결의 것인지 session_id, seq, fc_epoch 가 한정한다.
-// 받는 쪽은 결과에 이 값을 그대로 남기고, 응답을 요청에 맞출 때 비교한다.
-// 통제기의 MAVLink 명령(onboard 의 CommandRequest)의 식별자가 아니다
-struct RequestId {
-    CommandId command_id;
-    std::string session_id;
-    std::uint64_t seq = 0;
-    std::uint64_t fc_epoch = 0;  // 요청을 만들 때의 FC 연결 epoch (process_interfaces.md 3장)
-
-    friend bool operator==(const RequestId& lhs, const RequestId& rhs) {
-        return lhs.command_id == rhs.command_id && lhs.session_id == rhs.session_id &&
-               lhs.seq == rhs.seq && lhs.fc_epoch == rhs.fc_epoch;
-    }
-    friend bool operator!=(const RequestId& lhs, const RequestId& rhs) { return !(lhs == rhs); }
+    std::string reason;  // 거부의 원인. 판정에는 쓰지 않는다
 };
 
 // 요청 공통 필드 (process_interfaces.md 3장)
@@ -189,7 +192,7 @@ enum class StopReason : std::uint8_t {
 };
 
 // 추종 명령의 결과 (process_interfaces.md 5.2.1 outcome)
-enum class Outcome : std::uint8_t {
+enum class FollowOutcome : std::uint8_t {
     InProgress,  // 수락하고 진행 중
     Succeeded,   // 완료
     Rejected,    // 수락 전 조건 및 입력 불충족으로 거부
@@ -199,9 +202,9 @@ enum class Outcome : std::uint8_t {
 // `follow/result` (process_interfaces.md 5.2.1)
 struct FollowResult {
     RequestId id;  // 요청의 RequestId 그대로 (3장)
-    Outcome outcome = Outcome::Rejected;
+    FollowOutcome outcome = FollowOutcome::Rejected;
     bool request_accepted = false;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
-    std::string reason;             // 사람이 읽는 이유. 판정에는 사용하지 않는다
+    std::string reason;             // 거부·실패의 원인. 판정에는 쓰지 않는다
 };
 
 }  // namespace argus::vehicle_api

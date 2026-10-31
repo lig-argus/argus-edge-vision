@@ -136,6 +136,9 @@
       <field type="uint8_t" name="target_state" enum="ARGUS_TARGET_STATE">선택된 표적의 상태.</field>
       <field type="uint8_t" name="active_sensor" enum="ARGUS_SENSOR">추종에 사용 중인 센서. 추종하지 않으면 UNKNOWN(0).</field>
       <field type="uint8_t" name="control_sysid">제어권을 가진 통제기의 system id. 없으면 0.</field>
+      <extensions/>
+      <field type="float" name="scan_yaw_done_rad" units="rad">스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.</field>
+      <field type="float" name="scan_remaining_s" units="s">스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.</field>
     </message>
     <message id="45001" name="ARGUS_SENSOR_STATUS">
       <description>센서 하나의 상태. onboard 가 센서마다 1 Hz 로 전송하고, flags 가 바뀌면 즉시 한 번 더 전송한다.</description>

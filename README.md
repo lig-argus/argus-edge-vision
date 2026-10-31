@@ -29,10 +29,14 @@ onboard/
   CMakeLists.txt          # 상위 CMake 프로젝트 하나, 실행 파일 여러 개
   cmake/                  # CMake 함수 (argus_add_test)
   libs/                   # 프로세스들이 함께 쓰는 라이브러리
-    core/                 # IClock 등 공통 기반
-    bus/                  # ZeroMQ PUB/SUB·REQ/REP 인터페이스와 구현, MessagePack 메시지 타입
-    vehicle_api/          # IVehicleState·IVelocitySetpointSender·IModeControl·IFollowCommand 순수 인터페이스 (의존성 없음)
-    vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크)
+    core/                 # IClock·IPoller·EventLoop·Subscription 공통 기반
+    core_testing/         # core 의 테스트용 구현 (FakeClock, FakePoller)
+    bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
+    bus_testing/          # FakeBus
+    protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수
+    vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)
+    vehicle_api_testing/  # vehicle_api 의 테스트용 구현
+    vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크, 다음 PR)
   apps/                   # 실행 파일. 프로세스 하나에 폴더 하나
     onboard/              # onboard 프로세스 (통신 담당)
     video_sender/         # 영상 송신부 (통신 담당)

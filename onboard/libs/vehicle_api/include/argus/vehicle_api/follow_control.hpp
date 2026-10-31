@@ -1,9 +1,10 @@
-// 추종, 스캔 명령을 받는 인터페이스
+// 추종, 스캔 명령을 받는 인터페이스 (구현용. 결과를 바로 반환한다)
 // 규약: docs/spec/process_interfaces.md 4장, 5.2 follow/command, 5.2.1 follow/result
-// 구현: 추종 제어(FollowController)
-// 사용: onboard 의 ZeroMQ 어댑터 FollowCommandServer
-#ifndef ARGUS_VEHICLE_API_FOLLOW_COMMAND_HPP_
-#define ARGUS_VEHICLE_API_FOLLOW_COMMAND_HPP_
+// 구현: 추종 제어(FollowController), 테스트용 FakeFollowControl (vehicle_api_testing)
+// 사용: (다음 PR) onboard 의 ZeroMQ 어댑터 ZmqFollowControlServer 가 REQ 를 받아 부르고 결과를
+//      REP 로 보낸다. onboard 안에서 명령을 보내는 쪽은 IFollowControlClient 를 쓴다
+#ifndef ARGUS_VEHICLE_API_FOLLOW_CONTROL_HPP_
+#define ARGUS_VEHICLE_API_FOLLOW_CONTROL_HPP_
 
 #include "argus/vehicle_api/types.hpp"
 
@@ -19,23 +20,25 @@ namespace argus::vehicle_api {
 // - 표적 존재/상태/FC 조건 검사는 구현이 한다.
 //   통제기 제어권과 매개변수 범위 검사는 onboard 가 부르기 전에 한다.
 // - FC 제어 명령 송신권(process_interfaces.md 6장)의 확인은 onboard 의 FC 명령 검사가,
-//   요청의 취소는 onboard 의 ZeroMQ 어댑터가 맡는다. 구현은 요청의 공통 필드(command_id,
-//   session_id, seq, fc_epoch)를 FollowResult 에 그대로 남긴다.
+//   요청의 취소는 onboard 의 ZeroMQ 어댑터가 맡는다. 구현은 요청의 RequestId 를 FollowResult.id 에
+//   그대로 남긴다.
 // - ScanRequest: 지정된 값이 무한대가 아닌지와 허용 범위 안인지는 onboard 가 부르기 전에
 //   검사한다. 기본값을 적용한 뒤 yaw 범위, yaw 속도, 제한 시간의 조합은 구현이 검사하고
 //   맞지 않으면 Rejected. 무한대나 범위 밖의 값을 기본값으로 바꾸지 않는다.
-class IFollowCommand {
+class IFollowControl {
 public:
-    IFollowCommand() = default;
-    virtual ~IFollowCommand() = default;
-    IFollowCommand(const IFollowCommand&) = delete;
-    IFollowCommand& operator=(const IFollowCommand&) = delete;
-    IFollowCommand(IFollowCommand&&) = delete;
-    IFollowCommand& operator=(IFollowCommand&&) = delete;
+    IFollowControl() = default;
+    virtual ~IFollowControl() = default;
+    IFollowControl(const IFollowControl&) = delete;
+    IFollowControl& operator=(const IFollowControl&) = delete;
+    IFollowControl(IFollowControl&&) = delete;
+    IFollowControl& operator=(IFollowControl&&) = delete;
 
     // FC 가 실제로 Hold 일 때만 수락한다 (docs/spec/icd.md 4.2 조건 ⑥)
     virtual FollowResult track_start(const RequestHeader& header, const TrackTarget& target) = 0;
+
     virtual FollowResult stop(const RequestHeader& header, StopReason reason) = 0;
+
     // Scan(Hold 상태 yaw 회전 탐색) 시작. follow/command 메시지의 action 이름은 "search" 이며
     // 변환은 ZeroMQ 어댑터가 한다
     virtual FollowResult scan_start(const RequestHeader& header, const ScanRequest& scan) = 0;
@@ -43,4 +46,4 @@ public:
 
 }  // namespace argus::vehicle_api
 
-#endif  // ARGUS_VEHICLE_API_FOLLOW_COMMAND_HPP_
+#endif  // ARGUS_VEHICLE_API_FOLLOW_CONTROL_HPP_
