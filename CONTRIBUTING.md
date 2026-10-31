@@ -82,6 +82,7 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 | 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 해제됨). `on_…(handler)` 처럼 해제 수단이 없는 형태는 사용하지 않는다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
 | 테스트용 구현의 함수 | 메시지 수신, 응답 도착, 모드 변경처럼 바깥에서 일어나는 일을 테스트가 대신 일으키는 함수는 `simulate_` + 도착한 메시지, 응답, 이벤트의 이름. 반환값을 미리 정하는 함수는 `set_` + 그 값의 이름 (Chromium 의 Fake 관례 `Simulate…`, `Set…`) | `simulate_message_received(message)`, `simulate_frame_received(frame)`, `simulate_reply(result)`, `simulate_flight_mode_event(event)`, `set_send_result(false)` |
 
+- 이 표는 Python 에도 적용한다. `abc.ABC` 를 상속하고 `@abstractmethod` 만 있는 클래스를 인터페이스로 보고 `I` + 역할 이름으로 짓는다 (`IDetector`, `IPreprocessor`). 구현(`HailoDetector`)과 테스트용 구현(`FakeDetector`)의 규칙도 같다. Python 관례(PEP 3119 의 `Iterable`, PEP 544 의 `SupportsClose`)는 접두사를 쓰지 않지만, 같은 역할의 클래스를 C++ 과 Python 에서 같은 이름으로 두어 `docs/design/uml/class_vision.md` 의 class diagram 에서 두 언어의 클래스가 같은 이름으로 대응되도록 `I` 를 유지한다 (#52).
 - 구현 이름을 "방식 + 인터페이스" 로 하는 이유: 같은 인터페이스의 구현이 여럿일 때(ZeroMQ, MAVLink, Fake) 이름만 보고 무엇을 어떻게 구현했는지 알 수 있다. MAVSDK 의 `Connection`/`UdpConnection`/`TcpConnection`, PX4 의 `MavlinkStream…` 과 같은 방식이다.
 
 **멤버 설명 주석**
