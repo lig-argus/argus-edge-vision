@@ -28,7 +28,11 @@ convention = "google"
 python_version = "3.12"
 strict = true
 exclude = ["^common/mavlink/generated/", "^build/", "^node_modules/"]
-# 타입 정보가 없는 외부 패키지는 패키지별로만 예외를 둔다 (전체 ignore_missing_imports 는 사용하지 않는다). 예:
-# [[tool.mypy.overrides]]
-# module = ["hailo_platform.*"]
-# ignore_missing_imports = true
+# 타입 정보가 없는 외부 패키지는 패키지별로만 예외를 둔다 (전체 ignore_missing_imports 는 사용하지 않는다).
+
+# 탐지 Python 작업자(onboard/vision/python)가 RPi venv 에서 쓰는 패키지.
+# CI 의 python lint 환경에는 설치하지 않으므로 Any 로 본다. hailo_platform 은 RPi 에만 있고,
+# OpenCV 4.6(RPi)은 타입 정보가 없다.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*", "cv2", "cv2.*", "zmq", "zmq.*", "msgpack", "msgpack.*", "hailo_platform", "hailo_platform.*"]
+ignore_missing_imports = true

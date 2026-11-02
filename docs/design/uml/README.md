@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.8 (팀 검토 전 초안) |
+| 문서 버전 | 0.9 (팀 검토 전 초안) |
 | 목적 | 규약 문서(`docs/spec/`)에 글과 표로 있는 구조와 동작을 UML 로 옮겨 빠진 인터페이스·상태를 찾는다. 규약과 다르면 규약이 맞고, 이 문서를 고친다 |
 | 표기 | Mermaid. GitHub 에서 바로 렌더된다. 다이어그램 안 라벨은 한국어, 다이어그램 종류 이름은 영어 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
@@ -17,7 +17,7 @@
 | `class_onboard.md` | Class Diagram — onboard (공통 인터페이스 `IMavlinkConnection`·ZeroMQ·`IClock`·`EventLoop`, FC 통신, 통제기 통신) | `docs/spec/icd.md`, `docs/spec/process_interfaces.md` 3·5·6장 | 있음 |
 | `class_follow.md` | Class Diagram — 추종 제어의 외부 인터페이스 (`IVehicleTelemetry`·`IVelocitySetpointSink`·`IFlightModeControlClient`·`IFollowControl` 과 ZeroMQ 어댑터) | `docs/spec/process_interfaces.md` 4장 | 있음 (내부는 추적·추종 담당) |
 | `class_tracker.md` | Class Diagram — UCMC 추적기의 외부 인터페이스 (구독·발행) | `docs/spec/process_interfaces.md` 5.1 | 있음 (내부는 추적·추종 담당) |
-| `class_vision.md` | Class Diagram — 탐지 프로세스의 외부 인터페이스 (C++ 과 Python 이 맡는 처리, 발행 토픽 4개)와 Python 쪽 내부 인터페이스(`IPreprocessor`, `IDetector`, `IPreviewSink`) | `docs/spec/process_interfaces.md` 5.1, `docs/spec/video.md` 8장 | 있음 |
+| `class_vision.md` | Class Diagram — 탐지 프로세스의 외부 인터페이스 (C++ 과 Python 이 맡는 처리, 발행 토픽 4개)와 Python 쪽 내부 인터페이스(`IPreprocessor`, `IDetector`, `IPreviewSink`)와 구현 | `docs/spec/process_interfaces.md` 5.1, `docs/spec/video.md` 8장 | 있음 |
 | `class_video.md` | Class Diagram — 영상 송신부(`IFrameSource`, `FrameCollector`, ONVIF XML, RTSP), 통제기 영상 수신·동기화 | `docs/spec/video.md` 1~6장 | 있음 |
 | `class_gcs.md` | Class Diagram — 통제기 (MAVLink 클라이언트, 상태 모델, 명령, 영상 표시) | `docs/spec/icd.md`, `docs/spec/video.md` 6·7장 | 있음 |
 | `sequence.md` | Sequence Diagram — 박스 클릭 → 추종 시작, 추종 1주기, 영상 프레임 1장, FC telemetry 두절 | `docs/spec/icd.md` 4·6장, `docs/spec/process_interfaces.md` 5·6장, `docs/spec/video.md` 4~6장 | 있음 |
@@ -45,3 +45,4 @@
 | 0.6 | 2026-10-25 | 코드(#39, #40)와 이름 맞춤: class_onboard 0.5(실행 루프, `IMavlinkConnection`, `FcCommandGate`, `MavlinkCommandReceiver`·`CommandResponder`), class_follow 0.5(구현용·호출용 인터페이스 분리), class_gcs 0.2, class_tracker 0.5, class_video(`FrameJoiner`), sequence 0.4 |
 | 0.7 | 2026-10-26 | class_video 0.4(코드 #41 과 맞춤: `IFrameSource.subscribe`, `FrameCollector`·`CollectedFrame`, 직렬화는 구체 클래스), sequence 0.5 |
 | 0.8 | 2026-10-29 | class_vision 0.4(Python 쪽 내부 인터페이스, 코드 `onboard/vision/python/` 과 맞춤) |
+| 0.9 | 2026-11-02 | class_vision 0.5(Python 쪽 구현 반영, 코드 `onboard/vision/python/` 과 맞춤) |
