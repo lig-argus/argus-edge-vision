@@ -91,7 +91,7 @@ sequenceDiagram
     participant fp as PythonVisionAdapter (탐지)
     participant op as PerceptionWorker (탐지)
     participant tp as TracksPublisher (추적기)
-    participant mj as FrameJoiner (영상 송신부)
+    participant mj as FrameCollector (영상 송신부)
     participant vs as VideoSender (영상 송신부)
     participant rs as RtspServer (영상 송신부)
     participant rr as RtspReceiver (gcs)
@@ -101,7 +101,7 @@ sequenceDiagram
     fp--)mj: PUB vision/frame/gray8 (source, frame_id, unix_ns)
     op--)mj: PUB perception/observations (같은 frame_id)
     tp--)mj: PUB tracking/tracks (같은 frame_id)
-    mj->>vs: JoinedFrame
+    mj->>vs: CollectedFrame
     vs->>rs: pushVideo (RTP ts = unix_ns 변환)
     vs->>rs: pushMetadata (XML, UtcTime = unix_ns)
     rs->>rr: RTP/JPEG 영상 트랙
@@ -113,7 +113,7 @@ sequenceDiagram
     fs->>view: VideoFrame
 ```
 
-- 세 토픽은 도착 순서가 보장되지 않는다. `FrameJoiner` 는 대기 시간 안에 짝이 모두 오지 않으면 버린다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다 (`process_interfaces.md` 5.3).
+- 세 토픽은 도착 순서가 보장되지 않는다. `FrameCollector` 는 대기 시간 안에 짝이 모두 오지 않으면 버린다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다 (`process_interfaces.md` 5.3).
 - 영상 패킷을 먼저 보내고 메타데이터를 보낸다 (`video.md` 5장).
 - 메타데이터가 늦게 오면 통제기는 프레임을 박스 없이 표시하고, 늦게 온 메타데이터는 버린다 (`video.md` 6장).
 
@@ -159,3 +159,4 @@ sequenceDiagram
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드(1절), FC 표본은 프레임의 호스트 단조 시각으로 고르고 시각 차 50 ms·수신 후 경과 시간 200 ms(2절), FAULT 복구 조건과 onboard 독립 감시(4절), "FC 표본" 을 "fc/attitude·fc/state 메시지" 로 |
 | 0.4 | 2026-10-29 | "첫 결과" 를 "요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)" 로 (#39 리뷰 반영과 함께) |
 | 0.5 | 2026-10-25 | 참여자 이름을 `class_onboard.md` 0.5·`class_follow.md` 0.7 와 맞춤(#40). 1절에 `CommandResponder`, `ZmqFollowStatusSubscriber`, `progress`, 재전송 처리. 2·4절에 `FcCommandGate` |
+| 0.6 | 2026-10-26 | 3절 `FrameJoiner`→`FrameCollector`, `JoinedFrame`→`CollectedFrame` (#41) |

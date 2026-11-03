@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.12 (팀 검토 전 초안) |
+| 문서 버전 | 0.13 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -128,6 +128,7 @@ flowchart LR
 | 필드 | 형 | 뜻 |
 |---|---|---|
 | schema, source, frame_id | string, string, uint64 | `argus.tracking.tracks.v5`. source·frame_id 는 프레임·탐지 결과 메시지와 같은 값. 세 메시지를 묶는 키 |
+| session_id | string (선택) | `perception/observations` v3 의 `session_id` 를 추적기가 그대로 옮긴 값. v2 탐지 결과로 만든 메시지에는 값이 없음. 추가 시점과 메시지 버전은 추적 담당이 정한다 |
 | fc_epoch, generation | uint64, uint64 | generation 은 추적기 재시작·초기화마다 1 증가하는 영구 저장 카운터. 1~16,777,215 |
 | sample_monotonic_ns, motion_sample_ns, clock_domain, timestamp_source | int64, int64, string, string | 시각과 그 출처. `exposure_monotonic_ns` 는 null, `exposure_time_valid` 는 false (노출 시각 없음) |
 | image_width, image_height, coordinate_frame | int, int, "camera_pixel" | 640, 480. 박스 좌표 기준 (원본 영상 픽셀) |
@@ -138,7 +139,7 @@ flowchart LR
 | tracks[].x1, y1, x2, y2 | float | 원본 영상 픽셀 |
 | tracks[].state | string | 현재 "CONFIRMED" 만 발행. PREDICTED 발행은 필요 시 확장 **[미결 6]** |
 | tracks[].real_detection, last_real_detection_monotonic_ns | bool, int64 | |
-| tracks[].ground, ground_anchor | [N, E, varN, covNE, varE, alignment_ms], [anchor_y, height_m] | 지면 투영 |
+| tracks[].ground, ground_anchor | [N, E, varN, covNE, varE, alignment_ms], [anchor_y, height_m] | 지면 투영. anchor_y 는 박스 높이를 1 로 보고 위쪽 끝에서 잰 위치 (0 이면 위쪽 끝, 1 이면 아래쪽 끝. 픽셀 아님). C++ 값 타입 `GroundAnchor.anchor_y_ratio` 에 그대로 담는다 |
 
 - 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
@@ -207,7 +208,7 @@ flowchart LR
 - 구독: `vision/frame/gray8`(박스 없는 비압축 프레임, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 같은 frame_id 의 프레임이 없는 탐지 결과가 있을 수 있으므로(5.1) 짝이 없는 탐지·추적 결과는 버린다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
 - 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 탐지 결과 둘 중 하나만 같은 frame_id 의 영상이 있어 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
 - 전송 코덱 인코딩(JPEG, 필요하면 H.264 등)은 영상 송신부가 한다. 탐지 프로세스는 프레임과 박스만 내고 전송 방식을 모른다(단일 책임). 그래서 코덱 추가·품질 변경은 송신부의 설정과 인코더 구현 추가로 끝나고 탐지 코드는 바뀌지 않으며(개방-폐쇄), 비압축 프레임이 있어 압축 손실 측정과 수신기 테스트도 할 수 있다. 비용: 640×480 8 비트 흑백 307 KB/프레임, 30 FPS 약 9 MB/s (RPi 안 ZeroMQ 로 충분). 송신부 JPEG 인코딩은 프레임당 1~2 ms.
-- 메시지 결합: 세 토픽의 메시지를 같은 `(source, frame_id)` 끼리 한 프레임으로 묶는다. 보관 개수와 대기 시간을 제한하고, 도착 순서는 보장되지 않으므로 기다리되 시간 안에 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 보관 중인 메시지를 비운다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다.
+- 메시지 결합: 세 토픽의 메시지를 같은 `(source, session_id, frame_id)` 끼리 한 프레임으로 묶는다. `session_id` 가 없는 메시지(`perception/observations` v2 와 그것으로 만든 `tracking/tracks`)는 `(source, frame_id)` 로 묶되 `session_id` 가 있는 메시지와 섞지 않는다. 보관 개수와 대기 시간을 제한하고, 도착 순서는 보장되지 않으므로 기다리되 시간 안에 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 보관 중인 메시지를 비운다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다.
 - 전송: RTSP 세션 하나에 영상 트랙(RTP/JPEG)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
 - 시각: 영상 프레임과 메타데이터 모두 JPEG 의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
 - 메타데이터의 박스: 운용자가 클릭해 고를 수 있어야 하므로 `tracking/tracks` 의 트랙 기준으로 보낸다. 영상에 그려진 탐지 박스와 위치가 다를 수 있다. 추적 결과가 없는 프레임은 박스 없이 보낸다.
@@ -258,3 +259,4 @@ flowchart LR
 | 0.10 | 2026-10-29 | #39 리뷰 반영: 4장 `IVehicleState` 에 위치와 거리 조회, 선택 순서, 5.1 `fc/state` 의 값별 원수신 시각, 5.1.2 와 5.2.1 의 command_id 를 uint64 로, 5.2.1 에 요청 공통 필드(session_id, seq, fc_epoch)와 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과" 로, 7장 1 에 모드 요청 계약 항목, 7장 7 에 필드 이름 출처, 3장에 C++ 값 타입 `RequestId` 묶음 |
 | 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
 | 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |
+| 0.13 | 2026-11-04 | 5.1.1 에 `session_id` 행(v3 의 값을 추적기가 옮김)과 `ground_anchor` 의 `anchor_y` 뜻(상대 비율), 7장 영상 송신부가 세 메시지를 한 프레임으로 묶는 기준을 `(source, session_id, frame_id)` 로 (#41 리뷰) |
