@@ -29,6 +29,8 @@ CheckOptions:
   readability-identifier-naming.EnumConstantCase: CamelCase
   readability-identifier-naming.TypeAliasCase: CamelCase
   readability-identifier-naming.AbstractClassPrefix: I
+  # gtest fixture(TEST_F 의 클래스)는 testing::Test 의 순수 가상 함수 때문에 추상 클래스로 잡힌다. 이름 끝이 Test 면 I 접두사 예외
+  readability-identifier-naming.AbstractClassIgnoredRegexp: '^[A-Za-z0-9]+Test$'
   readability-identifier-naming.FunctionCase: lower_case
   readability-identifier-naming.VariableCase: lower_case
   readability-identifier-naming.ParameterCase: lower_case

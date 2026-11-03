@@ -1,16 +1,17 @@
-// 기체 상태(자세, 위치, 비행 모드)를 조회하는 인터페이스
-// 규약: docs/spec/process_interfaces.md 4장, docs/design/uml/class_follow.md,
-//      docs/design/uml/class_tracker.md (선택 순서)
-// 구현: onboard FC 통신의 ZeroMQ 어댑터(vehicle_api_zmq)
-//      테스트용 FakeVehicleState(vehicle_api_testing)
+// 기체 상태(자세, 위치, 비행 모드)를 읽는 인터페이스
+// 규약: docs/spec/process_interfaces.md 4장, 5.1 fc/attitude·fc/state·fc/mode_event,
+//      docs/design/uml/class_follow.md, docs/design/uml/class_tracker.md (선택 순서)
+// 구현: (다음 PR) ZmqVehicleTelemetrySubscriber (vehicle_api_zmq. 조회 시점은 core::IClock),
+//      테스트용 FakeVehicleTelemetry (vehicle_api_testing)
 // 사용: 추종 제어, 추적기
-#ifndef ARGUS_VEHICLE_API_VEHICLE_STATE_HPP_
-#define ARGUS_VEHICLE_API_VEHICLE_STATE_HPP_
+#ifndef ARGUS_VEHICLE_API_VEHICLE_TELEMETRY_HPP_
+#define ARGUS_VEHICLE_API_VEHICLE_TELEMETRY_HPP_
 
 #include <cstdint>
 #include <functional>
 #include <optional>
 
+#include "argus/core/subscription.hpp"
 #include "argus/vehicle_api/types.hpp"
 
 namespace argus::vehicle_api {
@@ -27,16 +28,16 @@ inline constexpr std::int64_t kTelemetryMaxAgeNs = 200'000'000;
 //    프레임 앞뒤 어느 쪽 값이든 쓸 수 있다. 두 값을 보간하지 않는다.
 // 3. 고른 값과 monotonic_ns 의 차가 kTelemetryMatchToleranceNs 를 넘거나 남은 값이 없으면 nullopt.
 // 조회 함수는 대상 시각 하나만 받고 최근 값의 보관과 조회 시점은 구현이 맡는다.
-class IVehicleState {
+class IVehicleTelemetry {
 public:
-    using ModeEventHandler = std::function<void(const ModeEvent&)>;
+    using FlightModeEventHandler = std::function<void(const FlightModeEvent&)>;
 
-    IVehicleState() = default;
-    virtual ~IVehicleState() = default;
-    IVehicleState(const IVehicleState&) = delete;
-    IVehicleState& operator=(const IVehicleState&) = delete;
-    IVehicleState(IVehicleState&&) = delete;
-    IVehicleState& operator=(IVehicleState&&) = delete;
+    IVehicleTelemetry() = default;
+    virtual ~IVehicleTelemetry() = default;
+    IVehicleTelemetry(const IVehicleTelemetry&) = delete;
+    IVehicleTelemetry& operator=(const IVehicleTelemetry&) = delete;
+    IVehicleTelemetry(IVehicleTelemetry&&) = delete;
+    IVehicleTelemetry& operator=(IVehicleTelemetry&&) = delete;
 
     // 가장 최근 기체 상태. FC 메시지를 아직 하나도 받지 못했으면 nullopt.
     // 값이 얼마나 오래됐는지는 호출자가 각 값의 received_monotonic_ns 로 판단한다
@@ -53,12 +54,13 @@ public:
         std::int64_t monotonic_ns) const = 0;
 
     // 실제 비행 모드가 바뀔 때마다 handler 를 부른다. 여러 번 등록하면 모두 부른다.
-    // handler 는 구현이 받은 메시지를 처리할 때 불린다.
-    // ZeroMQ 구현은 IBusPoller::process_messages() 안에서, 그 함수를 부른 스레드에서 부른다.
+    // handler 는 core::IPoller::process_events() 안에서, 그 함수를 부른 스레드에서 불린다.
     // 다른 메시지 처리가 밀리지 않게 오래 걸리는 일을 하지 않는다.
-    virtual void on_mode_event(ModeEventHandler handler) = 0;
+    // 반환된 Subscription 이 사라지면 그 handler 는 더 불리지 않는다 (등록 해제이지 취소가 아니다).
+    [[nodiscard]] virtual core::Subscription subscribe_flight_mode_events(
+        FlightModeEventHandler handler) = 0;
 };
 
 }  // namespace argus::vehicle_api
 
-#endif  // ARGUS_VEHICLE_API_VEHICLE_STATE_HPP_
+#endif  // ARGUS_VEHICLE_API_VEHICLE_TELEMETRY_HPP_

@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.9 (팀 검토 전 초안) |
+| 문서 버전 | 0.12 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -48,7 +48,7 @@ flowchart LR
 | 탐지 | 카메라 입력, 추론, 오버레이 JPEG | 탐지 |
 | UCMC 추적기 | 프레임 사이 객체 연결, track_id·generation 부여 | 추적·추종 |
 | 추종 제어 | 추종·Scan 판단, 속도 setpoint 계산, 임무·표적 상태 관리 | 추적·추종 |
-| onboard | FC 통신(MAVLink, 단일 소유), 통제기 통신, 명령 중재 | 통신 |
+| onboard | FC 통신(MAVLink, 단일 소유), 통제기 통신, FC 명령 검사 | 통신 |
 | 영상 송신부 | RTSP 영상·메타데이터 송신 (5.3) | 통신 |
 | mavlink-router | FC UART 와 로컬·통제기 UDP 중계 | 통신 (설정) |
 
@@ -91,13 +91,14 @@ flowchart LR
 
 | 인터페이스 | 구현 | 사용 | 내용 |
 |---|---|---|---|
-| `IVehicleState` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어, 추적기 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch)과 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회 (5.1 `fc/attitude`·`fc/state` 와 같은 값). 조회는 조회 시점 기준 200 ms 이내인 값 중 가장 가까운 것, 시각 차 50 ms 이내 (`docs/design/uml/class_tracker.md`) |
-| `IVelocitySetpointSender` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | FRD 전진·우측·하강 속도(m/s), yaw 회전 속도(rad/s), 유효 시간. 매 주기 호출, 즉시 반환 |
-| `IModeControl` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 수락은 동기 응답, 전환 완료·Offboard 이탈은 이벤트 |
-| `IFollowCommand` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
+| `IVehicleTelemetry` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어, 추적기 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회, 비행 모드 이벤트 구독 (5.1 `fc/attitude`·`fc/state`·`fc/mode_event` 와 같은 값). 조회는 조회 시점 기준 200 ms 이내인 값 중 가장 가까운 것, 시각 차 50 ms 이내 (`docs/design/uml/class_tracker.md`) |
+| `IVelocitySetpointSink` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | FRD 전진·우측·하강 속도(m/s), yaw 회전 속도(rad/s), 유효 시간. 매 주기 호출, 즉시 반환 |
+| `IFlightModeControlClient` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 요청은 바로 반환하고 응답(수락 여부)은 handler 로, 전환 완료·Offboard 이탈은 이벤트 |
+| `IFollowControl` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
 
 - 구현을 기체 FC, SITL, 테스트용 가짜로 바꿔도 같은 계약을 지킨다.
-- 새 행동(예: Scan)은 `IFollowCommand` 의 명령 종류 추가로 넣고 FC 통신 코드는 바꾸지 않는다.
+- 새 행동(예: Scan)은 `IFollowControl` 의 명령 종류 추가로 넣고 FC 통신 코드는 바꾸지 않는다.
+- 헤더는 `onboard/libs/vehicle_api/include/argus/vehicle_api/`, 테스트용 Fake 는 `onboard/libs/vehicle_api_testing` (#39, #40).
 - 계약(사전·사후 조건, 시간 제한)은 인터페이스 확정 뒤 헤더 주석과 테스트로 적는다.
 
 ## 5. 메시지
@@ -155,7 +156,7 @@ flowchart LR
 | status.selected | object 또는 null | 선택 표적: generation, track_id, class_id, label, sensor(문자열) → `ARGUS_STATUS.target_id`·`target_generation`, `active_sensor`(변환표) |
 | status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(uint64), action(`track_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 전체 최대 32개만 보관한다. 32개가 차면 완료된 기록부터 지우고 진행 중(IN_PROGRESS)인 기록은 남긴다. 32개를 넘겨 보관하지는 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
 | status.command_epoch, command_sent | uint64, bool | |
-| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용 |
+| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용. 7장 13 의 `scan_remaining_s` 를 추가할 때 Scan 중이 아니면 키를 빼거나 nil 로 보내고, 받는 쪽은 키 없음과 nil 을 모두 미제공으로 읽는다 (`ARGUS_STATUS` 로는 NaN) |
 
 #### 5.1.3 `tracking/status` v1 필드 (2026-10-15 기준)
 
@@ -187,7 +188,7 @@ flowchart LR
 | session_id, seq, fc_epoch | string, uint64, uint64 | 요청의 공통 필드를 그대로 남긴다 (3장) |
 | outcome | enum | IN_PROGRESS·SUCCEEDED·REJECTED·FAILED (아래 표). 진행·완료 판단에 쓴다 |
 | request_accepted | bool | 요청을 처음에 수락했는지. 수락 뒤 실행이 실패해도 true 로 남는다 |
-| reason | string | 사람이 읽는 이유. 판정에는 쓰지 않고 `STATUSTEXT` 에 옮길 수 있다 |
+| reason | string | 거부·실패의 원인. 판정에 쓰지 않고 `STATUSTEXT` 로 옮긴다 |
 | result, pending, accepted | | 호환용. v1 result 는 `pending`·`accepted`·`failed`, v2 result 는 `ACCEPTED`·`REJECTED`·`FAILED` |
 
 | outcome | request_accepted | 뜻 | onboard 의 `COMMAND_ACK` |
@@ -238,6 +239,8 @@ flowchart LR
 9. 해소 (0.8): `fc_epoch` 는 FC 연결의 epoch(FC 와 새로 연결하거나 FC 재부팅을 감지할 때마다 1 증가)이고, 요청에는 onboard 가 발행하는 현재 값을 넣는다 (3장). — 추적/추종, 통신
 10. 버스 프록시(XSUB 5555 / XPUB 5556)의 담당과 실행 방식. 탐지 토픽(`perception/observations`, `vision/frame/gray8` 등)이 모두 이 프록시를 지나는데, 누가 실행하고 관리하는지(별도 프로세스인지, 어느 프로세스 안인지, 죽으면 어떻게 되는지)가 정해져 있지 않다. — 통신, 탐지
 11. RPi 안 토픽 연결 방식 통일 여부. 지금은 직접 연결(발행자가 bind: 6370, 6372, 6357)과 프록시(탐지 토픽: 5555 / 5556)가 섞여 있어, 구독자가 주소를 여러 개 알아야 한다. 선택지는 (가) 모든 토픽을 직접 연결하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리, (나) 모든 토픽을 프록시로, (다) 지금처럼 유지. (가) 를 제안한다. 프로세스와 포트가 고정된 한 기기 안에서는 데이터를 직접 연결하고 주소 표를 한 곳에 두는 방식이 일반적이고(openpilot 의 서비스 표, ROS 2 의 직접 연결), 프록시가 SPOF가 되어 멈추면 탐지 토픽 전체가 끊기는 문제가 없어진다. 다만 탐지 쪽 발행 코드를 바꿔야 한다. — 통신, 탐지, 추적/추종
+12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
+13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. onboard 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
 
 ## 변경 이력
 
@@ -253,3 +256,5 @@ flowchart LR
 | 0.8 | 2026-10-19 | #26 리뷰 답변 반영(#32): `follow/command` 응답 `follow/result` 와 outcome·request_accepted, ACK 대응, 첫 결과는 응답에서·재전송은 같은 command_id 규칙(5.2), `command_results` 보관 규칙·세션 필드·`scan_config` SI 필드(5.1.2), `follow/status` 주기 확정, `vision/frame/gray8` 전송 경로를 기존 버스로 확정하고 송신 SNDHWM·rcvhwm 4 (5.1, 측정 결과), command_id 를 uint64 로, `command_results` 보관 규칙 정정, 재전송 때 세션·기한·내용 재검사(5.2.1), 요청 공통 필드에 `fc_epoch`(3장), FC 제어 명령 송신권·onboard 독립 감시·Scan 회전 중 heading 요청이 끊길 때의 독립 정지(6장), 7장 1 갱신·2·3·8 해소·9 추가, 2.1 그림의 화살표를 onboard 안 FC 통신·통제기 통신에 직접 연결, `fc_epoch` 정의와 증가 조건·검사 규칙(3장), `fc/attitude`·`fc/state` 에 `fc_epoch` 추가(5.1), 7장 9 해소, "FC 표본" 을 "FC 메시지"·"`fc/attitude`·`fc/state` 메시지" 로 |
 | 0.9 | 2026-10-25 | 4장 `IVelocitySetpoint` → `IVelocitySetpointSender` (값 타입 `VelocitySetpoint` 와 구분, #39), 7장 10(버스 프록시 담당), 11(토픽 연결 방식 통일) 추가, 7장 담당 표기를 담당 이름 안은 "/", 담당끼리는 ", " 로 |
 | 0.10 | 2026-10-29 | #39 리뷰 반영: 4장 `IVehicleState` 에 위치와 거리 조회, 선택 순서, 5.1 `fc/state` 의 값별 원수신 시각, 5.1.2 와 5.2.1 의 command_id 를 uint64 로, 5.2.1 에 요청 공통 필드(session_id, seq, fc_epoch)와 "첫 결과" 를 "요청을 받은 시점에 정해지는 결과" 로, 7장 1 에 모드 요청 계약 항목, 7장 7 에 필드 이름 출처, 3장에 C++ 값 타입 `RequestId` 묶음 |
+| 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
+| 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |

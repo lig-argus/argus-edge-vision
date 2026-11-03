@@ -168,7 +168,7 @@ PREDICTED 박스 발행은 별도 확장이다. 이 설계 문서의 상태 이�
   - [2.15 Scan용 Offboard 재진입](#part-2-15)
   - [2.16 Scan 실행과 후보 발견](#part-2-16)
   - [2.17 독립 Watchdog](#part-2-17)
-  - [2.18 명령 중재와 최종 Guard](#part-2-18)
+  - [2.18 FC 명령 검사와 최종 Guard](#part-2-18)
   - [2.19 SDK 반복 차단과 만료 처리](#part-2-19)
   - [2.20 고장과 수동 제어 분류](#part-2-20)
   - [2.21 Router의 FC 전송과 수신](#part-2-21)
@@ -1595,7 +1595,7 @@ flowchart TB
     CONF["Confirmed"]
     HOLD_REQ["2.11 ↗ Hold 전환"]
     RAY["2.8 ↗ 원 영상 픽셀 광선"]
-    ARBITER{"2.18 ↗ 명령 중재"}
+    ARBITER{"2.18 ↗ FC 명령 검사"}
     TRACK -->|"Confirmed"| CONF
     TRACK -->|"Predicted"| TTL
     TRACK -->|"Lost, ID 불확실"| HOLD_REQ
@@ -1778,7 +1778,7 @@ flowchart TB
     FOLLOW_PI["목표거리 추종"]
     FOLLOW_INTENT["Confirmed 제어 의도"]
     DIST{"2.9 ↗ 미터 거리 상태?"}
-    ARBITER{"2.18 ↗ 명령 중재"}
+    ARBITER{"2.18 ↗ FC 명령 검사"}
     DIST -->|"중거리"| SETTLE
     DIST -->|"목표거리"| FOLLOW_PI
     APPROACH --> FUTURE_RISK
@@ -2139,7 +2139,7 @@ flowchart TB
     SCAN_CAND["후보 표시, 기록"]
     SCAN_INTENT["제한 yaw Scan 의도"]
     HOLD_REQ["2.11 ↗ Hold 전환"]
-    ARBITER{"2.18 ↗ 명령 중재"}
+    ARBITER{"2.18 ↗ FC 명령 검사"}
     MANUAL["2.20 ↗ MANUAL"]
     SCHECK -->|"정상"| SOBS
     SCHECK -->|"영상 stale, 시간 초과 /<br/>Offboard, 추정 유효"| HOLD_REQ
@@ -2194,7 +2194,7 @@ flowchart TB
 
 **수치 상태:** [설계 후보, 미채택] Watchdog `20~50Hz`는 후보 범위다. setpoint keepalive의 주기로 확정한 값이 아니다.
 
-상태별 고장 감시는 setpoint keepalive와 별개다. 안전 사건은 명령 epoch를 무효화하고 명령 중재에 우선한다.
+상태별 고장 감시는 setpoint keepalive와 별개다. 안전 사건은 명령 epoch를 무효화하고 FC 명령 검사에 우선한다.
 
 ```mermaid
 %%{init: {"theme":"neutral","themeVariables":{"fontSize":"16px"},"flowchart":{"nodeSpacing":20,"rankSpacing":28,"curve":"linear"}}}%%
@@ -2273,9 +2273,9 @@ flowchart TB
 
 <a id="part-2-18"></a>
 
-### 2.18 명령 중재와 최종 Guard
+### 2.18 FC 명령 검사와 최종 Guard
 
-> **이 절이 답하는 질문:** 어떤 명령 의도가 중재와 최종 Guard를 통과하는가?
+> **이 절이 답하는 질문:** 어떤 명령 의도가 FC 명령 검사와 최종 Guard를 통과하는가?
 
 **수치 상태:** [설계 규칙] 같은 epoch, 상태, 제어권에서만 발행한다. [미확정] 명령 기한과 축별 한도의 적용값.
 
@@ -2339,7 +2339,7 @@ flowchart TB
 
 **수치 상태:** [설계 규칙] 옛 의도를 폐기하고 새 zero는 독립 기한으로 검사한다. [미확정] 실제 lease, 기한 값.
 
-SDK outgoing hook은 옛/만료 반복 패킷을 차단하고 사건만 latch한다. 새 zero도 단일 owner에서 새 기한으로 중재한다.
+SDK outgoing hook은 옛/만료 반복 패킷을 차단하고 사건만 latch한다. 새 zero도 단일 owner에서 새 기한으로 검사한다.
 
 ```mermaid
 %%{init: {"theme":"neutral","themeVariables":{"fontSize":"16px"},"flowchart":{"nodeSpacing":20,"rankSpacing":28,"curve":"linear"}}}%%
@@ -2350,7 +2350,7 @@ flowchart TB
     EXPIRE_FC{"새 zero 허용 조건 유효?"}
     ZERO_INTENT["새 안전 zero 의도"]
     CMD_UDP["2.21 ↗ MAVSDK 제어 UDP"]
-    ARBITER{"2.18 ↗ 명령 중재"}
+    ARBITER{"2.18 ↗ FC 명령 검사"}
     FAULT["2.20 ↗ FAULT"]
     SDK_OUT_GATE -->|"유효"| CMD_UDP
     SDK_OUT_GATE -->|"만료, 옛 후보, 발행 불허"| SDK_DROP
