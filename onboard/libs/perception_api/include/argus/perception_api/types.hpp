@@ -4,6 +4,9 @@
 // clock 의 ns, 박스 좌표는 원본 영상 픽셀(원점 왼쪽 위, y 아래 방향)이다.
 // 메시지(MessagePack) 안의 deg·ms 값은 어댑터가 받을 때 rad·s 로 바꾼다 (process_interfaces.md
 // 3장).
+// 타입의 범위: Tracks, Track, TrackingStatus 는 tracking/tracks 와 tracking/status 를 구독하는 영상
+// 송신부와 onboard 가 소비하는 타입이다. 추적기가 발행할 때 쓰는 타입이 아니며 메시지의 모든 필드를
+// 담지 않는다. 영상 송신부와 onboard 가 쓰는 필드만 두고 나머지는 역직렬화 때 무시한다.
 #ifndef ARGUS_PERCEPTION_API_TYPES_HPP_
 #define ARGUS_PERCEPTION_API_TYPES_HPP_
 
@@ -99,8 +102,11 @@ struct GroundEstimate {
 
 // 지면 투영에 쓴 박스 기준점 (`tracking/tracks` tracks[].ground_anchor)
 struct GroundAnchor {
-    double anchor_y_px = 0.0;  // 박스에서 지면에 닿는 것으로 본 y 좌표 (픽셀)
-    double height_m = 0.0;     // 기준점의 지면 위 높이
+    // 지면에 닿는 것으로 본 기준점의 세로 위치. 박스 높이를 1 로 보고 위쪽 끝에서 잰 값이다
+    // (0 이면 위쪽 끝, 1 이면 아래쪽 끝). 메시지의 anchor_y 값 그대로이며 픽셀로 바꾸지 않는다
+    double anchor_y_ratio = 0.0;
+
+    double height_m = 0.0;  // 기준점의 지면 위 높이
 };
 
 // 프레임 시각의 기체 위치·자세 (`tracking/tracks` ground_pose). NED, 각도 rad
@@ -125,10 +131,17 @@ struct Track {
     std::optional<GroundAnchor> ground_anchor;
 };
 
-// 한 프레임의 추적 결과 (`tracking/tracks` v5). source·frame_id 는 프레임·탐지 결과와 같은 값이며
-// 세 메시지를 묶는 키다. 트랙이 없으면 tracks 가 비어 있고, 메시지 자체가 없을 수도 있다
+// 한 프레임의 추적 결과 (`tracking/tracks` v5). source, session_id, frame_id 는 프레임·탐지 결과와
+// 같은 값이며 세 메시지를 묶는 키다. 트랙이 없으면 tracks 가 비어 있고, 메시지 자체가 없을 수도
+// 있다
 struct Tracks {
     std::string source;
+
+    // 추적기가 perception/observations v3 의 session_id 를 그대로 옮긴 값. v2 탐지 결과로 만든
+    // 메시지에는 값이 없다. 영상 송신부는 값이 있으면 (source, session_id, frame_id) 로, 없으면
+    // (source, frame_id) 로 묶는다
+    std::optional<std::string> session_id;
+
     std::uint64_t frame_id = 0;
     std::uint64_t fc_epoch = 0;
     std::uint32_t generation = 0;  // 1~16,777,215. 추적기 재시작·초기화마다 1 증가

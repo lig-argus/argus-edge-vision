@@ -65,6 +65,14 @@ TEST(TracksTest, GroundPoseIsEmptyUntilProvidedAndTracksMayBeEmpty) {
     EXPECT_EQ(tracks.generation, 0U);
 }
 
+TEST(TracksTest, SessionIsEmptyUntilProvided) {
+    Tracks tracks;
+    EXPECT_FALSE(tracks.session_id.has_value());
+
+    tracks.session_id = "det-7";
+    EXPECT_EQ(*tracks.session_id, "det-7");
+}
+
 TEST(DetectionAndTrackTest, ShareClassificationAndBox) {
     Detection detection;
     detection.classification = {3, "tank", 0.9};
