@@ -45,7 +45,7 @@ sequenceDiagram
     disp-->>cmd: COMMAND_ACK ACCEPTED
 ```
 
-- 첫 결과는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
+- 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
 - 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED, FAILED → FAILED.
 - 통제기가 ACK 를 1 s 안에 받지 못해 다시 보내면(`icd.md` 4.1), onboard 는 같은 command_id 로 요청한다. 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다.
 - onboard 검사(조건 ①③④⑤)에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK DENIED` + `STATUSTEXT` 로 답한다.
@@ -155,3 +155,4 @@ sequenceDiagram
 | 0.1 | 2026-10-19 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 탐지 쪽 참여자를 실제 클래스 이름으로 (`PerceptionWorker`, `PythonVisionAdapter`, #33 리뷰) |
 | 0.3 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드(1절), FC 표본은 프레임의 호스트 단조 시각으로 고르고 시각 차 50 ms·수신 후 경과 시간 200 ms(2절), FAULT 복구 조건과 onboard 독립 감시(4절), "FC 표본" 을 "fc/attitude·fc/state 메시지" 로 |
+| 0.4 | 2026-10-29 | "첫 결과" 를 "요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)" 로 (#39 리뷰 반영과 함께) |

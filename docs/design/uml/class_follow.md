@@ -10,57 +10,80 @@
 classDiagram
     class IVehicleState {
         <<interface>>
-        +latest() VehicleState
-        +attitudeAt(monotonic_ns) optional~Attitude~
-        +onModeEvent(handler)
+        +latest() optional~VehicleState~
+        +attitude_at(monotonic_ns) optional~Attitude~
+        +local_position_at(monotonic_ns) optional~LocalPosition~
+        +downward_distance_at(monotonic_ns) optional~DownwardDistance~
+        +on_mode_event(handler)
     }
-    class IVelocitySetpoint {
+    class IVelocitySetpointSender {
         <<interface>>
-        +send(forward, right, down, yaw_rate, valid_until)
+        +send(VelocitySetpoint)
     }
     class IModeControl {
         <<interface>>
-        +requestOffboard() ModeReply
-        +requestHold() ModeReply
-        +requestHeading(rad, valid_until) ModeReply
+        +request_offboard(valid_until) ModeReply
+        +request_hold(valid_until) ModeReply
+        +request_heading(rad, valid_until) ModeReply
     }
     class IFollowCommand {
         <<interface>>
-        +trackStart(sensor, generation, class_id, track_id, label) FollowResult
-        +stop(reason) FollowResult
-        +search(yaw_range, yaw_rate, timeout) FollowResult
+        +track_start(RequestHeader, TrackTarget) FollowResult
+        +stop(RequestHeader, StopReason) FollowResult
+        +scan_start(RequestHeader, ScanRequest) FollowResult
     }
+    class RequestId {
+        <<value>>
+        +command_id
+        +session_id
+        +seq
+        +fc_epoch
+    }
+    class RequestHeader {
+        <<value>>
+        +id RequestId
+        +valid_until_monotonic_ns
+    }
+    class FollowResult {
+        <<value>>
+        +id RequestId
+        +outcome
+        +request_accepted
+        +reason
+    }
+    RequestHeader *-- RequestId
+    FollowResult *-- RequestId
     class FollowController {
-        -missionState
-        -targetState
+        -mission_state_
+        -target_state_
         +status() FollowStatus
     }
     class ZmqVehicleState
-    class ZmqVelocitySetpoint
+    class ZmqVelocitySetpointSender
     class ZmqModeControl
     class FollowCommandServer
     class FollowStatusPublisher {
         +tick() 1 Hz
-        +onChange()
+        +on_change()
     }
     class FakeVehicleState
-    class FakeVelocitySetpoint
+    class FakeVelocitySetpointSender
     class FakeModeControl
 
     IVehicleState <|.. ZmqVehicleState
     IVehicleState <|.. FakeVehicleState
-    IVelocitySetpoint <|.. ZmqVelocitySetpoint
-    IVelocitySetpoint <|.. FakeVelocitySetpoint
+    IVelocitySetpointSender <|.. ZmqVelocitySetpointSender
+    IVelocitySetpointSender <|.. FakeVelocitySetpointSender
     IModeControl <|.. ZmqModeControl
     IModeControl <|.. FakeModeControl
     IFollowCommand <|.. FollowController
     FollowController ..> IVehicleState
-    FollowController ..> IVelocitySetpoint
+    FollowController ..> IVelocitySetpointSender
     FollowController ..> IModeControl
     FollowCommandServer ..> IFollowCommand : REP follow/command
     FollowStatusPublisher ..> FollowController : status()
     ZmqVehicleState ..> ISubscriber : fc/attitude, fc/state, fc/mode_event
-    ZmqVelocitySetpoint ..> IPublisher : control/setpoint 20 Hz
+    ZmqVelocitySetpointSender ..> IPublisher : control/setpoint 20 Hz
     ZmqModeControl ..> IRequester : control/mode_request
     FollowCommandServer ..> IReplier
     FollowStatusPublisher ..> IPublisher : follow/status
@@ -68,22 +91,22 @@ classDiagram
 
 | 클래스 | 구현 담당 | 책임 | 출처 |
 |---|---|---|---|
-| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷, 프레임 시각에 맞춘 `fc/attitude` 메시지(보간용 이력은 구현이 보관), 모드 이벤트 | pi 4장, 5.1 |
-| `IVelocitySetpoint` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환 | pi 4장 |
+| `IVehicleState` | 인터페이스: 통신 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회, 모드 이벤트. 조회는 조회 시점 기준 200 ms 이내인 값 중 프레임 시각에 가장 가까운 것을 고르고 그 차가 50 ms 이내여야 한다. 보간하지 않는다. 최근 값의 보관과 조회 시점은 구현(`ZmqVehicleState`)이 맡는다 | pi 4장, 5.1, `class_tracker.md` |
+| `IVelocitySetpointSender` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환 | pi 4장 |
 | `IModeControl` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading. 수락은 동기 응답, 완료는 이벤트 | pi 4장, 5.2 |
 | `IFollowCommand` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 표적 존재·상태·FC 조건 검사는 구현이 한다 | pi 4장, icd 4.1 |
 | `Zmq*` 어댑터 | 통신 | 위 인터페이스를 `process_interfaces.md` 5장 토픽·REQ/REP 로 구현 | pi 2장 |
-| (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(의존성 없음), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 `Fake*` 단위 테스트는 `vehicle_api` 만 링크해 ZeroMQ·MessagePack 에 의존하지 않는다 (#35 리뷰) | — |
+| (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(의존성 없음), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 그 단위 테스트는 `vehicle_api`·`vehicle_api_testing` 만 링크해 ZeroMQ·MessagePack 에 의존하지 않는다 (#35 리뷰) | — |
 | `FollowCommandServer` | 통신 | `follow/command` REP 를 받아 `IFollowCommand` 호출, result·reason 응답 | pi 5.2 |
 | `FollowStatusPublisher` | 통신 | `follow/status` 1 Hz + 변경 시, `command_results` 포함 | pi 5.1.2 |
 | `FollowController` | 추적·추종 | 임무·표적 상태(`state_machine.md`), setpoint 계산. 내부 구조는 담당자가 `class_follow.md` 에 추가 | pi 2장 |
-| `Fake*` | 통신 | 테스트용. SITL·기체 없이 `FollowController` 를 gtest 로 검사 | pi 4장 |
+| `Fake*` | 통신 | 테스트용. SITL·기체 없이 `FollowController` 를 gtest 로 검사. `argus::vehicle_api_testing`(`vehicle_api` 만 링크)에 두고 제품 실행 파일은 링크하지 않는다 | pi 4장 |
 
 ## SOLID 대응
 
 | 원칙 | 어디에 | 어떻게 |
 |---|---|---|
-| S | 어댑터 하나 = 토픽(요청) 하나 | `ZmqVehicleState` 는 구독만, `ZmqVelocitySetpoint` 는 발행만 |
+| S | 어댑터 하나 = 토픽(요청) 하나 | `ZmqVehicleState` 는 구독만, `ZmqVelocitySetpointSender` 는 발행만 |
 | O | `IFollowCommand` | 새 행동(예: Scan 변형)은 메서드 추가로, FC 통신 코드는 바꾸지 않음 (pi 4장) |
 | L | `Zmq*` ↔ `Fake*` | 같은 계약(즉시 반환, 유효 시간, 응답 코드) |
 | I | 인터페이스 넷으로 분리 | 추적기는 `IVehicleState` 만, 추종 제어는 넷 모두 (pi 4장 "인터페이스 분리") |
@@ -91,7 +114,7 @@ classDiagram
 
 ## 검토 필요 사항
 
-1. `IVehicleState.attitudeAt` 의 보간 방식과 이력 길이 — 추적기와 공용으로 둘지 (`class_tracker.md` 의 `VehicleStateSubscriber` 와 같은 구현을 공유할 수 있다).
+1. 해소 (0.5): `IVehicleState` 의 프레임 시각에 맞는 값을 찾는 조회(`*_at`)는 보간하지 않고 가장 가까운 값 하나를 쓴다 (#39 리뷰: 추적기의 현재 선택 순서). 최근 값의 보관은 구현이 맡고, 추적기의 `VehicleStateSubscriber` 와 같은 구현을 공유한다 (`class_tracker.md`).
 2. 해소 (0.3): `FollowResult` 는 `follow/result` 의 outcome(IN_PROGRESS·SUCCEEDED·REJECTED·FAILED)·request_accepted·reason (pi 5.2.1). `ModeReply` 는 `control/mode_request` 의 응답으로, 필드는 pi 미결 1.
 3. `FollowController` 내부 Class Diagram — 추적·추종 담당.
 
@@ -102,3 +125,6 @@ classDiagram
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 제목 "경계" → "외부 인터페이스". 인터페이스(`argus::vehicle_api`)와 ZeroMQ 어댑터(`argus::vehicle_api_zmq`)를 CMake 타깃으로 분리 (#35 리뷰) |
 | 0.3 | 2026-10-19 | 결과 형을 `FollowResult`(outcome·request_accepted)와 `ModeReply` 로 나눔 (#33 리뷰), "FC 표본" 을 "fc/attitude 메시지" 로 |
+| 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙), 인터페이스 인자를 `vehicle_api` 값 타입(`RequestMeta`·`TrackTarget`·`ScanRequest`·`VelocitySetpoint`)으로, `latest()` 는 optional, `Fake*` 를 `argus::vehicle_api_testing` 에 (#39), `IVelocitySetpoint` → `IVelocitySetpointSender`(값 타입 `VelocitySetpoint` 와 구분), `search` → `scan_start`, `RequestMeta` → `RequestHeader` |
+| 0.5 | 2026-10-29 | #39 리뷰 반영: `IVehicleState` 에 `local_position_at`, `downward_distance_at` 추가, 조회 선택 순서(200 ms 이내 → 최근접 → 50 ms)와 보관 책임 확정, 보간하지 않음, 검토 1 해소 |
+| 0.6 | 2026-10-29 | 요청 식별 필드(command_id, session_id, seq, fc_epoch)를 값 타입 `RequestId` 로 묶고 `RequestHeader` 와 `FollowResult` 가 포함(#39 리뷰 3항의 "헤더 보존" 을 한 멤버 복사로). 값 타입 셋을 그림에 추가 |

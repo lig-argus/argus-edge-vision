@@ -12,18 +12,18 @@
 classDiagram
     class IFrameSource {
         <<interface>>
-        +onFrame(handler)
+        +on_frame(handler)
     }
     class ZmqFrameSource
     class FileFrameSource
     class MessageJoiner {
         -pending map~(source, frame_id), Partial~
         -max_pending, max_wait
-        +onFrame(Frame)
-        +onObservations(...)
-        +onTracks(Tracks)
-        +onSessionChange() 비움
-        +onJoined(handler) JoinedFrame
+        +on_frame(Frame)
+        +on_observations(...)
+        +on_tracks(Tracks)
+        +on_session_change() 비움
+        +on_joined(handler) JoinedFrame
     }
     class IMetadataEncoder {
         <<interface>>
@@ -41,8 +41,8 @@ classDiagram
     }
     class RtspServer {
         -factory gst-rtsp-server
-        +pushVideo(Frame)
-        +pushMetadata(RtpPackets)
+        +push_video(Frame)
+        +push_metadata(RtpPackets)
     }
     class VideoSender {
         +run()
@@ -151,3 +151,4 @@ classDiagram
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
+| 0.2 | 2026-10-21 | 1절(영상 송신부) 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙, #39). 2절 통제기는 Qt camelCase 그대로 |
