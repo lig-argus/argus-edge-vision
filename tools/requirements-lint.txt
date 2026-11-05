@@ -2,3 +2,5 @@
 # 규칙은 루트 pyproject.toml. 버전을 올리면 로컬과 CI 가 함께 바뀐다
 ruff==0.17.1
 mypy==2.4.0
+# protobuf 생성 코드(onboard/libs/protocol/python/argus_msg/*.pyi)가 import 하는 google.protobuf 의 타입 정보
+types-protobuf==7.35.1.20260906

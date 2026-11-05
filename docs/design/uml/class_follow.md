@@ -99,7 +99,7 @@ classDiagram
 | `IFlightModeControlClient` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading 요청. 호출은 바로 반환하고 응답(`FlightModeReply`: command_id, 수락 여부, 원인)은 `on_reply` 로, 시간 초과는 nullopt. 실제 전환은 `IVehicleTelemetry` 의 모드 이벤트로. onboard 쪽 짝은 `IFlightModeControl`(동기, `MavlinkFlightModeControl` 구현) | pi 4장, 5.2 |
 | `IFollowControl` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 바로 반환. 표적 존재·상태·FC 조건 검사는 구현이 한다. onboard 쪽 짝은 `IFollowControlClient`(비동기, `ZmqFollowControlClient` 구현) | pi 4장, icd 4.1 |
 | `Zmq*` 어댑터 | 통신 | 위 인터페이스를 `process_interfaces.md` 5장 토픽·REQ/REP 로 구현. 받기만 하면 `…Subscriber`, 응답하면 `…Server` | pi 2장 |
-| (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(`core` 의 `Subscription` 에만 의존), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 그 단위 테스트는 `vehicle_api`·`vehicle_api_testing` 만 링크해 ZeroMQ·MessagePack 에 의존하지 않는다 (#35 리뷰) | — |
+| (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(`core` 의 `Subscription` 에만 의존), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 그 단위 테스트는 `vehicle_api`·`vehicle_api_testing` 만 링크해 ZeroMQ·protobuf 에 의존하지 않는다 (#35 리뷰) | — |
 | `ZmqFollowControlServer` | 통신 | `follow/command` REP 를 받아 `IFollowControl` 호출, `FollowResult` 를 `follow/result` 로 응답 | pi 5.2 |
 | `FollowStatusPublisher` | 통신 | `follow/status` 1 Hz + 변경 시, `command_results` 포함 | pi 5.1.2 |
 | `FollowController` | 추적·추종 | 임무·표적 상태(`state_machine.md`), setpoint 계산. 내부 구조는 담당자가 `class_follow.md` 에 추가 | pi 2장 |

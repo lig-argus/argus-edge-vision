@@ -33,11 +33,11 @@ jobs:
       - run: pip install -r tools/requirements-lint.txt
       - run: ruff format --check .
       - run: ruff check .
-      # hook 과 같이 git 이 관리하는 .py 전체를 검사한다. .py 가 없으면 건너뛴다
+      # hook 과 같이 git 이 관리하는 .py 전체를 검사한다 (protobuf 생성 코드 *_pb2.py 제외). .py 가 없으면 건너뛴다
       - name: mypy
         run: |
-          if git ls-files '*.py' ':!common/mavlink/generated' | grep -q .; then
-            git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
+          if git ls-files '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | grep -q .; then
+            git ls-files -z -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | xargs -0 mypy
           else
             echo ".py 파일 없음: mypy 건너뜀"
           fi
@@ -54,6 +54,18 @@ jobs:
       - run: pip install -r tools/requirements-mavgen.txt
       - run: tools/generate_mavlink.sh
       - run: git add -N common/mavlink/generated && git diff --exit-code --stat -- common/mavlink/generated
+
+  proto:
+    name: proto python up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # RPi 와 같은 apt protoc 3.21.12 로 다시 생성해 커밋본과 다르면 실패 (tools/generate_proto.sh)
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler
+      - run: tools/generate_proto.sh
+      - run: git add -N onboard/libs/protocol/python && git diff --exit-code --stat -- onboard/libs/protocol/python
 
   gcs:
     name: gcs build · test · clang-tidy
@@ -91,10 +103,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        # Ubuntu 24.04 apt: ZeroMQ + cppzmq(C++ 바인딩), msgpack-cxx, gtest. RPi(Ubuntu 24.04)와 같은 패키지
+        # Ubuntu 24.04 apt: ZeroMQ + cppzmq(C++ 바인딩), protobuf(런타임, protoc 3.21.12), gtest. RPi(Ubuntu 24.04)와 같은 패키지
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libmsgpack-cxx-dev libgtest-dev
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
           pip install clang-tidy==22.1.8
       - name: Configure
         run: cmake -S onboard -B build/onboard -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -104,10 +116,11 @@ jobs:
         run: ctest --test-dir build/onboard --output-on-failure
       - name: clang-tidy
         # compile_commands.json 에 있는 소스를 병렬로 검사. 경고도 실패로 (clang-tidy 는 경고만으로는 exit 0).
-        # 컴파일할 소스가 하나도 없으면 CMake 가 compile_commands.json 을 만들지 않으므로 건너뛴다
+        # 컴파일할 소스가 하나도 없으면 CMake 가 compile_commands.json 을 만들지 않으므로 건너뛴다.
+        # 마지막 인자: protobuf 생성 소스(*/generated/*.pb.cc)는 검사하지 않는다
         run: |
           if [ -f build/onboard/compile_commands.json ]; then
-            run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*'
+            run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*' '^(?!.*/generated/)'
           else
             echo "compile_commands.json 없음: 컴파일할 소스가 없어 건너뜀"
           fi
