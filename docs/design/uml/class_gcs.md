@@ -9,10 +9,15 @@
 ```mermaid
 classDiagram
     class IMavlinkConnection {
-        <<interface>>
+        <<interface>> QObject
         +send(mavlink_message_t) bool
-        +subscribe(msgid, handler) Subscription
+        +messageReceived(mavlink_message_t) signal
     }
+    class IClock {
+        <<interface>>
+        +nowMonotonicNs() int64
+    }
+    class SteadyClock
     class UdpMavlinkConnection {
         -socket UDP RPi:14550
         -sysid 250, compid 190
@@ -57,6 +62,7 @@ classDiagram
     class MainWindow
 
     IMavlinkConnection <|.. UdpMavlinkConnection
+    IClock <|.. SteadyClock
     TelemetryModel ..> IMavlinkConnection
     TelemetryModel ..> IClock : 지연·끊김
     ArgusStatusModel ..> IMavlinkConnection : ARGUS_STATUS, ARGUS_SENSOR_STATUS
@@ -80,6 +86,9 @@ classDiagram
 | 클래스 | 책임 | 출처 |
 |---|---|---|
 | `UdpMavlinkConnection` | `IMavlinkConnection` 구현. UDP 14550, sysid 250 / compid 190, HEARTBEAT 1 Hz 송신, `seq` 관리. 통제기가 먼저 보내야 라우터가 응답. onboard 의 같은 이름 클래스와 역할이 같다 | icd 1.1, 1.2, 5장 |
+| `IMavlinkConnection` | `QObject`. `send()` 와 signal `messageReceived()`. 모델과 명령 클래스가 `connect()` 로 signal 을 자기 slot 에 연결하고 slot 안에서 msgid 를 보고 필요한 메시지만 고른다. 연결한 `QObject` 가 소멸하면 Qt 가 연결을 끊으므로 onboard 의 `Subscription` 에 해당하는 객체는 없다 | icd 1.2 |
+| `IClock`, `SteadyClock` | monotonic clock 의 현재 시각(ns). onboard `core::IClock` 과 이름, 단위 같음. 지연, 연결 끊김, ACK 1 s, IN_PROGRESS 뒤 3 s 판정에 사용 | icd 2장, 4.1, 6장 |
+| `FakeMavlinkConnection`, `FakeClock` | 테스트용 구현. `gcs/test/` 에 두고 Qt Test 만 링크한다. `simulateMessageReceived()` 가 signal 을 발생시키고, `FakeClock::advanceNs()` 로 시각을 지정한다 | — |
 | `TelemetryModel` | HEARTBEAT `custom_mode` → PX4 모드(부록 A), SYS_STATUS·GPS·ATTITUDE·VFR_HUD·BATTERY 표시값. 기대 주기의 2 배 늦으면 "지연", FC HEARTBEAT 3 s 없으면 "연결 끊김" | icd 2장, 6장 |
 | `ArgusStatusModel` | `ARGUS_STATUS`(임무·표적 상태, 선택 표적, health, control_sysid), `ARGUS_SENSOR_STATUS`(센서별 flags, FOLLOWABLE) | icd 3.1, 부록 B |
 | `CommandSender` | COMMAND_LONG 송신, ACK 1 s 없으면 재전송(`confirmation` 증가) 3 회, 뒤에도 없으면 "응답 없음". IN_PROGRESS 를 받으면 재전송을 멈추고 `progress` 를 진행 막대로 표시, 마지막 IN_PROGRESS 뒤 3 s 안에 다음 ACK 가 없으면 "응답 없음". TEMPORARILY_REJECTED 뒤 같은 명령의 IN_PROGRESS 가 오면 진행 중으로 표시. DENIED·FAILED 의 원인은 STATUSTEXT 와 묶어 표시 | icd 4.1 |
@@ -96,7 +105,7 @@ classDiagram
 |---|---|---|
 | S | 모델·명령·표시 분리 | `TelemetryModel`(FC 상태), `ArgusStatusModel`(onboard 상태), `CommandSender`(재전송 규칙), `VideoView`(표시·클릭) |
 | O | `CommandSender` + `FlightCommands`·`FollowCommands` | 명령 추가 = 호출 메서드 추가. 재전송 규칙은 한 곳 |
-| L | `IMavlinkConnection`, `IClock` | Qt Test 에서 `Fake*` 로 UDP·시간 없이 검사 |
+| L | `IMavlinkConnection`, `IClock` | Qt Test 에서 `FakeMavlinkConnection`, `FakeClock` 으로 UDP, 실제 시간 없이 검사 (`QSignalSpy` 로 signal 확인) |
 | I | `VideoView` 는 `VideoFrame` 과 `FollowCommands` 만 봄 | MAVLink·GStreamer 를 모름 |
 | D | 모델·명령 클래스 | `IMavlinkConnection`·`IClock` 에만 의존. `UdpMavlinkConnection` 은 `main` 에서 주입 |
 
@@ -104,7 +113,7 @@ classDiagram
 
 1. `TelemetryModel` 의 "지연" 기준(기대 주기의 2 배)에 쓸 기대 주기 표 — icd 2장 값, 미결 D5.
 2. 통제기 두 대 동시 접속은 지원하지 않음 (icd 미결 D2). `UdpMavlinkConnection` 은 sysid 250 고정.
-3. `gcs/` 폴더 구조(모듈·`include/src/test`)는 별도 이슈.
+3. 해소 (0.3): 통제기는 실행 파일 하나라 모듈을 나누지 않는다. 헤더 `gcs/include/argus/gcs/`, 소스 `gcs/src/`, 테스트용 구현과 Qt Test `gcs/test/`, 타깃 `argus_gcs_interfaces`(STATIC, moc 때문)와 `argus_gcs_add_test` (#43).
 
 ## 변경 이력
 
@@ -112,3 +121,4 @@ classDiagram
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-25 | onboard 와 이름 맞춤(#40): `IMavlinkIo`→`IMavlinkConnection`, `MavlinkClient`→`UdpMavlinkConnection`. `CommandSender` 에 IN_PROGRESS 뒤 3 s 대기, `progress` 표시, TEMPORARILY_REJECTED 뒤 처리 |
+| 0.3 | 2026-10-26 | 코드(#43)와 맞춤: `IMavlinkConnection` 을 `QObject` 와 signal 로, `IClock`, `SteadyClock` 과 테스트용 구현 행, 검토 3(폴더 구조) 해소 |
