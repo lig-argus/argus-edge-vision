@@ -296,7 +296,7 @@ multipart `[토픽][MessagePack 헤더][픽셀 바이트]` 의 헤더다. 픽셀
 11. RPi 안 토픽 연결 방식 통일 여부. 지금은 직접 연결(발행자가 bind: 6370, 6372, 6357)과 프록시(탐지 토픽: 5555 / 5556)가 섞여 있어, 구독자가 주소를 여러 개 알아야 한다. 선택지는 (가) 모든 토픽을 직접 연결하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리, (나) 모든 토픽을 프록시로, (다) 지금처럼 유지. (가) 를 제안한다. 프로세스와 포트가 고정된 한 기기 안에서는 데이터를 직접 연결하고 주소 표를 한 곳에 두는 방식이 일반적이고(openpilot 의 서비스 표, ROS 2 의 직접 연결), 프록시가 SPOF가 되어 멈추면 탐지 토픽 전체가 끊기는 문제가 없어진다. 다만 탐지 쪽 발행 코드를 바꿔야 한다. — 통신, 탐지, 추적/추종
 12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
 13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. onboard 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
-14. `perception/observations` 에 `session_id` 추가. 탐지 프로세스가 다시 시작되면 frame_id 가 처음부터 다시 셀 수 있어, 세션 없이 `(source, frame_id)` 로 묶으면 이전 실행의 결과와 섞일 수 있다. 값은 탐지 프로세스가 이미 만들어 쓰는 세션(미리보기 헤더와 같은 값)이다. 지금 추적기 역직렬화가 필드 23개만 받으므로 `argus.perception.observations.v3` 로 올리고, 추적기가 v2 와 v3 를 함께 받도록 바꾼 뒤 탐지 발행을 v3 로 바꾼다. `tracking/tracks` 도 이 값을 그대로 옮길지 함께 정한다. — 탐지, 추적/추종, 통신
+14. `perception/observations` 에 `session_id` 추가. 탐지 프로세스가 다시 시작되면 frame_id 가 처음부터 다시 셀 수 있어, 세션 없이 `(source, frame_id)` 로 묶으면 이전 실행의 결과와 섞일 수 있다. 값은 탐지 프로세스가 이미 만들어 쓰는 세션(미리보기 헤더와 같은 값)이다. 지금 추적기 역직렬화가 필드 23개만 받으므로 `argus.perception.observations.v3` 로 올리고, 추적기가 v2 와 v3 를 함께 받도록 바꾼 뒤 탐지 발행을 v3 로 바꾼다. `tracking/tracks` 는 이 값을 그대로 옮긴다 (5.1.1, #46 에서 합의). 메시지에 넣는 시점과 버전은 추적 담당이 정한다. — 탐지, 추적/추종, 통신
 
 ## 변경 이력
 
