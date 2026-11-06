@@ -172,8 +172,8 @@ ruff format --check .
 ruff format .
 # Python 규칙 검사. --fix 를 붙이면 자동으로 수정할 수 있는 것은 수정한다
 ruff check .
-# Python 타입 검사: git 이 관리하는 .py 전체 (hook 과 CI 가 검사하는 범위)
-git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
+# Python 타입 검사: git 이 관리하는 .py 전체 (hook 과 CI 가 검사하는 범위. protobuf 생성 코드 *_pb2.py 는 제외)
+git ls-files -z -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | xargs -0 mypy
 ```
 
 - clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 한다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙이다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생긴다.

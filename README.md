@@ -33,7 +33,7 @@ onboard/
     core_testing/         # core 의 테스트용 구현 (FakeClock, FakePoller)
     bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
     bus_testing/          # FakeBus
-    protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수
+    protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수, 메시지 정의(.proto)와 Python 생성 코드
     perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, onboard, 추적기 공유. 의존성 없음)
     vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)
     vehicle_api_testing/  # vehicle_api 의 테스트용 구현
