@@ -209,7 +209,7 @@ classDiagram
     }
     class MavlinkCommandReceiver {
         -handlers map~MAV_CMD, IMavlinkCommandHandler~
-        -entries map~(sysid, compid, MAV_CMD), 마지막 ACK~
+        -entries map~(sysid, compid, MAV_CMD), (명령 번호, 마지막 ACK, 시각)~
         +on_command_long(msg)
         +tick() 1 Hz
     }
@@ -285,7 +285,7 @@ classDiagram
 |---|---|---|
 | `IMavlinkCommandHandler` | MAV_CMD 하나를 처리. `handle(request, responder)` 로 받고, 결과는 반환값이 아니라 `responder.send()` 로 보낸다. 통제기에 보내는 첫 응답(IN_PROGRESS 또는 DENIED)도 추종 제어의 응답 뒤에 정해지므로 비동기 | icd 4.1·4.2 |
 | `CommandResponder` | 명령 하나의 응답 통로. IN_PROGRESS 는 여러 번(진행률이 바뀔 때), 그 외 결과는 최종으로 한 번만 보내고 그 뒤 `send()` 는 무시. 최종을 보내지 않고 사라지면 소멸자가 FAILED 를 보낸다. 이동만 가능하며, 콜백 여러 개가 함께 들 때는 `shared_ptr` 로 싼다 | icd 4.1 |
-| `MavlinkCommandReceiver` | `target_component = 195` 인 COMMAND_LONG 을 MAV_CMD 로 handler 에 넘기고, `CommandResponder` 가 보낸 결과를 COMMAND_ACK(`progress` 포함)로, DENIED·FAILED 의 원인을 STATUSTEXT 로 보낸다. 모르는 명령은 UNSUPPORTED. 표에 (sysid, compid, MAV_CMD) 마다 마지막 ACK 를 두고: 같은 명령이 진행 중에 다시 오면 handler 를 부르지 않고 TEMPORARILY_REJECTED, 완료 뒤 4 s 안의 재전송에는 마지막 최종 ACK 재송신, 진행 중인 명령은 1 s 마다 IN_PROGRESS 재송신 | icd 4.1 |
+| `MavlinkCommandReceiver` | `target_system = 1`, `target_component = 195` 인 COMMAND_LONG 만 받아(그 밖은 응답 없이 폐기) MAV_CMD 로 handler 에 넘기고, `CommandResponder` 가 보낸 결과를 COMMAND_ACK(`progress`, 보낸 쪽 sysid 와 compid 포함)로, DENIED·FAILED 의 원인을 STATUSTEXT 로 보낸다. 모르는 명령은 UNSUPPORTED, COMMAND_INT 는 COMMAND_LONG_ONLY. 표에 (sysid, compid, MAV_CMD) 마다 명령 번호(`param7`)와 마지막 ACK, 시각을 두고: 번호가 같은 재전송에는 handler 를 부르지 않고 진행 중이면 IN_PROGRESS, 완료 뒤 4 s 안이면 마지막 최종 ACK 를 재송신. 번호가 같은데 `param1`~`param6` 이 다르면 DENIED. 명령은 동시에 하나만 처리하며 진행 중에 번호가 다른 명령이 오면 MAV_CMD 와 관계없이 TEMPORARILY_REJECTED. 진행 중인 명령은 1 s 마다 IN_PROGRESS 재송신 | icd 4.1 |
 | `TrackStartHandler` | 조건 ①(제어권) ③(FOLLOWABLE) ④(최신 추적 결과) ⑤(`mission_state`) 와 매개변수 범위 검사 → DENIED 또는 `IFollowControlClient::track_start`. 응답(`FollowResult`)으로 첫 ACK, 이후 `follow/status.command_results` 의 같은 command_id 로 최종 ACK. MAVLink param 을 `TrackTarget` 으로 바꾸는 함수와 조건 판정 함수를 나눠 둔다 | icd 4.2 |
 | `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사. IN_PROGRESS 의 `progress` 는 `follow/status` 의 `scan_progress_deg / scan_config.sweep_rad` | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
@@ -330,3 +330,4 @@ classDiagram
 | 0.6 | 2026-10-29 | 1절 한 스레드 규칙의 범위를 onboard 프로세스로 한정(#40 리뷰), `IMavlinkCommandHandler` 의 "첫 결과" 를 "통제기에 보내는 첫 응답" 으로, `ZmqFollowControlClient` 의 `RequestHeader` 구성을 `RequestId` 로 |
 | 0.7 | 2026-11-06 | 1절 직렬화를 MessagePack 에서 protobuf 로, 메시지 정의는 `protocol` 모듈 (#56) |
 | 0.8 | 2026-11-07 | 1절에 `IBus`(넷을 생성, 구현 `ZmqBus`), `IRpcClient`→`IRequester`, `IRpcServer`→`IReplier`, `call`→`request`, `BusMessage{topic, body, binary}`, `publish` 반환 bool, "ZeroMQ 인터페이스"→"통신 인터페이스", "계약"→contract (#60) |
+| 0.9 | 2026-11-07 | `MavlinkCommandReceiver` 의 표에 명령 번호(`param7`), 재전송 판단을 번호 기준으로(진행 중 재전송은 IN_PROGRESS 재송신), 동시에 하나 처리, target 불일치 폐기, COMMAND_INT 응답 (#61) |
