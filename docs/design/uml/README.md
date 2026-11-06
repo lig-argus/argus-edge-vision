@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.7 (팀 검토 전 초안) |
+| 문서 버전 | 0.8 (팀 검토 전 초안) |
 | 목적 | 규약 문서(`docs/spec/`)에 글과 표로 있는 구조와 동작을 UML 로 옮겨 빠진 인터페이스·상태를 찾는다. 규약과 다르면 규약이 맞고, 이 문서를 고친다 |
 | 표기 | Mermaid. GitHub 에서 바로 렌더된다. 다이어그램 안 라벨은 한국어, 다이어그램 종류 이름은 영어 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
@@ -44,3 +44,4 @@
 | 0.5 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): state_machine(Offboard 확인·실패 FAULT·복구), sequence(단조 시각·실제 모드 확인), class_tracker(FC 표본 입력), class_onboard(송신권·독립 감시), class_follow(결과 형), "산출물" 을 UML 요소 이름 artifact 로 |
 | 0.6 | 2026-10-25 | 코드(#39, #40)와 이름 맞춤: class_onboard 0.5(실행 루프, `IMavlinkConnection`, `FcCommandGate`, `MavlinkCommandReceiver`·`CommandResponder`), class_follow 0.5(구현용·호출용 인터페이스 분리), class_gcs 0.2, class_tracker 0.5, class_video(`FrameJoiner`), sequence 0.4 |
 | 0.7 | 2026-10-26 | class_video 0.4(코드 #41 과 맞춤: `IFrameSource.subscribe`, `FrameCollector`·`CollectedFrame`, 직렬화는 구체 클래스), sequence 0.5 |
+| 0.8 | 2026-11-07 | icd 0.6(명령 번호, 재전송 판단, 결과 값 구분)과 맞춤: class_onboard 0.7, class_gcs 0.4, sequence 0.7 (#61) |
