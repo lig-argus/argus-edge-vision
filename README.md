@@ -58,7 +58,7 @@ onboard/
 | Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev` |
 | macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest` + 아래 protobuf 3.21.12 소스 빌드 |
 
-protobuf 는 모든 환경에서 Ubuntu 24.04 apt 와 같은 3.21.12 를 사용한다. 메시지 정의(`onboard/libs/protocol/proto/*.proto`)에서 C++ 코드는 CMake 가 빌드 때 생성하고, Python 코드는 `tools/generate_proto.sh` 로 생성해 커밋한다 (CI 가 같은 protoc 로 다시 생성해 비교한다). brew 의 protobuf 는 더 새 버전(36 이상)이라 생성 코드가 달라지므로, macOS 에서는 3.21.12 를 한 번 소스 빌드해 설치한다.
+protobuf 는 모든 환경에서 Ubuntu 24.04 apt 와 같은 3.21.12 를 사용한다. 메시지 정의(`onboard/libs/protocol/proto/argus_msg/*.proto`)에서 C++ 코드는 CMake 가 빌드 때 생성하고, Python 코드는 `tools/generate_proto.sh` 로 생성해 커밋한다 (CI 가 같은 protoc 로 다시 생성해 비교한다). brew 의 protobuf 는 더 새 버전(36 이상)이라 생성 코드가 달라지므로, macOS 에서는 3.21.12 를 한 번 소스 빌드해 설치한다.
 
 ```bash
 git clone --depth 1 --branch v21.12 https://github.com/protocolbuffers/protobuf.git /tmp/protobuf-21

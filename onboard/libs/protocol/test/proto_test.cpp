@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "control_setpoint.pb.h"
+#include "argus_msg/control_setpoint.pb.h"
 
 namespace argus::protocol {
 namespace {

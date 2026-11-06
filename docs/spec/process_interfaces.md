@@ -69,9 +69,9 @@ flowchart LR
 
 ## 3. 공통 규칙
 
-- 전송: ZeroMQ + protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/<토픽 이름>.proto`(package `argus.msg`) 하나이며, C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다. 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **PUB/SUB**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **REQ/REP**. REQ/REP 는 중복 실행과 오래된 명령 실행을 막는다.
+- 전송: ZeroMQ + protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다. 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **PUB/SUB**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **REQ/REP**. REQ/REP 는 중복 실행과 오래된 명령 실행을 막는다.
 - multipart 구성: `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`.
-- 공통 필드: 모든 메시지에 `schema`(`argus.<영역>.<이름>.vN`), `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`.
+- 공통 필드: 모든 메시지에 `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`. 메시지 타입을 나타내는 필드(`schema` 문자열)는 두지 않는다. 타입은 토픽 이름(RPC 는 요청 이름)이 정하고 받는 쪽은 그 토픽의 생성 클래스로 바로 파싱한다. 값이 항상 같은 문자열(`clock_domain`, `coordinate_frame` 등)은 메시지에 넣지 않고 이 문서에 적는다.
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(요청을 만들 때 onboard 가 `fc/attitude`·`fc/state` 에 발행하고 있는 현재 값, 아래), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. C++ 값 타입에서는 `valid_until_monotonic_ns` 를 뺀 네 필드를 `RequestId` 로 묶어 요청(`RequestHeader.id`)과 결과(`FollowResult.id`)가 같은 멤버를 가진다 (`onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp`). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
 - `fc_epoch`: FC 연결의 epoch(uint64). onboard 가 FC 와 연결을 새로 맺거나 FC 재부팅을 감지할 때마다 1 증가시킨다. `fc/attitude`·`fc/state` 메시지와 요청이 같은 FC 연결·같은 FC 부팅 구간에서 나온 것인지 확인하는 데 쓴다. 추적기 `generation` 과 같은 방식이지만 세는 대상(추적기 재시작이 아니라 FC 연결·FC 부팅)이 다르다. FC 시각, MAVLink 패킷 번호와도 다르다.
   - onboard(FC 통신)가 1 증가시키는 때: FC 연결을 새로 구성하거나 다시 연결할 때, FC 부팅 후 경과 시간(`time_boot_ms`)이 직전 메시지보다 작아져 FC 재부팅을 감지하고 보관 중인 FC 데이터를 지울 때. 메시지마다, 일반 모드 변경마다 바꾸지 않는다.
@@ -79,7 +79,7 @@ flowchart LR
   - 받는 쪽은 세션과 `fc_epoch` 를 검사한다. 값이 바뀌면 바뀌기 전 구간의 `fc/attitude`·`fc/state` 메시지, FC 제어 명령 송신권(6장), 진행 중 요청을 이어 쓰지 않는다.
   - 오래된 요청의 `fc_epoch` 만 최신 값으로 바꿔 다시 보내지 않는다. 바뀐 `fc_epoch` 의 `fc/attitude`·`fc/state` 메시지를 받아 조건을 다시 확인한 뒤 새 요청(새 `command_id`)으로 보낸다.
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
-- 버전: 필드 추가는 같은 버전, 필드 삭제·의미 변경은 `vN` 증가. 받는 쪽은 모르는 필드를 무시한다 (protobuf 가 보장한다). 지운 필드의 번호는 `.proto` 에 `reserved` 로 남겨 다시 쓰지 않는다. 값이 없을 수 있는 필드는 `optional` 로 선언하고 받는 쪽은 `has_` 로 확인한다.
+- 버전: 필드 추가는 그대로 한다. 받는 쪽은 모르는 필드를 무시하고 없는 필드는 기본값으로 읽는다 (protobuf 가 보장한다). 필드 번호는 바꾸지 않고, 지운 필드의 번호는 `.proto` 에 `reserved` 로 남겨 다시 쓰지 않는다. 필드의 의미나 단위를 바꿔야 하면 새 필드를 추가하고 옛 필드를 `reserved` 로 지운다. 메시지 전체를 호환되지 않게 바꿔야 하면 새 메시지와 새 토픽 이름으로 한다. 값이 없을 수 있는 필드는 `optional` 로 선언하고 받는 쪽은 `has_` 로 확인한다.
 - 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽(onboard)이 받을 때 rad·m·s 로 바꾼다. `follow/status` 의 `scan_config` 는 SI 필드(`yaw_rate_rad_s`, `sweep_rad`, `timeout_s`)를 쓴다 (5.1.2).
 - 영상 해상도: IR 카메라 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
 - 정수 범위: `track_id`·`generation` 은 1~16,777,215 (2^24−1). MAVLink 명령 매개변수(float)로 손실 없이 전달하기 위한 범위다. `frame_id`·`fc_epoch` 는 uint64.
@@ -102,6 +102,8 @@ flowchart LR
 - 계약(사전·사후 조건, 시간 제한)은 인터페이스 확정 뒤 헤더 주석과 테스트로 적는다.
 
 ## 5. 메시지
+
+아래 표의 `argus.<영역>.<이름>.vN` 식별자와 `schema` 행은 MessagePack 으로 발행 중인 메시지의 것이다. 각 담당이 그 메시지를 `.proto` 로 옮길 때 이 식별자와 행을 지우고 `.proto` 파일을 가리키게 한다 (3장).
 
 ### 5.1 PUB/SUB
 
@@ -226,7 +228,7 @@ flowchart LR
 
 ## 7. 검토 필요 사항
 
-1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 schema 이름·필드 고정, 두 REQ/REP 의 타임아웃, `fc/mode_event` 의 발행 엔드포인트. `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. 모드 요청 계약에서 정할 것 (#39 리뷰): ① 요청 수락과 실제 모드 전환 완료의 구분 ② 수락 뒤 실패해 모드가 바뀌지 않은 경우의 결과 전달 ③ 요청 식별자(command_id)로 완료·실패를 원래 요청에 연결하는 방법 ④ 요청 없이 일어난 모드 변경과 원인 불명의 구분 ⑤ 취소·세션 변경 뒤 늦게 도착한 응답의 무효화. 또한 stop 이나 RC 개입 때 대기 중인 송신을 폐기하는 책임과 호출 경로. 참조 모델은 ROS 2 action 의 goal 상태(ACCEPTED → EXECUTING → SUCCEEDED/ABORTED/CANCELED)와 CancelGoal 응답 코드. — 추적/추종, 통신
+1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 `.proto` 메시지 이름·필드 고정, 두 REQ/REP 의 타임아웃, `fc/mode_event` 의 발행 엔드포인트. `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. 모드 요청 계약에서 정할 것 (#39 리뷰): ① 요청 수락과 실제 모드 전환 완료의 구분 ② 수락 뒤 실패해 모드가 바뀌지 않은 경우의 결과 전달 ③ 요청 식별자(command_id)로 완료·실패를 원래 요청에 연결하는 방법 ④ 요청 없이 일어난 모드 변경과 원인 불명의 구분 ⑤ 취소·세션 변경 뒤 늦게 도착한 응답의 무효화. 또한 stop 이나 RC 개입 때 대기 중인 송신을 폐기하는 책임과 호출 경로. 참조 모델은 ROS 2 action 의 goal 상태(ACCEPTED → EXECUTING → SUCCEEDED/ABORTED/CANCELED)와 CancelGoal 응답 코드. — 추적/추종, 통신
 2. 해소 (0.8): `follow/status` 발행 주기(1 Hz + 변경 시), 세션 필드의 뜻, `scan_config` SI 필드를 5.1·5.1.2 에 반영함. — 추적/추종
 3. 해소 (0.8): `vision/frame/gray8` 의 전송 경로는 기존 버스(5555/5556)로 확정. — 탐지
    - 측정(2026-10-19, drone Pi 5): 전송 경로만 따로 잰 결과 기존 버스(Python PUSH → 어댑터 → XSUB/XPUB 프록시 → SUB)는 버림 0, 지연 p50 1.5 ms 로 IPC 직결(p50 0.4 ms)과 약 1 ms 차이.
@@ -260,4 +262,4 @@ flowchart LR
 | 0.11 | 2026-10-25 | 4장 인터페이스 이름을 코드와 맞춤(`IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IFollowControl`)과 헤더 위치, 5.2 `reason` 설명, 7장 12(stop 의 IN_PROGRESS)·13(`scan_remaining_s`) 추가, 2장 "명령 중재" 를 "FC 명령 검사" 로 (#40) |
 | 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |
 | 0.13 | 2026-11-04 | 5.1.1 에 `session_id` 행(v3 의 값을 추적기가 옮김)과 `ground_anchor` 의 `anchor_y` 뜻(상대 비율), 7장 영상 송신부가 세 메시지를 한 프레임으로 묶는 기준을 `(source, session_id, frame_id)` 로 (#41 리뷰) |
-| 0.14 | 2026-11-06 | 직렬화를 MessagePack 에서 protobuf 로 (#56): 1장, 3장 전송 규칙과 버전 규칙(`reserved`, `optional`), 5.1 `vision/frame/gray8` 의 헤더 표기 |
+| 0.14 | 2026-11-06 | 직렬화를 MessagePack 에서 protobuf 로 (#56): 1장, 3장 전송 규칙(`.proto` 위치와 import), 공통 필드에서 `schema` 제거(타입은 토픽 이름), 버전 규칙(`reserved`, `optional`, 새 토픽 이름), 5장 머리의 전환 중 표기, 5.1 `vision/frame/gray8` 의 헤더 표기, 7장 1 |

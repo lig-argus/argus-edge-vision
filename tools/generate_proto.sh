@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# onboard/libs/protocol/proto/*.proto 에서 Python 코드(*_pb2.py, *_pb2.pyi)를 생성한다.
+# onboard/libs/protocol/proto/argus_msg/*.proto 에서 Python 코드(*_pb2.py, *_pb2.pyi)를 생성한다.
 # 결과(onboard/libs/protocol/python/argus_msg/)는 저장소에 커밋한다. CI 가 다시 생성해 커밋본과 비교한다.
+# proto/ 를 import 기준 디렉터리로, python/ 을 출력 디렉터리로 주면 proto/argus_msg/a.proto 가
+# python/argus_msg/a_pb2.py 가 되고, .proto 사이의 import "argus_msg/a.proto" 가 Python 에서
+# from argus_msg import a_pb2 로 생성된다.
 # C++ 코드는 커밋하지 않고 CMake 가 빌드 때 생성한다 (onboard/libs/protocol/CMakeLists.txt).
 #
 # protoc 는 RPi, CI 와 같은 3.21.12 를 쓴다 (Ubuntu 24.04 apt protobuf-compiler. macOS 설치는 README).
@@ -14,7 +17,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 protoc="${PROTOC:-protoc}"
 proto_dir="$repo_root/onboard/libs/protocol/proto"
-output="$repo_root/onboard/libs/protocol/python/argus_msg"
+python_dir="$repo_root/onboard/libs/protocol/python"
+output="$python_dir/argus_msg"
 required_version="3.21.12"
 
 version="$("$protoc" --version | awk '{print $2}')"
@@ -25,6 +29,6 @@ fi
 
 mkdir -p "$output"
 rm -f "$output"/*_pb2.py "$output"/*_pb2.pyi
-"$protoc" -I"$proto_dir" --python_out="$output" --pyi_out="$output" "$proto_dir"/*.proto
+"$protoc" -I"$proto_dir" --python_out="$python_dir" --pyi_out="$python_dir" "$proto_dir"/argus_msg/*.proto
 echo "생성: $output"
 ls "$output"/*_pb2.py "$output"/*_pb2.pyi
