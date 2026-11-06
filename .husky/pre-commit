@@ -6,9 +6,10 @@ git diff --cached --name-only --diff-filter=ACM -- '*.cpp' '*.hpp' '*.h' ':!comm
 # 스테이징된 Python 파일이 있으면 Ruff 로 형식·규칙을 검사하고, mypy 로 git 이 관리하는 Python 전체의 타입을
 # 검사한다 (CONTRIBUTING.md 0.3). mypy 는 모듈 사이 타입까지 보려고 스테이징한 파일만이 아니라 전체를 보되,
 # git 이 관리하지 않는 작업 중 파일은 넣지 않는다 (.mypy_cache 로 두 번째부터 빠름).
-py_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' ':!common/mavlink/generated')
+# protobuf 생성 코드(*_pb2.py)는 검사하지 않는다 (pyproject.toml 의 제외는 디렉터리 탐색에만 적용된다)
+py_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py')
 if [ -n "$py_files" ]; then
     echo "$py_files" | xargs ruff format --check
     echo "$py_files" | xargs ruff check
-    git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
+    git ls-files -z -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | xargs -0 mypy
 fi

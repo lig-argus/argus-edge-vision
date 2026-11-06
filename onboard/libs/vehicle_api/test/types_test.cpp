@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "argus/mavlink.h"
-// 인터페이스 헤더가 ZeroMQ·MessagePack 없이 각각 컴파일되는지 함께 확인한다
+// 인터페이스 헤더가 ZeroMQ·protobuf 없이 각각 컴파일되는지 함께 확인한다
 #include "argus/vehicle_api/flight_mode_control.hpp"
 #include "argus/vehicle_api/flight_mode_control_client.hpp"
 #include "argus/vehicle_api/follow_control.hpp"

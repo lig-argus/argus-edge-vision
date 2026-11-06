@@ -33,7 +33,7 @@ onboard/
     core_testing/         # core 의 테스트용 구현 (FakeClock, FakePoller)
     bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
     bus_testing/          # FakeBus
-    protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수
+    protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수, 메시지 정의(.proto)와 Python 생성 코드
     perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, onboard, 추적기 공유. 의존성 없음)
     vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)
     vehicle_api_testing/  # vehicle_api 의 테스트용 구현
@@ -55,11 +55,21 @@ onboard/
 
 | OS | 설치 |
 |---|---|
-| Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libmsgpack-cxx-dev libgtest-dev` |
-| macOS (개발용) | `brew install cmake ninja zeromq cppzmq msgpack-cxx googletest` |
+| Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev` |
+| macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest` + 아래 protobuf 3.21.12 소스 빌드 |
+
+protobuf 는 모든 환경에서 Ubuntu 24.04 apt 와 같은 3.21.12 를 사용한다. 메시지 정의(`onboard/libs/protocol/proto/argus_msg/*.proto`)에서 C++ 코드는 CMake 가 빌드 때 생성하고, Python 코드는 `tools/generate_proto.sh` 로 생성해 커밋한다 (CI 가 같은 protoc 로 다시 생성해 비교한다). brew 의 protobuf 는 더 새 버전(36 이상)이라 생성 코드가 달라지므로, macOS 에서는 3.21.12 를 한 번 소스 빌드해 설치한다.
 
 ```bash
-cmake -S onboard -B build/onboard -G Ninja
+git clone --depth 1 --branch v21.12 https://github.com/protocolbuffers/protobuf.git /tmp/protobuf-21
+```
+
+```bash
+cmake -S /tmp/protobuf-21 -B /tmp/protobuf-21/build -G Ninja -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local/protobuf-21 && cmake --build /tmp/protobuf-21/build && cmake --install /tmp/protobuf-21/build
+```
+
+```bash
+cmake -S onboard -B build/onboard -G Ninja -DCMAKE_PREFIX_PATH=$HOME/.local/protobuf-21
 cmake --build build/onboard
 ctest --test-dir build/onboard --output-on-failure
 ```

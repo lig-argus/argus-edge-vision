@@ -163,7 +163,7 @@ git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang
 git ls-files '*.cpp' '*.hpp' '*.h' ':!common/mavlink/generated' | xargs -r clang-format -i
 
 # clang-tidy: 빌드 폴더의 compile_commands.json 에 있는 소스를 검사. 경고도 실패로
-run-clang-tidy -p build/onboard -quiet -warnings-as-errors='*'
+run-clang-tidy -p build/onboard -quiet -warnings-as-errors='*' '^(?!.*/generated/)'   # onboard: protobuf 생성 소스 제외
 run-clang-tidy -p build/gcs -quiet -warnings-as-errors='*' '^(?!.*_autogen)'   # 통제기: Qt moc 가 만든 소스 제외
 
 # Python 형식 검사: 수정할 곳이 있으면 exit 1 (hook 과 CI 가 사용하는 명령)
@@ -172,8 +172,8 @@ ruff format --check .
 ruff format .
 # Python 규칙 검사. --fix 를 붙이면 자동으로 수정할 수 있는 것은 수정한다
 ruff check .
-# Python 타입 검사: git 이 관리하는 .py 전체 (hook 과 CI 가 검사하는 범위)
-git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
+# Python 타입 검사: git 이 관리하는 .py 전체 (hook 과 CI 가 검사하는 범위. protobuf 생성 코드 *_pb2.py 는 제외)
+git ls-files -z -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | xargs -0 mypy
 ```
 
 - clang-tidy 는 먼저 `cmake -S … -B build/…` 로 설정해 둬야 한다. macOS 는 `-DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)"` 를 붙이다. Windows 는 `-G Ninja` 로 설정해야 `compile_commands.json` 이 생긴다.
@@ -194,7 +194,7 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' | xargs -0 mypy
 - 헤더 경로에 `argus/<모듈>/` 을 넣는 이유: 모듈마다 같은 파일 이름(`types.hpp` 등)이 있어도 include 가 겹치지 않고, 어느 모듈의 헤더인지 include 문만 보고 알 수 있다 (ROS 2 `rclcpp` 의 `include/rclcpp/` 와 같은 방식).
 - 모듈이 다른 모듈을 사용할 때는 `target_link_libraries` 로 연결한다. 다른 모듈의 `src/` 나 상대 경로(`../`)로 헤더를 부르지 않는다.
 - 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꾼다.
-- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ, MessagePack)에 의존하지 않고 `core`(`Subscription`)에만 의존한다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 테스트용 구현이 인터페이스 모듈만 링크하게 한다.
+- 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ, protobuf)에 의존하지 않고 `core`(`Subscription`)에만 의존한다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 테스트용 구현이 인터페이스 모듈만 링크하게 한다.
 - 테스트용 구현(`Fake…`)의 위치: 여러 모듈의 테스트가 사용하면 `<모듈>_testing` 모듈(`core_testing`, `bus_testing`, `vehicle_api_testing`)에, 한 모듈만 사용하면 그 모듈의 `test/` 에 둔다(`apps/onboard/test/fake_mavlink_connection.hpp`). 제품 실행 파일은 `*_testing` 을 링크하지 않는다.
 - (모든 프로세스) `vehicle_api` 와 `bus` 의 handler(토픽 구독, RPC 응답, 모드 이벤트, 주기 작업)는 그 통신 객체를 소유한 스레드의 `core::IPoller::process_events()` 안에서만 불리고, 짧게 끝내야 한다. `Subscription` 의 해제도 같은 스레드에서 한다. 추적기와 추종 제어가 통신 스레드와 감시 스레드를 따로 두는 구조는 이 규칙만 지키면 된다.
 - (onboard 프로세스만) onboard 프로세스(`onboard/apps/onboard`. FC 와 통제기 통신, FC 로 가는 명령 검사를 맡는 프로세스)는 MAVLink 메시지 handler 까지 포함해 프로세스 전체가 스레드 하나로 돈다 (`docs/design/uml/class_onboard.md` 1절). 추론처럼 오래 걸리는 작업은 별도 프로세스(탐지)에 두고 결과만 버스로 받는다.

@@ -63,7 +63,7 @@ a=control:trackID=1
 | 항목 | 값 |
 |---|---|
 | 페이로드 | RFC 2435 RTP/JPEG, 정적 페이로드 타입 26, 90 kHz 클럭 |
-| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임** `vision/frame/gray8` (schema `argus.vision.frame.v1`, encoding "gray8", 640×480 8 비트 흑백, 최대 30 FPS. `process_interfaces.md` 5.1). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
+| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임** `vision/frame/gray8` (encoding "gray8", 640×480 8 비트 흑백, 최대 30 FPS. `process_interfaces.md` 5.1). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
 | JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 송신부의 JPEG 인코더(libjpeg-turbo 또는 GStreamer `jpegenc`)를 이 조건으로 설정한다 (progressive 끔, 허프만 테이블 최적화 끔). 흑백(gray8) 입력은 인코딩 전에 4:2:0(I420)으로 변환한다. RFC 2435 type 0·1 은 3 성분 JPEG 만 다루므로 1 성분(흑백) JPEG 은 `rtpjpegpay` 가 전송하지 못한다 (GStreamer 1.24.2 실측: GRAY8 은 "Wrong SOF length" 경고로 0 프레임 수신, I420 은 전부 수신). 색차 성분이 일정값이라 크기 증가는 거의 없다 |
 | 해상도 | IR 640×480. RFC 2435 는 8 px 단위, 최대 2040 px. 2040 px 를 넘는 EO 영상은 ONVIF JPEG RTP 헤더 확장(첫 패킷 0xFFD8, 이후 0xFFFF 식별자로 SOF·DQT·DHT 전달)으로 보낸다 **[미결 8]** |
 | 품질 | 송신부 설정값. 초기값 75, 화질 측정 뒤 조정 **[미결 12]**. 양자화 테이블은 RFC 2435 의 Q 필드로 전달한다: Q 1~99 는 테이블 보내지 않고 수신기가 RFC 2435 부록 A 의 표준 양자화 테이블을 Q 값으로 배율 조정해 만든다. Q 128~255 는 인코더가 쓴 양자화 테이블을 첫 패킷의 Quantization Table 헤더에 담아 보낸다. 어느 쪽을 쓸지는 패킷화 구현(rtpjpegpay 등)이 정하므로, 통제기는 두 방식을 모두 지원해야 한다 |

@@ -7,7 +7,8 @@ line-length = 88              # Ruff·Black 기본값. PEP 8 이 허용하는 99
 target-version = "py312"      # RPi 탐지 venv 가 Python 3.12
 # 검사 대상은 .py·.pyi 만. Ruff 기본값은 Markdown 안의 Python 코드 블록과 .ipynb 도 포함하므로 좁힌다
 include = ["*.py", "*.pyi"]
-extend-exclude = ["common/mavlink/generated"]
+# protobuf 생성 코드(*_pb2.py, *_pb2.pyi)는 검사하지 않는다
+extend-exclude = ["common/mavlink/generated", "onboard/libs/protocol/python/argus_msg/*_pb2.py", "onboard/libs/protocol/python/argus_msg/*_pb2.pyi"]
 
 [tool.ruff.lint]
 # E·W pycodestyle(PEP 8), F pyflakes(기본 오류), N pep8-naming(이름 규칙), I isort(import 순서),
@@ -27,8 +28,18 @@ convention = "google"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-exclude = ["^common/mavlink/generated/", "^build/", "^node_modules/"]
+exclude = ["^common/mavlink/generated/", "^build/", "^node_modules/", "_pb2\\.pyi?$"]
+# 패키지 폴더(onboard/libs/protocol/python 등)가 저장소 루트가 아니므로 파일 경로로 모듈 이름을 정하지 않는다
+explicit_package_bases = true
+mypy_path = "onboard/libs/protocol/python:onboard/vision/python"
 # 타입 정보가 없는 외부 패키지는 패키지별로만 예외를 둔다 (전체 ignore_missing_imports 는 사용하지 않는다). 예:
 # [[tool.mypy.overrides]]
 # module = ["hailo_platform.*"]
 # ignore_missing_imports = true
+
+# protobuf 생성 stub(onboard/libs/protocol/python/argus_msg/*_pb2.pyi)은 import 로 따라 들어오면 exclude 가
+# 적용되지 않는다. protoc 3.21 의 stub 은 repeated 필드에 인자 없는 Mapping 을 써서 strict 검사에 걸리므로
+# 생성 모듈의 오류만 무시한다 (사용하는 쪽의 타입 검사는 그대로)
+[[tool.mypy.overrides]]
+module = ["argus_msg.*"]
+ignore_errors = true

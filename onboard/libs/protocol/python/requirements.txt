@@ -1,0 +1,3 @@
+# argus_msg 생성 코드의 Python 런타임. protoc 3.21.12 가 만든 코드는 런타임 3.20 이상에서 동작한다.
+# RPi 탐지 venv(Python 3.12)와 CI 는 이 파일로 설치한다. Ubuntu 24.04 apt 의 python3-protobuf 3.21.12 도 된다.
+protobuf>=4.21.12
