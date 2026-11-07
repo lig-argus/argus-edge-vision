@@ -49,11 +49,11 @@ transition 의 event [guard] / effect:
 | IDLE·HOLD_WAIT → PREPARING | TRACK_START 수신 | `icd.md` 4.2 조건 ①~⑥ 충족 (⑥ FC 실제 Hold 또는 유효한 Position 인계) | ACK IN_PROGRESS | `icd.md` 4.2 |
 | PREPARING → FOLLOW_ACTIVE | Offboard 진입 확인 | DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard | ACK ACCEPTED | `icd.md` 4.2 |
 | PREPARING → FAULT | Offboard 진입 실패 | 모드 요청 실패, ACK 실패, 실제 모드 확인 시간 초과 중 하나 | ACK FAILED | `icd.md` 4.2 |
-| PREPARING → HOLD_TRANSITION | TRACK_STOP 수신 | — | Hold 요청 | #33 리뷰 (추적·추종 담당) |
+| PREPARING → HOLD_TRANSITION | TRACK_STOP 수신 | — | 진행 중이던 TRACK_START 의 ACK CANCELLED, Hold 요청 | #33 리뷰 (추적·추종 담당), `icd.md` 4.1 |
 | IDLE·HOLD_WAIT → SCAN_ACTIVE | SCAN_START 수신 | 조건 충족, FC Hold | ACK IN_PROGRESS | `icd.md` 4.2 |
 | SCAN_ACTIVE → HOLD_WAIT | yaw 회전량 도달, timeout, 추적 후보 발견 | — | 정지, ACK ACCEPTED | `icd.md` 4.2 |
 | FOLLOW_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음, target_state → LOST | — | Hold 요청 | `icd.md` 4.2, 6.1, 아키텍처 문서 2.7·2.11 |
-| SCAN_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음 | — | Hold 요청 | `icd.md` 4.2, 6.1 |
+| SCAN_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음 | — | TRACK_STOP 이면 진행 중이던 SCAN_START 의 ACK CANCELLED, Hold 요청 | `icd.md` 4.1, 4.2, 6.1 |
 | HOLD_TRANSITION → HOLD_WAIT | FC Hold 확인 | — | ACK ACCEPTED | `icd.md` 4.2 Sequence Diagram |
 | FOLLOW_ACTIVE·SCAN_ACTIVE → MANUAL | Offboard 이탈 | 원인이 조종사 RC 또는 통제기 모드 변경 | — | `icd.md` 4.3, 아키텍처 문서 2.11·2.20 |
 | PREPARING·FOLLOW_ACTIVE·SCAN_ACTIVE → FAULT | FC telemetry 2 s 없음, `follow/status` 3 s 없음, setpoint 유효 시간 초과, Offboard 이탈 | Offboard 이탈은 원인이 failsafe 일 때 (PREPARING 제외) | 속도 0, Hold 요청 | `icd.md` 6.2, 6.4, 4.3, `process_interfaces.md` 6장 |
@@ -98,3 +98,4 @@ stateDiagram-v2
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 추적·추종 담당 리뷰 반영(#33): Offboard 진입 확인은 ACK + 실제 모드, 실패는 FAULT, PREPARING 중 TRACK_STOP, MANUAL·FAULT 복구는 TRACK_STOP + 안전 조건 → HOLD_WAIT. 미결 A·B 해소, C·D 추가 후 해소(표적 NONE 시점, PREDICTED 유지 조건), LOST → NONE 도 TRACK_STOP 적용 때로 |
+| 0.3 | 2026-11-08 | PREPARING, SCAN_ACTIVE 에서 TRACK_STOP 수신 시 진행 중 명령의 ACK CANCELLED (#62 리뷰) |

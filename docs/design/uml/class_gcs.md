@@ -93,7 +93,7 @@ classDiagram
 | `FakeMavlinkConnection`, `FakeClock` | 테스트용 구현. `gcs/test/` 에 두고 Qt Test 만 링크한다. `simulateMessageReceived()` 가 signal 을 발생시키고, `FakeClock::advanceNs()` 로 시각을 지정한다 | — |
 | `TelemetryModel` | HEARTBEAT `custom_mode` → PX4 모드(부록 A), SYS_STATUS·GPS·ATTITUDE·VFR_HUD·BATTERY 표시값. 기대 주기의 2 배 늦으면 "지연", FC HEARTBEAT 3 s 없으면 "연결 끊김" | icd 2장, 6장 |
 | `ArgusStatusModel` | `ARGUS_STATUS`(임무·표적 상태, 선택 표적, health, control_sysid), `ARGUS_SENSOR_STATUS`(센서별 flags, FOLLOWABLE) | icd 3.1, 부록 B |
-| `CommandSender` | COMMAND_LONG 송신. 응답을 기다리는 명령을 (target_component, MAV_CMD) 를 키로 하는 표(`Pending`: 보낸 내용, 보낸 시각, 보낸 횟수, IN_PROGRESS 여부, 마지막 ACK 시각, 결과 promise)에 두고, 같은 키가 있으면 `send()` 를 거부한다 (화면에서 버튼 차단). argus 명령은 송신마다 명령 번호를 1 증가시켜 `param7` 에 넣고 재전송은 같은 번호. 받은 COMMAND_ACK 는 `target_system` 이 250, `target_component` 가 190 이고 보낸 compid 와 `command` 가 표의 키와 같을 때만 처리. ACK 1 s 없으면 재전송(`confirmation` 증가) 3 회, 뒤에도 없으면 "응답 없음". IN_PROGRESS 를 받으면 재전송을 멈추고 `progress` 를 진행 막대로 표시, 마지막 IN_PROGRESS 뒤 3 s 안에 다음 ACK 가 없으면 "응답 없음". TEMPORARILY_REJECTED 는 "지금은 불가, 재시도 가능" 으로, DENIED·FAILED 의 원인은 STATUSTEXT 와 묶어 표시 | icd 4.1 |
+| `CommandSender` | COMMAND_LONG 송신. 응답을 기다리는 명령을 (target_component, MAV_CMD) 를 키로 하는 표(`Pending`: 보낸 내용, 보낸 시각, 보낸 횟수, IN_PROGRESS 여부, 마지막 ACK 시각, 결과 promise)에 두고, 같은 키가 있으면 `send()` 를 거부한다 (화면에서 버튼 차단). argus 명령은 송신마다 명령 번호를 1 증가시켜 `param7` 에 넣고 재전송은 같은 번호 (시작값은 기동 시각 ms mod 2^24). 받은 COMMAND_ACK 는 `target_system` 이 250, `target_component` 가 190 이고 보낸 compid 와 `command` 가 표의 키와 같을 때만 처리. ACK 1 s 없으면 재전송(`confirmation` 증가) 3 회, 뒤에도 없으면 "응답 없음". IN_PROGRESS 를 받으면 재전송을 멈추고 `progress` 를 진행 막대로 표시, 마지막 IN_PROGRESS 뒤 3 s 안에 다음 ACK 가 없으면 "응답 없음". TEMPORARILY_REJECTED 는 "지금은 불가, 재시도 가능" 으로, CANCELLED 는 진행 중이던 명령이 TRACK_STOP 으로 취소된 결과로, DENIED·FAILED 의 원인은 STATUSTEXT 와 묶어 표시 | icd 4.1 |
 | `FlightCommands` | ARM/DISARM·TAKEOFF·LAND·RTL·DO_SET_MODE 를 FC(compid 1)로. Position 모드에서 위치 추정 없으면 ARM 안 보냄. 추종 중 모드 변경은 확인 창 | icd 4.3 |
 | `FollowCommands` | TRACK_START·TRACK_STOP·SCAN_START 를 onboard(compid 195)로. 매개변수 범위(2^24−1, rad) | icd 4.2 |
 | `ManualControl` | MANUAL_CONTROL 20 Hz, 켜져 있는 동안만 | icd 2장 |
@@ -125,3 +125,4 @@ classDiagram
 | 0.2 | 2026-10-25 | onboard 와 이름 맞춤(#40): `IMavlinkIo`→`IMavlinkConnection`, `MavlinkClient`→`UdpMavlinkConnection`. `CommandSender` 에 IN_PROGRESS 뒤 3 s 대기, `progress` 표시, TEMPORARILY_REJECTED 뒤 처리 |
 | 0.3 | 2026-10-26 | 코드(#43)와 맞춤: `IMavlinkConnection` 을 `QObject` 와 signal 로, `IClock`, `SteadyClock` 과 테스트용 구현 행, 검토 3(폴더 구조) 해소 |
 | 0.4 | 2026-11-07 | `CommandSender` 에 응답 대기 표(같은 (compid, MAV_CMD) 는 송신 거부), 명령 번호(`param7`) 발급, COMMAND_ACK 대상 필드 확인, TEMPORARILY_REJECTED 표시 (#61) |
+| 0.5 | 2026-11-08 | `CommandSender` 의 번호 시작값(기동 시각), CANCELLED 표시 (#62 리뷰) |
