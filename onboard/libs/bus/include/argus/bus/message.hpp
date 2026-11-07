@@ -1,7 +1,6 @@
-// bus 가 나르는 ZeroMQ multipart 메시지 하나.
-// bus 는 protobuf 본문을 파싱하지 않고 바이트 그대로 전달한다. 구조체로 바꾸는 일은 어댑터가 한다.
-// 규약: docs/spec/process_interfaces.md 3장
-//       (frame[0] 토픽, frame[1] protobuf 본문, frame[2] 바이너리)
+// bus 가 나르는 메시지 하나. 직렬화된 바이트를 그대로 전달하고, 구조체로 바꾸는 일은 어댑터가 한다.
+// 규약: docs/spec/process_interfaces.md 3장 (직렬화한 본문 하나와, 필요하면 본문과 따로 보내는
+// 바이트 열 하나)
 #ifndef ARGUS_BUS_MESSAGE_HPP_
 #define ARGUS_BUS_MESSAGE_HPP_
 
@@ -14,13 +13,12 @@ namespace argus::bus {
 using Bytes = std::vector<std::uint8_t>;
 
 struct BusMessage {
-    // frame[0]: 토픽 이름 또는 RPC 이름 (argus/protocol/topics.hpp 의 상수)
-    std::string topic;
-    // frame[1] 부터의 frame. parts[0] = protobuf 본문, parts[1] = 바이너리(선택, 예: gray8 픽셀)
-    std::vector<Bytes> parts;
+    std::string topic;  // 토픽 이름 또는 요청-응답 이름 (argus/protocol/topics.hpp 의 상수)
+    Bytes body;         // 직렬화된 본문
+    Bytes binary;       // 선택. 큰 바이너리(예: gray8 픽셀). 비어 있으면 없음
 
     friend bool operator==(const BusMessage& lhs, const BusMessage& rhs) {
-        return lhs.topic == rhs.topic && lhs.parts == rhs.parts;
+        return lhs.topic == rhs.topic && lhs.body == rhs.body && lhs.binary == rhs.binary;
     }
     friend bool operator!=(const BusMessage& lhs, const BusMessage& rhs) { return !(lhs == rhs); }
 };

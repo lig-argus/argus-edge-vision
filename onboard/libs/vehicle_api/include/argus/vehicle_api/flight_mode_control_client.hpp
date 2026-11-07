@@ -1,6 +1,6 @@
 // 비행 모드 전환을 요청하는 인터페이스 (호출용. 응답은 handler 로 비동기로 받는다)
 // 규약: docs/spec/process_interfaces.md 3장(요청 공통 필드), 5.2 control/mode_request
-// 구현: (다음 PR) ZmqFlightModeControlClient (vehicle_api_zmq, bus::IRpcClient 로 보냄),
+// 구현: (다음 PR) ZmqFlightModeControlClient (vehicle_api_zmq, bus::IRequester 로 보냄),
 //      테스트용 FakeFlightModeControlClient (vehicle_api_testing)
 // 사용: 추종 제어(FollowController)
 #ifndef ARGUS_VEHICLE_API_FLIGHT_MODE_CONTROL_CLIENT_HPP_

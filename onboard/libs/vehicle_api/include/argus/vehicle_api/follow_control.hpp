@@ -10,7 +10,7 @@
 
 namespace argus::vehicle_api {
 
-// 공통 계약
+// 공통 contract
 // - 반환값은 요청을 받은 시점에 정해지는 결과다 (수락하면 InProgress, 조건 불충족이면 Rejected).
 //   그 뒤의 진행(Succeeded, Failed)은 follow/status 의 command_results 에서 같은 command_id 로
 //   찾는다.

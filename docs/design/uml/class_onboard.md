@@ -5,9 +5,9 @@
 | 참조 문서 | `docs/spec/icd.md` 1·2·3·4·5·6장, `docs/spec/process_interfaces.md` 3·5·6장 |
 | 표기 | Mermaid `classDiagram`. `<<interface>>` 는 순수 가상 클래스. `<\|..` 구현, `*--` 소유, `..>` 사용. 멤버는 책임을 보이는 것만 적고 전체 목록이 아니다 |
 | 범위 | onboard 프로세스 하나. 추종 제어 쪽 어댑터는 `class_follow.md`, 영상 송신부는 `class_video.md` |
-| 코드 | `onboard/libs/core`(시계, 루프, Subscription), `onboard/libs/bus`(ZeroMQ 인터페이스), `onboard/libs/protocol`(토픽·RPC 이름, 기본 엔드포인트), `onboard/libs/vehicle_api`(프로세스 사이 인터페이스), `onboard/apps/onboard`(이 문서의 2·3절) |
+| 코드 | `onboard/libs/core`(시계, 루프, Subscription), `onboard/libs/bus`(통신 인터페이스), `onboard/libs/protocol`(토픽·요청-응답 이름, queue_depth, ZeroMQ 기본 엔드포인트), `onboard/libs/vehicle_api`(프로세스 사이 인터페이스), `onboard/apps/onboard`(이 문서의 2·3절) |
 
-## 1. 공통 인터페이스 (MAVLink, ZeroMQ, 시계, 실행 루프)
+## 1. 공통 인터페이스 (MAVLink, bus, 시계, 실행 루프)
 
 ```mermaid
 classDiagram
@@ -20,26 +20,40 @@ classDiagram
         -socket UDP 14540
         -seq per compid 191·195
     }
+    class IBus {
+        <<interface>>
+        +create_publisher(topic, queue_depth) ITopicPublisher
+        +create_subscriber(topic, queue_depth) ITopicSubscriber
+        +create_requester(name) IRequester
+        +create_replier(name) IReplier
+    }
     class ITopicPublisher {
         <<interface>>
-        +publish(BusMessage)
+        +topic()
+        +publish(body, binary) bool
     }
     class ITopicSubscriber {
         <<interface>>
-        +subscribe(topic, handler) Subscription
+        +topic()
+        +subscribe(handler) Subscription
     }
-    class IRpcClient {
+    class IRequester {
         <<interface>>
-        +call(request, timeout, on_reply) Subscription
+        +name()
+        +request(request, timeout, on_reply) Subscription
     }
-    class IRpcServer {
+    class IReplier {
         <<interface>>
-        +serve(name, handler) Subscription
+        +name()
+        +serve(handler) Subscription
+    }
+    class ZmqBus {
+        -endpoints 토픽 이름 → 주소, bind/connect
     }
     class ZmqTopicPublisher
     class ZmqTopicSubscriber
-    class ZmqRpcClient
-    class ZmqRpcServer
+    class ZmqRequester
+    class ZmqReplier
     class IClock {
         <<interface>>
         +now_monotonic_ns() int64
@@ -62,10 +76,15 @@ classDiagram
     }
 
     IMavlinkConnection <|.. UdpMavlinkConnection
+    IBus <|.. ZmqBus
+    IBus ..> ITopicPublisher : create
+    IBus ..> ITopicSubscriber : create
+    IBus ..> IRequester : create
+    IBus ..> IReplier : create
     ITopicPublisher <|.. ZmqTopicPublisher
     ITopicSubscriber <|.. ZmqTopicSubscriber
-    IRpcClient <|.. ZmqRpcClient
-    IRpcServer <|.. ZmqRpcServer
+    IRequester <|.. ZmqRequester
+    IReplier <|.. ZmqReplier
     IClock <|.. SteadyClock
     IPoller <|.. ZmqPoller
     EventLoop ..> IPoller : process_events
@@ -74,9 +93,9 @@ classDiagram
 ```
 
 - `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryPublisher`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 onboard 만 쓰므로 `apps/onboard/test/` 에 있다.
-- bus 넷은 `process_interfaces.md` 3장의 PUB/SUB·REQ/REP 를 옮긴 것이다. bus 는 바이트(`BusMessage{topic, parts}`)만 나르고, protobuf 메시지 ↔ 구조체 변환은 어댑터(`vehicle_api_zmq`)가 한다. 메시지 정의(`.proto`)와 생성 코드는 `protocol` 모듈에 있다. RPC 호출 `call` 은 응답을 기다리지 않고 바로 반환하며 응답은 `on_reply` 로 받는다.
-- 모든 handler(토픽 구독, RPC 응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. onboard 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
-- `Subscription` 은 모든 등록 함수(`subscribe`, `serve`, `call`, `add_periodic`)가 반환하는 RAII handle 이다. 객체가 사라지면 등록이 해제된다.
+- `IBus` 는 프로세스가 붙는 메시지 통로이며 토픽 발행자, 구독자, 요청하는 쪽, 응답하는 쪽을 만든다 (ROS 2 rmw 의 node, DDS 의 DomainParticipant 에 해당). main 에서 하나를 만들어 주입하고, 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 `IBus` 와 넷은 바뀌지 않는다. 구현별 설정(주소, QoS 프로파일)은 구현 클래스의 생성자 인자다. bus 는 바이트(`BusMessage{topic, body, binary}`)만 나르고, 직렬화 ↔ 구조체 변환은 어댑터가 한다. 메시지 정의(`.proto`)와 생성 코드는 `protocol` 모듈에 있다. `publish` 는 기다리지 않으며 보내지 못했을 때만 false 를 반환한다. true 가 모든 구독자의 수신을 뜻하지는 않는다. `request` 는 응답을 기다리지 않고 바로 반환하며 응답은 `on_reply` 로 받는다. 모든 구현이 따라야 하는 contract 는 `bus/bus.hpp` 파일 상단 주석.
+- 모든 handler(토픽 구독, 요청-응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. onboard 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
+- `Subscription` 은 모든 등록 함수(`subscribe`, `serve`, `request`, `add_periodic`)가 반환하는 RAII handle 이다. 객체가 사라지면 등록이 해제된다.
 - `IClock` 은 두절·유효 시간 판정(2 s, 3 s, `valid_until_monotonic_ns`)을 테스트에서 기다리지 않고 검사하기 위한 것이다. 테스트용 `FakeClock`, `FakePoller` 는 `core_testing`, `FakeBus` 는 `bus_testing` 에 있다.
 - 토픽·RPC 이름과 기본 포트는 문자열을 직접 쓰지 않고 `protocol` 모듈의 상수를 쓴다.
 
@@ -145,7 +164,7 @@ classDiagram
     IVelocitySetpointSink <|.. MavlinkVelocitySetpointSink
     MavlinkVelocitySetpointSink ..> IFcCommandGate : 송신 전 allow
     MavlinkVelocitySetpointSink ..> IMavlinkConnection : SET_POSITION_TARGET_LOCAL_NED
-    ZmqFlightModeControlServer ..> IRpcServer : control/mode_request
+    ZmqFlightModeControlServer ..> IReplier : control/mode_request
     ZmqFlightModeControlServer ..> IFlightModeControl
     IFlightModeControl <|.. MavlinkFlightModeControl
     MavlinkFlightModeControl ..> IFcCommandGate : 송신 전 allow
@@ -246,7 +265,7 @@ classDiagram
     ScanStartHandler ..> IFollowControlClient
     TrackStartHandler ..> IFollowStatusSubscriber : command_results 의 같은 command_id
     IFollowControlClient <|.. ZmqFollowControlClient
-    ZmqFollowControlClient ..> IRpcClient : follow/command
+    ZmqFollowControlClient ..> IRequester : follow/command
     IFollowStatusSubscriber <|.. ZmqFollowStatusSubscriber
     ZmqFollowStatusSubscriber ..> ITopicSubscriber : follow/status
     LatestTracks ..> ITopicSubscriber : tracking/tracks
@@ -271,7 +290,7 @@ classDiagram
 | `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사. IN_PROGRESS 의 `progress` 는 `follow/status` 의 `scan_progress_deg / scan_config.sweep_rad` | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
-| `ZmqFollowControlClient` | `IFollowControlClient` 구현. `follow/command` REQ 에 `RequestHeader`(`RequestId` 와 유효 기한)를 넣어 `IRpcClient::call` 로 보내고, REP 의 `follow/result` 를 `FollowResult` 로 바꿔 handler 에 전달. 응답 시간 초과는 nullopt | pi 5.2.1, 6장 |
+| `ZmqFollowControlClient` | `IFollowControlClient` 구현. `follow/command` 요청에 `RequestHeader`(`RequestId` 와 유효 기한)를 넣어 `IRequester::request` 로 보내고, REP 의 `follow/result` 를 `FollowResult` 로 바꿔 handler 에 전달. 응답 시간 초과는 nullopt | pi 5.2.1, 6장 |
 | `IFollowStatusSubscriber`, `ZmqFollowStatusSubscriber` | `follow/status` 를 한 번 구독해 최신 값을 두고(`latest()`), 바뀔 때 등록된 handler(`ArgusStatusReporter`, 명령 handler)에 전달(`subscribe()` → `Subscription`). `IVehicleTelemetry` 와 같은 모양(한 번 받아 나눔: MAVSDK `Telemetry`). 테스트용 `FakeFollowStatusSubscriber` 는 `apps/onboard/test/` 에 두고 테스트가 `FollowStatus` 값을 바로 넣는다 | pi 5.1.2 |
 | `ArgusStatusReporter` | `follow/status` 의 `mission_state`·`target_state`·`selected`·스캔 진행을 ARGUS_STATUS 로 1 Hz + 변경 시 1회. `follow/status` 3 s 두절 → FAULT 보고와 Hold 요청 | icd 3.1, 6.4 |
 | `ArgusSensorStatusReporter` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시 | icd 3.1 |
@@ -287,7 +306,7 @@ classDiagram
 |---|---|---|
 | S 단일 책임 | 2·3절 모든 클래스 | 규약의 한 항목(메시지 하나·판정 하나)에 클래스 하나. 보내는 클래스(`Mavlink…`)는 인코드와 송신만, 판정은 `FcCommandGate`, 응답 규칙은 `MavlinkCommandReceiver` |
 | O 개방-폐쇄 | `MavlinkCommandReceiver` + `IMavlinkCommandHandler` | 명령 추가 = handler 클래스 추가·등록. Receiver 수정 없음 |
-| L 치환 | `IMavlinkConnection`, `IClock`, `IPoller`, bus 넷, `IFcCommandGate`, `IFollowControlClient`, `IFollowStatusSubscriber` | `Fake*` 가 같은 계약(handler 는 `process_events()` 안에서, 시간 제한, 거부 원인)을 지켜 테스트에서 교체 |
+| L 치환 | `IMavlinkConnection`, `IClock`, `IPoller`, bus 넷, `IFcCommandGate`, `IFollowControlClient`, `IFollowStatusSubscriber` | `Fake*` 가 같은 contract(handler 는 `process_events()` 안에서, 시간 제한, 거부 원인)을 지켜 테스트에서 교체 |
 | I 인터페이스 분리 | bus 넷, `IFcCommandGate` | 발행만 하는 클래스가 구독 API 를 보지 않음. 보내는 클래스는 gate 의 `allow` 만 보고 송신권 관리 API 를 보지 않음 |
 | D 의존 역전 | 2·3절 전부 | 구체 `UdpMavlinkConnection`·`Zmq*`·`SteadyClock` 은 조립 지점(`main`)에서만 보이고, 나머지는 인터페이스에만 의존. gate 는 `vehicle_api` 값만 받아 MAVLink 를 모른다 |
 
@@ -310,3 +329,4 @@ classDiagram
 | 0.5 | 2026-10-25 | 코드와 이름 맞춤(#40): 1절에 `IPoller`·`EventLoop`·`Subscription`, `IMavlinkIo`→`IMavlinkConnection`(subscribe), bus 넷 이름, `IClock.now_monotonic_ns`. 2절 `FcTelemetry`→`FcTelemetryPublisher`, `SetpointRelay`→`ZmqVelocitySetpointReceiver`+`MavlinkVelocitySetpointSink`, `ModeRequestServer`→`ZmqFlightModeControlServer`+`MavlinkFlightModeControl`, `FcWriteAuthority`→`FcCommandAuthority`, 송신 전 확인을 `IFcCommandGate` 한 곳으로. 3절 `ICommandHandler`→`IMavlinkCommandHandler`(응답은 `CommandResponder`), `CommandDispatcher`→`MavlinkCommandReceiver`(재전송·재송신 규칙), `FollowCommandClient`→`ZmqFollowControlClient`(`IFollowControlClient` 구현, 비동기), `IFollowStatusSubscriber`·`ZmqFollowStatusSubscriber` 추가, `SensorStatusReporter`→`ArgusSensorStatusReporter`, `SensorMap`→`SensorSourceMap`. 검토 1·3 해소, 4·5 추가 |
 | 0.6 | 2026-10-29 | 1절 한 스레드 규칙의 범위를 onboard 프로세스로 한정(#40 리뷰), `IMavlinkCommandHandler` 의 "첫 결과" 를 "통제기에 보내는 첫 응답" 으로, `ZmqFollowControlClient` 의 `RequestHeader` 구성을 `RequestId` 로 |
 | 0.7 | 2026-11-06 | 1절 직렬화를 MessagePack 에서 protobuf 로, 메시지 정의는 `protocol` 모듈 (#56) |
+| 0.8 | 2026-11-07 | 1절에 `IBus`(넷을 생성, 구현 `ZmqBus`), `IRpcClient`→`IRequester`, `IRpcServer`→`IReplier`, `call`→`request`, `BusMessage{topic, body, binary}`, `publish` 반환 bool, "ZeroMQ 인터페이스"→"통신 인터페이스", "계약"→contract (#60) |

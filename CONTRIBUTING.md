@@ -73,11 +73,11 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 | 대상 | 규칙 | 예 |
 |---|---|---|
 | 인터페이스 | `I` + 역할 이름. 값 타입과 같은 이름은 사용하지 않는다 | `IVehicleTelemetry` (값 타입 `VehicleState` 와 구분), `IVelocitySetpointSink` (값 타입 `VelocitySetpoint` 와 구분) |
-| 구현 클래스 | 방식 + 인터페이스 이름에서 `I` 를 뺀 것. 방식은 전송 방식이나 기술의 이름(`Zmq`, `Udp`, `Mavlink`, `Steady`, `Fake`)이고 대상 이름(`Fc`)은 방식이 아니다 | `ZmqRpcClient`, `UdpMavlinkConnection`, `MavlinkFlightModeControl`, `SteadyClock`, `FakeClock` |
+| 구현 클래스 | 방식 + 인터페이스 이름에서 `I` 를 뺀 것. 방식은 전송 방식이나 기술의 이름(`Zmq`, `Udp`, `Mavlink`, `Steady`, `Fake`)이고 대상 이름(`Fc`)은 방식이 아니다 | `ZmqRequester`, `UdpMavlinkConnection`, `MavlinkFlightModeControl`, `SteadyClock`, `FakeClock` |
 | 테스트용 구현 | `Fake` + 인터페이스 이름에서 `I` 를 뺀 것 | `FakeMavlinkConnection`, `FakeFollowControl` |
 | RPC 의 두 쪽 | 구현하는 쪽(동기, 결과를 바로 반환)은 역할 이름, 호출하는 쪽(비동기, 응답은 handler 로)은 `…Client` | `IFollowControl` / `IFollowControlClient`, `IFlightModeControl` / `IFlightModeControlClient` |
 | 받는 쪽 어댑터 | 응답하면 `…Server`, 받아서 다른 곳으로 넘기면 `…Receiver`, 최신 값을 들고 나눠 주면 `…Subscriber` | `ZmqFollowControlServer`, `ZmqVelocitySetpointReceiver`, `ZmqFollowStatusSubscriber` |
-| 보내는 쪽 | ZeroMQ 토픽 발행은 `…Publisher`, MAVLink 로 통제기에 보고는 `…Reporter`, 받은 값을 밖으로 내보내는 끝은 `…Sink` | `FcTelemetryPublisher`, `ArgusStatusReporter`, `MavlinkVelocitySetpointSink` |
+| 보내는 쪽 | 토픽 발행은 `…Publisher`, MAVLink 로 통제기에 보고는 `…Reporter`, 받은 값을 밖으로 내보내는 끝은 `…Sink` | `FcTelemetryPublisher`, `ArgusStatusReporter`, `MavlinkVelocitySetpointSink` |
 | `Argus` 접두사 | MAVLink 메시지 이름(`ARGUS_STATUS` 등)을 딴 클래스에만 사용한다. 프로젝트 이름으로 붙이지 않는다(namespace `argus` 가 그 역할) | `ArgusStatusReporter`, `ArgusSensorStatusReporter` |
 | 등록 함수 | 이름은 `subscribe…`, 반환은 `[[nodiscard]] core::Subscription` (객체가 사라지면 등록이 해제됨). `on_…(handler)` 처럼 해제 수단이 없는 형태는 사용하지 않는다 | `subscribe(msgid, handler)`, `subscribe_flight_mode_events(handler)` |
 | 테스트용 구현의 함수 | 메시지 수신, 응답 도착, 모드 변경처럼 바깥에서 일어나는 일을 테스트가 대신 일으키는 함수는 `simulate_` + 도착한 메시지, 응답, 이벤트의 이름. 반환값을 미리 정하는 함수는 `set_` + 그 값의 이름 (Chromium 의 Fake 관례 `Simulate…`, `Set…`) | `simulate_message_received(message)`, `simulate_frame_received(frame)`, `simulate_reply(result)`, `simulate_flight_mode_event(event)`, `set_send_result(false)` |

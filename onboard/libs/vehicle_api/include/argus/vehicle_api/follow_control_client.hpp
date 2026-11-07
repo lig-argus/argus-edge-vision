@@ -1,6 +1,6 @@
 // 추종, 스캔 명령을 보내는 인터페이스 (호출용. 응답은 handler 로 비동기로 받는다)
 // 규약: docs/spec/process_interfaces.md 5.2 follow/command, 5.2.1 follow/result
-// 구현: (다음 PR) ZmqFollowControlClient (vehicle_api_zmq, bus::IRpcClient 로 보냄),
+// 구현: (다음 PR) ZmqFollowControlClient (vehicle_api_zmq, bus::IRequester 로 보냄),
 //      테스트용 FakeFollowControlClient (vehicle_api_testing)
 // 사용: onboard 의 TrackStartHandler, TrackStopHandler, ScanStartHandler, GcsLinkMonitor
 #ifndef ARGUS_VEHICLE_API_FOLLOW_CONTROL_CLIENT_HPP_
@@ -22,7 +22,7 @@ namespace argus::vehicle_api {
 // - 반환된 Subscription 이 먼저 사라지면 handler 는 불리지 않는다. 보낸 요청은 취소되지 않는다.
 // - 요청을 받은 시점에 정해지는 결과(InProgress 또는 Rejected)만 이 handler 로 온다. 이후
 //   진행은 follow/status 의 command_results 에서 같은 command_id 로 찾는다 (IFollowControl 의
-//   공통 계약과 같다).
+//   공통 contract 와 같다).
 class IFollowControlClient {
 public:
     using ResultHandler = std::function<void(std::optional<FollowResult>)>;
