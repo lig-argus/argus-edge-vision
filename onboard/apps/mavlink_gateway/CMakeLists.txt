@@ -17,3 +17,30 @@ argus_add_test(mavlink_gateway_fake_mavlink_connection_test
                LIBS argus::mavlink_gateway_interfaces argus::core_testing)
 argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_responder_test.cpp
                LIBS argus::mavlink_gateway_interfaces)
+
+# main.cpp 를 제외한 mavlink_gateway 의 소스. 실행 파일과 테스트가 링크한다
+add_library(argus_mavlink_gateway_core STATIC
+    src/fc_link_tracker.cpp
+    src/fc_telemetry_receiver.cpp
+    src/px4_flight_mode.cpp
+    src/time_sync.cpp
+    src/udp_mavlink_connection.cpp)
+add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
+target_link_libraries(argus_mavlink_gateway_core
+    PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus_onboard_warnings)
+
+argus_add_test(mavlink_gateway_health_state_test SOURCES test/health_state_test.cpp
+               LIBS argus::mavlink_gateway_interfaces)
+argus_add_test(mavlink_gateway_px4_flight_mode_test SOURCES test/px4_flight_mode_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_mavlink_handler_registry_test SOURCES test/mavlink_handler_registry_test.cpp
+               LIBS argus::mavlink_gateway_interfaces)
+# UdpMavlinkConnection 테스트는 loopback UDP 소켓을 실제로 연다
+argus_add_test(mavlink_gateway_udp_mavlink_connection_test SOURCES test/udp_mavlink_connection_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_time_sync_test SOURCES test/time_sync_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_fc_link_tracker_test SOURCES test/fc_link_tracker_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_fc_telemetry_receiver_test SOURCES test/fc_telemetry_receiver_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
