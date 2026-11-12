@@ -213,8 +213,8 @@ classDiagram
         +on_command_long(msg)
         +tick() 1 Hz
     }
-    class TrackStartHandler
-    class TrackStopHandler
+    class FollowStartHandler
+    class StopHandler
     class ScanStartHandler
     class ControlAuthority {
         +is_controller(sysid) bool
@@ -224,7 +224,7 @@ classDiagram
     }
     class IFollowControlClient {
         <<interface>>
-        +track_start(header, target, timeout, on_result) Subscription
+        +follow_start(header, target, timeout, on_result) Subscription
         +stop(header, reason, timeout, on_result) Subscription
         +scan_start(header, scan, timeout, on_result) Subscription
     }
@@ -251,19 +251,19 @@ classDiagram
         +tick()
     }
 
-    IMavlinkCommandHandler <|.. TrackStartHandler
-    IMavlinkCommandHandler <|.. TrackStopHandler
+    IMavlinkCommandHandler <|.. FollowStartHandler
+    IMavlinkCommandHandler <|.. StopHandler
     IMavlinkCommandHandler <|.. ScanStartHandler
     MavlinkCommandReceiver *-- IMavlinkCommandHandler
     MavlinkCommandReceiver ..> CommandResponder : 명령마다 하나 만들어 handler 에 넘김
     MavlinkCommandReceiver ..> IMavlinkConnection : COMMAND_LONG 수신, COMMAND_ACK·STATUSTEXT 송신
     MavlinkCommandReceiver ..> IClock : 재송신 1 s, 기록 정리 60 s
-    TrackStartHandler ..> ControlAuthority : 조건 ①
-    TrackStartHandler ..> LatestTracks : 조건 ④
-    TrackStartHandler ..> IFollowControlClient
-    TrackStopHandler ..> IFollowControlClient
+    FollowStartHandler ..> ControlAuthority : 조건 ①
+    FollowStartHandler ..> LatestTracks : 조건 ④
+    FollowStartHandler ..> IFollowControlClient
+    StopHandler ..> IFollowControlClient
     ScanStartHandler ..> IFollowControlClient
-    TrackStartHandler ..> IFollowStatusSubscriber : command_results 의 같은 command_id
+    FollowStartHandler ..> IFollowStatusSubscriber : command_results 의 같은 command_id
     IFollowControlClient <|.. ZmqFollowControlClient
     ZmqFollowControlClient ..> IRequester : follow/command
     IFollowStatusSubscriber <|.. ZmqFollowStatusSubscriber
@@ -285,9 +285,9 @@ classDiagram
 |---|---|---|
 | `IMavlinkCommandHandler` | MAV_CMD 하나를 처리. `handle(request, responder)` 로 받고, 결과는 반환값이 아니라 `responder.send()` 로 보낸다. 통제기에 보내는 첫 응답(IN_PROGRESS 또는 DENIED)도 추종 제어의 응답 뒤에 정해지므로 비동기 | icd 4.1·4.2 |
 | `CommandResponder` | 명령 하나의 응답 통로. IN_PROGRESS 는 여러 번(진행률이 바뀔 때), 그 외 결과는 최종으로 한 번만 보내고 그 뒤 `send()` 는 무시. 최종을 보내지 않고 사라지면 소멸자가 FAILED 를 보낸다. 이동만 가능하며, 콜백 여러 개가 함께 들 때는 `shared_ptr` 로 싼다 | icd 4.1 |
-| `MavlinkCommandReceiver` | `target_system = 1`, `target_component = 195` 인 COMMAND_LONG 만 받아(그 밖은 응답 없이 폐기) MAV_CMD 로 handler 에 넘기고, `CommandResponder` 가 보낸 결과를 COMMAND_ACK(`progress`, 보낸 쪽 sysid 와 compid 포함)로, DENIED·FAILED 의 원인을 STATUSTEXT 로 보낸다. 모르는 명령은 UNSUPPORTED, COMMAND_INT 는 COMMAND_LONG_ONLY. 표에 (sysid, compid, MAV_CMD) 마다 명령 번호(`param7`)와 마지막 ACK, 시각을 두고: 번호가 같은 재전송에는 handler 를 부르지 않고 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK 를 재송신. (sysid, compid, MAV_CMD) 마다 마지막 번호와 최종 ACK 를 다음 명령까지 보관하고, 더 오래된 번호는 폐기(24 비트 순환 비교). 명령은 동시에 하나만 처리하며 진행 중에 같은 MAV_CMD 나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령은 1 s 마다 IN_PROGRESS 재송신 | icd 4.1 |
-| `TrackStartHandler` | 조건 ①(제어권) ③(FOLLOWABLE) ④(최신 추적 결과) ⑤(`mission_state`) 와 매개변수 범위 검사 → DENIED 또는 `IFollowControlClient::track_start`. 응답(`FollowResult`)으로 첫 ACK, 이후 `follow/status.command_results` 의 같은 command_id 로 최종 ACK. MAVLink param 을 `TrackTarget` 으로 바꾸는 함수와 조건 판정 함수를 나눠 둔다 | icd 4.2 |
-| `TrackStopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사. IN_PROGRESS 의 `progress` 는 `follow/status` 의 `scan_progress_deg / scan_config.sweep_rad` | icd 4.2 |
+| `MavlinkCommandReceiver` | `target_system = 1`, `target_component = 195` 인 COMMAND_LONG 만 받아(그 밖은 응답 없이 폐기) MAV_CMD 로 handler 에 넘기고, `CommandResponder` 가 보낸 결과를 COMMAND_ACK(`progress`, 보낸 쪽 sysid 와 compid 포함)로, DENIED·FAILED 의 원인을 STATUSTEXT 로 보낸다. 모르는 명령은 UNSUPPORTED, COMMAND_INT 는 COMMAND_LONG_ONLY. 표에 (sysid, compid, MAV_CMD) 마다 명령 번호(`param7`)와 마지막 ACK, 시각을 두고: 번호가 같은 재전송에는 handler 를 부르지 않고 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK 를 재송신. (sysid, compid, MAV_CMD) 마다 마지막 번호와 최종 ACK 를 다음 명령까지 보관하고, 더 오래된 번호는 폐기(24 비트 순환 비교). 명령은 동시에 하나만 처리하며 진행 중에 같은 MAV_CMD 나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령은 1 s 마다 IN_PROGRESS 재송신 | icd 4.1 |
+| `FollowStartHandler` | 조건 ①(제어권) ③(FOLLOWABLE) ④(최신 추적 결과) ⑤(`mission_state`) 와 매개변수 범위 검사 → DENIED 또는 `IFollowControlClient::follow_start`. 응답(`FollowResult`)으로 첫 ACK, 이후 `follow/status.command_results` 의 같은 command_id 로 최종 ACK. MAVLink param 을 `TrackTarget` 으로 바꾸는 함수와 조건 판정 함수를 나눠 둔다 | icd 4.2 |
+| `StopHandler`, `ScanStartHandler` | 같은 방식. Scan 은 NaN 을 설정 기본값으로 바꾸고 범위 검사. IN_PROGRESS 의 `progress` 는 `follow/status` 의 `scan_progress_deg / scan_config.sweep_rad` | icd 4.2 |
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
 | `ZmqFollowControlClient` | `IFollowControlClient` 구현. `follow/command` 요청에 `RequestHeader`(`RequestId` 와 유효 기한)를 넣어 `IRequester::request` 로 보내고, REP 의 `follow/result` 를 `FollowResult` 로 바꿔 handler 에 전달. 응답 시간 초과는 nullopt | pi 5.2.1, 6장 |
@@ -295,7 +295,7 @@ classDiagram
 | `ArgusStatusReporter` | `follow/status` 의 `mission_state`·`target_state`·`selected`·스캔 진행을 ARGUS_STATUS 로 1 Hz + 변경 시 1회. `follow/status` 3 s 두절 → FAULT 보고와 Hold 요청 | icd 3.1, 6.4 |
 | `ArgusSensorStatusReporter` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시 | icd 3.1 |
 | `SensorSourceMap` | `source` 문자열 ↔ `ARGUS_SENSOR` 대응표 (onboard 설정) | pi 3장 |
-| `GcsLinkMonitor` | 통제기 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`, 추종·Scan 중이면 TRACK_STOP 과 같은 절차 | icd 6.1 |
+| `GcsLinkMonitor` | 통제기 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`, 추종·Scan 중이면 STOP 과 같은 절차 | icd 6.1 |
 
 - 받는 쪽 이름: 받아서 다른 곳으로 넘기면 `…Receiver`(`ZmqVelocitySetpointReceiver`), 최신 값을 들고 나눠 주면 `…Subscriber`(`ZmqFollowStatusSubscriber`, `ZmqVehicleTelemetrySubscriber`), 응답하면 `…Server`.
 - 응답 규칙의 근거: MAVLink command protocol(IN_PROGRESS 뒤 최종 한 번, `progress`, 진행 중 같은 명령은 TEMPORARILY_REJECTED)과 `icd.md` 4장. 구조의 근거: ROS 2 action server 의 goal handle(응답 객체로 나중에 결과를 보내고, 끝내지 않고 사라지면 실패로 종료).

@@ -244,7 +244,7 @@ TEST(FakeFollowControlTest, InProgressByDefaultAndRecordsCommands) {
     TrackTarget target;
     target.track_id = 3;
 
-    const FollowResult started = follow.track_start(header_with_id(1), target);
+    const FollowResult started = follow.follow_start(header_with_id(1), target);
     const FollowResult stopped = follow.stop(header_with_id(2), StopReason::Operator);
 
     EXPECT_EQ(started.outcome, FollowOutcome::InProgress);
@@ -253,7 +253,7 @@ TEST(FakeFollowControlTest, InProgressByDefaultAndRecordsCommands) {
     EXPECT_EQ(stopped.id.command_id, CommandId{2});
 
     ASSERT_EQ(follow.commands().size(), 2U);
-    EXPECT_EQ(follow.commands()[0].kind, FollowCommandKind::TrackStart);
+    EXPECT_EQ(follow.commands()[0].kind, FollowCommandKind::FollowStart);
     EXPECT_EQ(follow.commands()[0].target.value_or(TrackTarget{}).track_id, 3U);
     EXPECT_EQ(follow.commands()[1].kind, FollowCommandKind::Stop);
     EXPECT_EQ(follow.commands()[1].reason, StopReason::Operator);
@@ -290,7 +290,7 @@ protected:
 TEST_F(FakeClientTest, FollowControlClientDeliversReplyInsideProcessEvents) {
     FakeFollowControlClient client(poller_, clock_);
     std::vector<std::optional<FollowResult>> results;
-    const core::Subscription call = client.track_start(
+    const core::Subscription call = client.follow_start(
         header_with_id(5), TrackTarget{}, std::chrono::milliseconds{500},
         [&results](const std::optional<FollowResult>& result) { results.push_back(result); });
 

@@ -14,7 +14,7 @@
   <version>1</version>
   <enums>
     <enum name="ARGUS_SENSOR">
-      <description>탐지 센서 종류. ARGUS_STATUS.active_sensor, ARGUS_SENSOR_STATUS.sensor_id, MAV_CMD_ARGUS_TRACK_START 의 param2 에서 사용한다. RPi 내부 메시지의 source 문자열과의 대응은 onboard 설정 파일에 둔다. 0 은 미지정이다. MAVLink 2 는 payload 끝의 trailing 0x00 바이트를 전송하지 않으므로, 생략된 필드가 미지정으로 해석되도록 0 을 미지정에 배정한다.</description>
+      <description>탐지 센서 종류. ARGUS_STATUS.active_sensor, ARGUS_SENSOR_STATUS.sensor_id, MAV_CMD_ARGUS_FOLLOW_START 의 param2 에서 사용한다. RPi 내부 메시지의 source 문자열과의 대응은 onboard 설정 파일에 둔다. 0 은 미지정이다. MAVLink 2 는 payload 끝의 trailing 0x00 바이트를 전송하지 않으므로, 생략된 필드가 미지정으로 해석되도록 0 을 미지정에 배정한다.</description>
       <entry value="0" name="ARGUS_SENSOR_UNKNOWN">
         <description>미지정.</description>
       </entry>
@@ -46,7 +46,7 @@
         <description>추종·스캔 없음. 표적 선택 대기.</description>
       </entry>
       <entry value="1" name="ARGUS_MISSION_STATE_PREPARING">
-        <description>TRACK_START 수락 뒤 Offboard 진입·확인 중.</description>
+        <description>FOLLOW_START 수락 뒤 Offboard 진입·확인 중.</description>
       </entry>
       <entry value="2" name="ARGUS_MISSION_STATE_FOLLOW_ACTIVE">
         <description>추종 중 (Offboard, setpoint 20 Hz).</description>
@@ -92,8 +92,8 @@
       </entry>
     </enum>
     <enum name="MAV_CMD">
-      <entry value="45000" name="MAV_CMD_ARGUS_TRACK_START" hasLocation="false" isDestination="false">
-        <description>표적 추종 시작. 수신자: onboard (compid 195). 표적은 운용자가 영상에서 고른 트랙의 센서, track_id, class_id, generation 으로 지정한다. 추종·스캔 중에 받으면 TEMPORARILY_REJECTED 이며, 표적을 바꾸려면 TRACK_STOP 뒤 다시 보낸다. 조건 불충족은 값 조건(트랙 없음, generation 불일치, 범위)이면 DENIED, 상태 조건이면 TEMPORARILY_REJECTED 이다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 조건은 docs/spec/icd.md.</description>
+      <entry value="45000" name="MAV_CMD_ARGUS_FOLLOW_START" hasLocation="false" isDestination="false">
+        <description>표적 추종 시작. 수신자: onboard (compid 195). 표적은 운용자가 영상에서 고른 트랙의 센서, track_id, class_id, generation 으로 지정한다. 추종·스캔 중에 받으면 TEMPORARILY_REJECTED 이며, 표적을 바꾸려면 STOP 뒤 다시 보낸다. 조건 불충족은 값 조건(트랙 없음, generation 불일치, 범위)이면 DENIED, 상태 조건이면 TEMPORARILY_REJECTED 이다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다. 진행 중에 STOP 을 받으면 CANCELLED 로 끝난다. 조건은 docs/spec/icd.md.</description>
         <param index="1" label="Track ID" minValue="1" maxValue="16777215" increment="1">추종할 표적의 track_id (영상 메타데이터의 값). 0 이거나 해당 센서의 최신 추적 결과에 없으면 DENIED.</param>
         <param index="2" label="Sensor" enum="ARGUS_SENSOR">표적이 있는 센서. UNKNOWN(0) 이면 DENIED.</param>
         <param index="3" label="Class ID" minValue="0" maxValue="16777215" increment="1">표적의 class_id (영상 메타데이터의 값).</param>
@@ -102,8 +102,8 @@
         <param index="6" reserved="true" default="NaN"/>
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. onboard 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
-      <entry value="45001" name="MAV_CMD_ARGUS_TRACK_STOP" hasLocation="false" isDestination="false">
-        <description>표적 추종 또는 스캔 종료. 수신자: onboard (compid 195). 추종·스캔 중이면 끝내고 Hold 모드로 전환한다. TRACK_START 또는 SCAN_START 가 진행 중이어도 받으며, 그 명령은 CANCELLED 로 끝난다. 둘 다 아니어도 ACCEPTED 로 응답한다.</description>
+      <entry value="45001" name="MAV_CMD_ARGUS_STOP" hasLocation="false" isDestination="false">
+        <description>정지. 수신자: onboard (compid 195). 진행 중인 추종 또는 스캔을 종료하고 표적 선택을 해제한 뒤 Hold 모드로 전환한다. FOLLOW_START 또는 SCAN_START 가 진행 중이어도 받으며, 그 명령은 CANCELLED 로 끝난다. 추종과 스캔 중이 아니어도 ACCEPTED 로 응답한다. MANUAL, FAULT 상태에서는 복구 요청으로 처리한다 (docs/spec/icd.md 6장).</description>
         <param index="1" reserved="true" default="NaN"/>
         <param index="2" reserved="true" default="NaN"/>
         <param index="3" reserved="true" default="NaN"/>
@@ -113,7 +113,7 @@
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. onboard 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
       <entry value="45002" name="MAV_CMD_ARGUS_SCAN_START" hasLocation="false" isDestination="false">
-        <description>yaw 회전으로 표적 후보를 찾는 스캔 시작. 수신자: onboard (compid 195). Hold 상태(mission_state IDLE 또는 HOLD_WAIT)에서만 받는다. IN_PROGRESS 를 먼저 보내고, 회전 범위를 다 돌았거나 제한 시간이 지났거나 후보를 찾아 정지하면 ACCEPTED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 후보를 찾아도 자동으로 추종하지 않으며 운용자가 TRACK_START 로 선택한다. 조건은 docs/spec/icd.md.</description>
+        <description>yaw 회전으로 표적 후보를 찾는 스캔 시작. 수신자: onboard (compid 195). Hold 상태(mission_state IDLE 또는 HOLD_WAIT)에서만 받는다. IN_PROGRESS 를 먼저 보내고, 회전 범위를 다 돌았거나 제한 시간이 지났거나 후보를 찾아 정지하면 ACCEPTED 로 끝난다. 진행 중에 STOP 을 받으면 CANCELLED 로 끝난다. 후보를 찾아도 자동으로 추종하지 않으며 운용자가 FOLLOW_START 로 선택한다. 조건은 docs/spec/icd.md.</description>
         <param index="1" label="Yaw Range" units="rad" minValue="0" maxValue="6.2832" default="NaN">회전 범위. 0 초과 2π 이하. NaN 이면 onboard 설정 기본값(2π).</param>
         <param index="2" label="Yaw Rate" units="rad/s" minValue="-1.309" maxValue="1.309" default="NaN">회전 속도. 양수는 시계 방향. 0 은 DENIED 이며 절댓값은 1.309 rad/s (75 deg/s) 이하. NaN 이면 onboard 설정 기본값(0.1745 rad/s, 10 deg/s).</param>
         <param index="3" label="Timeout" units="s" minValue="0" default="NaN">제한 시간. 회전 범위를 속도 절댓값으로 나눈 값보다 커야 한다. NaN 이면 onboard 설정 기본값(60 s).</param>

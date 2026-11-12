@@ -159,7 +159,7 @@ flowchart LR
 | status.target_state | enum | NONE, CONFIRMED, PREDICTED, LOST → `ARGUS_STATUS.target_state` |
 | status.target_phase, recovery_reason, ambiguous, mission, reason, active | enum·string·bool | 추종 제어 내부 세부 상태(target_phase: UNSELECTED, LOCKED, GAP_HOLD, REACQUIRE, CONFIRM, LOST). MAVLink 로는 보내지 않고, 거부·실패 이유는 `STATUSTEXT` 에 쓸 수 있다 |
 | status.selected | object 또는 null | 선택 표적: generation, track_id, class_id, label, sensor(문자열) → `ARGUS_STATUS.target_id`·`target_generation`, `active_sensor`(변환표) |
-| status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(uint64), action(`track_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 전체 최대 32개만 보관한다. 32개가 차면 완료된 기록부터 지우고 진행 중(IN_PROGRESS)인 기록은 남긴다. 32개를 넘겨 보관하지는 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
+| status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(uint64), action(`follow_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. onboard 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 전체 최대 32개만 보관한다. 32개가 차면 완료된 기록부터 지우고 진행 중(IN_PROGRESS)인 기록은 남긴다. 32개를 넘겨 보관하지는 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
 | status.command_epoch, command_sent | uint64, bool | |
 | status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용. 7장 13 의 `scan_remaining_s` 를 추가할 때 Scan 중이 아니면 키를 빼거나 nil 로 보내고, 받는 쪽은 키 없음과 nil 을 모두 미제공으로 읽는다 (`ARGUS_STATUS` 로는 NaN) |
 
@@ -177,11 +177,11 @@ flowchart LR
 
 | 요청 | 요청자 → 응답자 | 내용 | 응답 |
 |---|---|---|---|
-| `follow/command` | onboard → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·onboard 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
+| `follow/command` | onboard → 추종 제어 | action(`follow_start`·`stop`·`search`. search = Scan), follow_start 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·onboard 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
 | `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD), 또는 HOLD 상태 절대 heading(rad, NED) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
 - 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 schema·필드와 두 요청의 타임아웃은 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
-- 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
+- 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 follow_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
 
 #### 5.2.1 `follow/result` v1·v2 필드 (2026-10-16 기준)
 
@@ -204,7 +204,7 @@ flowchart LR
 | FAILED | true | 수락 뒤 실행 실패, 취소, RC·모드 개입 | FAILED |
 
 - onboard 는 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 REP 응답에서 받는다. 형식·세션·`valid_until_monotonic_ns` 를 보는 사전 검사에서 거부된 요청은 응답으로만 알려지고 `command_results` 에는 남지 않을 수 있기 때문이다. 이후 진행은 `follow/status.command_results` 에서 같은 command_id 로 찾는다.
-- 같은 command_id 로 다시 요청하면 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다. 단 세션·`valid_until_monotonic_ns`·명령 내용 검사는 다시 하므로, 같은 command_id 로 내용이 바뀐 요청이나 stop 뒤에 온 예전 track_start 는 거부될 수 있다. 그래서 통제기가 `COMMAND_LONG` 을 재전송하면(`docs/spec/icd.md` 4.1) onboard 는 같은 command_id 와 같은 내용으로 요청한다.
+- 같은 command_id 로 다시 요청하면 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다. 단 세션·`valid_until_monotonic_ns`·명령 내용 검사는 다시 하므로, 같은 command_id 로 내용이 바뀐 요청이나 stop 뒤에 온 예전 follow_start 는 거부될 수 있다. 그래서 통제기가 `COMMAND_LONG` 을 재전송하면(`docs/spec/icd.md` 4.1) onboard 는 같은 command_id 와 같은 내용으로 요청한다.
 - outcome 이 없는 응답(이전 생산자)에는 이 표의 규칙을 적용하지 않는다.
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
@@ -216,7 +216,7 @@ flowchart LR
 - 전송: RTSP 세션 하나에 영상 트랙(RTP/JPEG)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
 - 시각: 영상 프레임과 메타데이터 모두 JPEG 의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
 - 메타데이터의 박스: 운용자가 클릭해 고를 수 있어야 하므로 `tracking/tracks` 의 트랙 기준으로 보낸다. 영상에 그려진 탐지 박스와 위치가 다를 수 있다. 추적 결과가 없는 프레임은 박스 없이 보낸다.
-- 운용자 선택: 통제기는 클릭한 트랙의 sensor, generation, class_id, track_id 를 `TRACK_START` 매개변수로 보낸다 (`docs/spec/icd.md` 4.2, #21).
+- 운용자 선택: 통제기는 클릭한 트랙의 sensor, generation, class_id, track_id 를 `FOLLOW_START` 매개변수로 보낸다 (`docs/spec/icd.md` 4.2, #21).
 
 ## 6. 두절·시간 초과 판단과 동작
 
@@ -244,7 +244,7 @@ flowchart LR
 9. 해소 (0.8): `fc_epoch` 는 FC 연결의 epoch(FC 와 새로 연결하거나 FC 재부팅을 감지할 때마다 1 증가)이고, 요청에는 onboard 가 발행하는 현재 값을 넣는다 (3장). — 추적/추종, 통신
 10. 해소 (0.15): 버스 프록시(XSUB 5555 / XPUB 5556)를 제거하고 탐지 토픽도 탐지(C++ 어댑터)가 6374 에 bind 한다 (#60).
 11. 해소 (0.15): (가) 채택. 모든 토픽을 직접 연결(발행자 bind, 구독자 connect)하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리한다. 추적기는 6357 에서 6375 로 옮겨 포트 목록을 6370 대로 통일한다 (#60).
-12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
+12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
 13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. onboard 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
 
 ## 변경 이력

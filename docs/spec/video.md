@@ -168,7 +168,7 @@ a=control:trackID=1
 
 - 구현: GStreamer `rtspsrc` 가 두 트랙을 받는다. 영상은 `rtpjpegdepay ! jpegdec ! appsink` (코덱이 바뀌면 `rtph264depay ! avdec_h264` 등으로 요소 교체. `decodebin` 으로 SDP 를 보고 자동 선택도 가능), 메타데이터는 `rtponvifmetadatadepay` 가 있으면 그것으로, 없으면 `appsink` 에서 RTP 헤더를 떼고 marker 까지 이어 붙여 XML 문서를 만든다 **[미결 1]**. `rtspsrc` 의 지터 버퍼(`latency`)와 RTCP 처리를 그대로 쓰고, UDP 가 막히면 TCP 로 자동 전환한다(`protocols`).
 - 영상 프레임을 디코딩해 표시하고, 4장 방법으로 동기화한 메타데이터의 박스를 그 위에 그린다. 메타데이터가 아직 안 온 프레임은 박스 없이 표시하고, 늦게 온 메타데이터는 버린다.
-- 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_TRACK_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
+- 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_FOLLOW_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
 - 선택된 표적(`ARGUS_STATUS.target_id`·`target_generation`)과 `ObjectId`·`argus:Generation` 이 같은 박스는 다른 색으로 강조한다.
 - 영상 정지 표시: 새 영상 프레임이 일정 시간(NUC 공백 0.5 s 보다 길게, 예 1 s) 없으면 "영상 정지" 를 표시한다. 시간은 **[미결 7]**. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
 

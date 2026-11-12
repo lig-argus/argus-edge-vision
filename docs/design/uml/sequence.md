@@ -6,7 +6,7 @@
 | 표기 | Mermaid `sequenceDiagram`. 참여자 이름은 Class Diagram 의 클래스 이름이다(괄호 안은 프로세스). `->>` 호출·송신, `-->>` 응답, `--)` 발행(PUB). 시간은 위에서 아래로 |
 | 범위 | 시나리오 4개: 1. 박스 클릭 → 추종 시작, 2. 추종 1주기, 3. 영상 프레임 1장 송신·수신, 4. FC telemetry 두절 |
 
-## 1. 박스 클릭 → 추종 시작 (TRACK_START)
+## 1. 박스 클릭 → 추종 시작 (FOLLOW_START)
 
 ```mermaid
 sequenceDiagram
@@ -14,7 +14,7 @@ sequenceDiagram
     participant view as VideoView (gcs)
     participant cmd as CommandSender (gcs)
     participant disp as MavlinkCommandReceiver (onboard)
-    participant ts as TrackStartHandler (onboard)
+    participant ts as FollowStartHandler (onboard)
     participant fcc as ZmqFollowControlClient (onboard)
     participant fss as ZmqFollowStatusSubscriber (onboard)
     participant srv as ZmqFollowControlServer (추종 제어)
@@ -25,12 +25,12 @@ sequenceDiagram
     op->>view: 박스 클릭
     view->>view: 클릭 시점 프레임의 메타데이터에서 박스 판정
     view->>cmd: trackStart(sensor, generation, class_id, track_id)
-    cmd->>disp: COMMAND_LONG TRACK_START (compid 195, p7 명령 번호)
+    cmd->>disp: COMMAND_LONG FOLLOW_START (compid 195, p7 명령 번호)
     disp->>ts: handle(request, responder)
     ts->>ts: 제어권·FOLLOWABLE·최신 추적 결과·mission_state 검사
-    ts->>fcc: track_start(header, target, timeout, on_result)
+    ts->>fcc: follow_start(header, target, timeout, on_result)
     fcc->>srv: REQ follow/command (command_id)
-    srv->>ctl: track_start()
+    srv->>ctl: follow_start()
     ctl-->>srv: 수락
     srv-->>fcc: REP follow/result outcome=IN_PROGRESS
     fcc-->>ts: on_result(FollowResult IN_PROGRESS)
@@ -48,8 +48,8 @@ sequenceDiagram
 ```
 
 - 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
-- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED. TRACK_STOP 으로 취소한 명령은 onboard 가 CANCELLED 를 보내며, 그 뒤 추종 제어가 그 명령에 보고하는 outcome(FAILED)은 ACK 로 보내지 않는다.
-- 통제기가 ACK 를 1 s 안에 받지 못해 같은 명령 번호(p7)로 다시 보내면(`icd.md` 4.1), `MavlinkCommandReceiver` 가 handler 를 부르지 않고 답한다: 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK (보낸 쪽과 MAV_CMD 마다 다음 명령까지 보관). 진행 중에 같은 명령이나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령의 IN_PROGRESS 는 1 s 마다 다시 보낸다. 추종 제어로 다시 요청하지 않으므로 pi 5.2 의 같은 command_id 규칙은 두 번째 방어선이다.
+- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED. STOP 으로 취소한 명령은 onboard 가 CANCELLED 를 보내며, 그 뒤 추종 제어가 그 명령에 보고하는 outcome(FAILED)은 ACK 로 보내지 않는다.
+- 통제기가 ACK 를 1 s 안에 받지 못해 같은 명령 번호(p7)로 다시 보내면(`icd.md` 4.1), `MavlinkCommandReceiver` 가 handler 를 부르지 않고 답한다: 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK (보낸 쪽과 MAV_CMD 마다 다음 명령까지 보관). 진행 중에 같은 명령이나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령의 IN_PROGRESS 는 1 s 마다 다시 보낸다. 추종 제어로 다시 요청하지 않으므로 pi 5.2 의 같은 command_id 규칙은 두 번째 방어선이다.
 - onboard 검사에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK` + `STATUSTEXT` 로 답한다. 조건 ①④ 는 DENIED, ③⑤ 는 TEMPORARILY_REJECTED (`icd.md` 4.2).
 - Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 PX4 가 Offboard 에 들어간다 (`icd.md` 2장). 그 흐름은 2절.
 
@@ -139,14 +139,14 @@ sequenceDiagram
     Note over gcs: 통제기는 FC HEARTBEAT 3 s 없음으로 "연결 끊김" 을 따로 표시
 ```
 
-- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 TRACK_STOP 을 받고 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
+- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 STOP 을 받고 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
 - onboard 는 추종 제어의 보고와 관계없이 FC 상태를 스스로 확인해 위험한 송신을 막는다 (`icd.md` 6.6).
 - 경로가 FC → mavlink-router → onboard 이므로 mavlink-router 가 멈춰도 같은 흐름이 된다. 이때는 통제기 링크도 함께 끊긴다.
 
 ## 검토 필요 사항
 
 1. 해소 (0.3): 1절의 Offboard 진입 실패(요청 실패, ACK 실패, 실제 모드 확인 시간 초과)는 outcome=FAILED → ACK FAILED, `mission_state` FAULT (`icd.md` 4.2).
-2. 해소 (0.3): TRACK_START 는 FC 가 실제 Hold 이거나 유효한 Position 인계를 거쳤을 때만 수락 (`icd.md` 4.2 ⑥).
+2. 해소 (0.3): FOLLOW_START 는 FC 가 실제 Hold 이거나 유효한 Position 인계를 거쳤을 때만 수락 (`icd.md` 4.2 ⑥).
 3. 2절: `ctl` 이 `fc/attitude` 를 프레임 시각에 맞춰 쓰는지, 최신 메시지를 쓰는지는 추적·추종 담당의 내부 설계.
 4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 onboard 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(2 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
 

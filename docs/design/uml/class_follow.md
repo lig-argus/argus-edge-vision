@@ -29,7 +29,7 @@ classDiagram
     }
     class IFollowControl {
         <<interface>>
-        +track_start(RequestHeader, TrackTarget) FollowResult
+        +follow_start(RequestHeader, TrackTarget) FollowResult
         +stop(RequestHeader, StopReason) FollowResult
         +scan_start(RequestHeader, ScanRequest) FollowResult
     }

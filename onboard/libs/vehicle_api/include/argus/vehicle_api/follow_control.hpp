@@ -16,7 +16,7 @@ namespace argus::vehicle_api {
 //   찾는다.
 // - 같은 command_id 로 다시 부르면 재실행하지 않고 저장된 결과를 반환한다. 단, 세션,
 //   valid_until_monotonic_ns, 명령 내용은 다시 검사하므로 내용이 바뀐 요청이나 stop 뒤에 온 예전
-//   track_start 는 Rejected 가 될 수 있다.
+//   follow_start 는 Rejected 가 될 수 있다.
 // - 표적 존재/상태/FC 조건 검사는 구현이 한다.
 //   통제기 제어권과 매개변수 범위 검사는 onboard 가 부르기 전에 한다.
 // - FC 제어 명령 송신권(process_interfaces.md 6장)의 확인은 onboard 의 FC 명령 검사가,
@@ -35,7 +35,7 @@ public:
     IFollowControl& operator=(IFollowControl&&) = delete;
 
     // FC 가 실제로 Hold 일 때만 수락한다 (docs/spec/icd.md 4.2 조건 ⑥)
-    virtual FollowResult track_start(const RequestHeader& header, const TrackTarget& target) = 0;
+    virtual FollowResult follow_start(const RequestHeader& header, const TrackTarget& target) = 0;
 
     virtual FollowResult stop(const RequestHeader& header, StopReason reason) = 0;
 

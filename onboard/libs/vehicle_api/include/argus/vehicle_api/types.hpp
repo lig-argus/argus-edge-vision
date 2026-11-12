@@ -167,7 +167,7 @@ struct RequestHeader {
     std::int64_t valid_until_monotonic_ns = 0;  // 이 시각이 지나면 실행하지 않는다
 };
 
-// 운용자가 영상에서 고른 추종 표적 (docs/spec/icd.md 4.2 MAV_CMD_ARGUS_TRACK_START)
+// 운용자가 영상에서 고른 추종 표적 (docs/spec/icd.md 4.2 MAV_CMD_ARGUS_FOLLOW_START)
 struct TrackTarget {
     Sensor sensor = Sensor::Unknown;
     std::uint32_t generation = 0;  // 1~16,777,215
@@ -186,7 +186,7 @@ struct ScanRequest {
 
 // 추종 및 Scan 종료 이유 (process_interfaces.md 5.2 stop reason)
 enum class StopReason : std::uint8_t {
-    Operator,  // 운용자의 TRACK_STOP
+    Operator,  // 운용자의 STOP
     LinkLoss,  // 통제기 링크 두절
     Onboard,   // onboard 판단 (독립 감시 등)
 };

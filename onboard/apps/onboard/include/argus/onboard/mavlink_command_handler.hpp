@@ -1,6 +1,6 @@
 // 통제기가 보낸 MAVLink 명령(COMMAND_LONG) 하나를 처리하는 인터페이스
-// 규약: docs/spec/icd.md 4.1 (COMMAND_ACK, 재전송), 4.2 (TRACK_START, TRACK_STOP, SCAN_START)
-// 구현: TrackStartHandler, TrackStopHandler, ScanStartHandler (다음 PR)
+// 규약: docs/spec/icd.md 4.1 (COMMAND_ACK, 재전송), 4.2 (FOLLOW_START, STOP, SCAN_START)
+// 구현: FollowStartHandler, StopHandler, ScanStartHandler (다음 PR)
 // 사용: MavlinkCommandReceiver 가 MAV_CMD 번호로 handler 를 찾아 부른다
 #ifndef ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_
 #define ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_
@@ -117,7 +117,7 @@ public:
     // 다음 호출에서 나올 수 있다. 재전송(보낸 쪽, MAV_CMD, param7 의 명령 번호가 같음)에는
     // MavlinkCommandReceiver 가 handler 를 부르지 않고 진행 중이면 IN_PROGRESS 를, 완료 뒤면
     // 보관한 최종 결과를 다시 보낸다 (보낸 쪽과 MAV_CMD 마다 마지막 번호와 결과를 다음 명령까지
-    // 보관). 진행 중에 같은 MAV_CMD 나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이
+    // 보관). 진행 중에 같은 MAV_CMD 나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, STOP 이
     // 오면 진행 중 명령을 CANCELLED 로 끝내고 처리한다. 규칙: docs/spec/icd.md 4.1
     virtual void handle(const CommandRequest& request, CommandResponder responder) = 0;
 };

@@ -14,7 +14,7 @@
 namespace argus::vehicle_api_testing {
 
 enum class FollowCommandKind : std::uint8_t {
-    TrackStart,
+    FollowStart,
     Stop,
     ScanStart,
 };
@@ -23,16 +23,16 @@ enum class FollowCommandKind : std::uint8_t {
 struct FollowCommandRecord {
     FollowCommandKind kind = FollowCommandKind::Stop;
     vehicle_api::RequestHeader header;
-    std::optional<vehicle_api::TrackTarget> target;  // TrackStart 일 때만
+    std::optional<vehicle_api::TrackTarget> target;  // FollowStart 일 때만
     std::optional<vehicle_api::StopReason> reason;   // Stop 일 때만
     std::optional<vehicle_api::ScanRequest> scan;    // ScanStart 일 때만
 };
 
 class FakeFollowControl : public vehicle_api::IFollowControl {
 public:
-    vehicle_api::FollowResult track_start(const vehicle_api::RequestHeader& header,
-                                          const vehicle_api::TrackTarget& target) override {
-        return record({FollowCommandKind::TrackStart, header, target, std::nullopt, std::nullopt});
+    vehicle_api::FollowResult follow_start(const vehicle_api::RequestHeader& header,
+                                           const vehicle_api::TrackTarget& target) override {
+        return record({FollowCommandKind::FollowStart, header, target, std::nullopt, std::nullopt});
     }
     vehicle_api::FollowResult stop(const vehicle_api::RequestHeader& header,
                                    vehicle_api::StopReason reason) override {

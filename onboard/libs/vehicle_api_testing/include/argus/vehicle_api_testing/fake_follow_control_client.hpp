@@ -1,6 +1,6 @@
 // 테스트용 IFollowControlClient. 보낸 명령을 기록하고, 테스트가 넣은 결과를 FakePoller 를 거쳐
 // process_events() 안에서 handler 에 전달한다. 결과를 넣지 않으면 timeout 에 nullopt.
-// onboard 의 TrackStartHandler 등 명령 handler 테스트가 추종 제어 대신 쓴다
+// onboard 의 FollowStartHandler 등 명령 handler 테스트가 추종 제어 대신 쓴다
 #ifndef ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_CLIENT_HPP_
 #define ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_CLIENT_HPP_
 
@@ -25,12 +25,12 @@ public:
     FakeFollowControlClient(core_testing::FakePoller& poller, const core::IClock& clock)
         : pending_(poller, clock) {}
 
-    [[nodiscard]] core::Subscription track_start(const vehicle_api::RequestHeader& header,
-                                                 const vehicle_api::TrackTarget& target,
-                                                 std::chrono::milliseconds timeout,
-                                                 ResultHandler on_result) override {
+    [[nodiscard]] core::Subscription follow_start(const vehicle_api::RequestHeader& header,
+                                                  const vehicle_api::TrackTarget& target,
+                                                  std::chrono::milliseconds timeout,
+                                                  ResultHandler on_result) override {
         commands_.push_back(
-            {FollowCommandKind::TrackStart, header, target, std::nullopt, std::nullopt});
+            {FollowCommandKind::FollowStart, header, target, std::nullopt, std::nullopt});
         return pending_.add(timeout, std::move(on_result));
     }
 

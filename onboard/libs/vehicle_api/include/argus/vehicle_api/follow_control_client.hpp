@@ -2,7 +2,7 @@
 // 규약: docs/spec/process_interfaces.md 5.2 follow/command, 5.2.1 follow/result
 // 구현: (다음 PR) ZmqFollowControlClient (vehicle_api_zmq, bus::IRequester 로 보냄),
 //      테스트용 FakeFollowControlClient (vehicle_api_testing)
-// 사용: onboard 의 TrackStartHandler, TrackStopHandler, ScanStartHandler, GcsLinkMonitor
+// 사용: onboard 의 FollowStartHandler, StopHandler, ScanStartHandler, GcsLinkMonitor
 #ifndef ARGUS_VEHICLE_API_FOLLOW_CONTROL_CLIENT_HPP_
 #define ARGUS_VEHICLE_API_FOLLOW_CONTROL_CLIENT_HPP_
 
@@ -34,10 +34,10 @@ public:
     IFollowControlClient(IFollowControlClient&&) = delete;
     IFollowControlClient& operator=(IFollowControlClient&&) = delete;
 
-    [[nodiscard]] virtual core::Subscription track_start(const RequestHeader& header,
-                                                         const TrackTarget& target,
-                                                         std::chrono::milliseconds timeout,
-                                                         ResultHandler on_result) = 0;
+    [[nodiscard]] virtual core::Subscription follow_start(const RequestHeader& header,
+                                                          const TrackTarget& target,
+                                                          std::chrono::milliseconds timeout,
+                                                          ResultHandler on_result) = 0;
 
     [[nodiscard]] virtual core::Subscription stop(const RequestHeader& header, StopReason reason,
                                                   std::chrono::milliseconds timeout,
