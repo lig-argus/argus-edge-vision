@@ -33,10 +33,17 @@ classDiagram
         +tracks optional~Tracks~
     }
     class OnvifMetadataSerializer {
-        +serialize(CollectedFrame) bytes
+        -onvif_type_by_class_id
+        +serialize(CollectedFrame) string
     }
     class MetadataRtpPacketizer {
-        +packetize(bytes, unix_ns) RtpPackets
+        +packetize(xml, rtp_timestamp) RtpPackets
+    }
+    class MetadataRtpConfig {
+        +payload_type
+        +ssrc
+        +first_sequence_number
+        +max_packet_bytes
     }
     class VideoEncodeConfig {
         +codec
@@ -59,6 +66,7 @@ classDiagram
     FrameCollector ..> IClock : max_wait
     FrameCollector ..> CollectedFrame : 출력
     OnvifMetadataSerializer ..> CollectedFrame : 입력
+    MetadataRtpPacketizer ..> MetadataRtpConfig
     VideoSender *-- FrameCollector
     VideoSender *-- OnvifMetadataSerializer
     VideoSender *-- MetadataRtpPacketizer
@@ -71,8 +79,8 @@ classDiagram
 | `IFrameSource` / `ZmqFrameSource` / `FileFrameSource` | 비압축 프레임 공급. `subscribe(handler)` 가 `Subscription` 을 반환하고 handler 는 `process_events()` 안에서 불린다. 구현 교체로 토픽·녹화 파일(테스트·재현) 전환. 테스트용 `FakeFrameSource` 는 `apps/video_sender/test/` | pi 5.3 |
 | `FrameCollector` | 세 토픽을 `(source, session_id, frame_id)` 로 모은다 (`session_id` 가 없는 메시지는 `(source, frame_id)`, `process_interfaces.md` 7장). 보관 개수·대기 시간 제한, 대기 시간 안에 다 오지 않으면 모인 것만으로 `CollectedFrame` 을 만들고, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음. 입력은 `on_frame()`, `on_observations()`, `on_tracks()` 호출로 받는다. `IFrameSource` 와 bus 를 구독해 이 함수를 호출하는 연결은 `main` 과 bus 입력 연결이 담당한다. 대기 시간이 지난 프레임은 `process_timeouts()` 가 처리하며, 이후 메시지가 도착하지 않아도 마지막 프레임이 출력되도록 `EventLoop::add_periodic()` 에 등록해 호출한다. 같은 `source` 의 출력 순서는 도착 순서다. 기본값은 대기 시간 100 ms, 보관 개수 8 (`FrameCollectorConfig`) | pi 5.3 |
 | `CollectedFrame` | 프레임(항상 있음) + 탐지 결과·추적 결과(optional). `OnvifMetadataSerializer`·`RtspServer` 의 입력 | pi 5.3, video 3.2 |
-| `OnvifMetadataSerializer` | `CollectedFrame` 의 `tracks` → ONVIF XML (`tt:Frame`, `tt:Object`, `argus:` 확장, 좌표 변환). 추적 결과 없는 프레임은 빈 `tt:Frame`. 구체 클래스다: 구현이 ONVIF XML 하나이고(video 1장) 테스트에서 대체할 이유가 없다(순수 함수) | video 3장 |
-| `MetadataRtpPacketizer` | XML → RTP 패킷(헤더 12 B, 조각, 마지막 marker=1, 타임스탬프 = unix_ns × 90000 / 10^9) | video 3.1, 4장 |
+| `OnvifMetadataSerializer` | `CollectedFrame` 의 `tracks` → ONVIF XML (`tt:Frame`, `tt:Object`, `argus:` 확장, 좌표 변환). 추적 결과 없는 프레임은 빈 `tt:Frame`. 구체 클래스다: 구현이 ONVIF XML 하나이고(video 1장), 상태가 없고 입력만으로 출력이 정해지므로 테스트에서 대체할 이유가 없다. `class_id` 를 `tt:Type` 의 ONVIF 분류명으로 변환하는 대응(video 8장)은 생성자 인자로 받는다 | video 3장 |
+| `MetadataRtpPacketizer` | XML → RTP 패킷(헤더 12 B, 조각, 마지막 marker=1, 타임스탬프는 `packetize()` 의 인자로 받는다). payload type 과 SSRC 는 기본값 없이 `MetadataRtpConfig` 로 받는다 | video 3.1, 4장 |
 | `VideoEncodeConfig` | 코덱별 GStreamer 요소 문자열·pt·품질. JPEG: `videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay`, pt 26. 통제기 `VideoDecodeConfig` 와 짝 | video 2장, 5장 |
 | `RtspServer` | gst-rtsp-server 에 두 트랙 등록, `appsrc` 둘에 push. 클라이언트 없어도 유지, NUC 공백은 아무것도 보내지 않음 | video 5장 |
 | `VideoSender` | 조립과 주기: 모인 프레임마다 영상 push 먼저, 메타데이터 push 다음 | video 5장 |
