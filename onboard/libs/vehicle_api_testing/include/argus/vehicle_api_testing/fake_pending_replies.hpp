@@ -1,6 +1,6 @@
 // Client Fake(FakeFollowControlClient, FakeFlightModeControlClient)가 공유하는 응답 대기 목록.
 // 요청마다 handler 와 시간 제한을 기억해 두고, 테스트가 넣은 응답 또는 시간 초과(nullopt)를
-// FakePoller 를 거쳐 process_events() 안에서 handler 에 전달한다. 실제 구현(bus::IRpcClient)과
+// FakePoller 를 거쳐 process_events() 안에서 handler 에 전달한다. 실제 구현(bus::IRequester)과
 // 같이 handler 는 정확히 한 번 불리고, Subscription 이 먼저 사라지면 불리지 않는다.
 #ifndef ARGUS_VEHICLE_API_TESTING_FAKE_PENDING_REPLIES_HPP_
 #define ARGUS_VEHICLE_API_TESTING_FAKE_PENDING_REPLIES_HPP_

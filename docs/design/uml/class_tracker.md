@@ -31,10 +31,10 @@ classDiagram
     UcmcTracker ..> ObservationSubscriber
     UcmcTracker ..> VehicleStateSubscriber : 프레임 시각의 자세
     TracksPublisher ..> UcmcTracker
-    TracksPublisher ..> ITopicPublisher : tracking/tracks 6357
+    TracksPublisher ..> ITopicPublisher : tracking/tracks 6375
     TrackingStatusPublisher ..> UcmcTracker : generation, cmc_valid, fps
     TrackingStatusPublisher ..> VehicleStateSubscriber : fc_fresh
-    TrackingStatusPublisher ..> ITopicPublisher : tracking/status 6357
+    TrackingStatusPublisher ..> ITopicPublisher : tracking/status 6375
 ```
 
 | 클래스 | 구현 담당 | 책임 | 출처 |
@@ -62,3 +62,4 @@ classDiagram
 | 0.4 | 2026-10-21 | 메서드 이름을 snake_case 로 (onboard C++ 이름 규칙, #39) |
 | 0.5 | 2026-10-29 | #39 리뷰 반영: `VehicleStateSubscriber` 의 선택 순서를 200 ms 이내 → 최근접 → 50 ms 로 명시, 보간하지 않음, 검토 1 해소 |
 | 0.6 | 2026-10-25 | `IVehicleState`→`IVehicleTelemetry`, `ZmqVehicleState`→`ZmqVehicleTelemetrySubscriber` (#40), bus 인터페이스 이름 `IPublisher`·`ISubscriber`→`ITopicPublisher`·`ITopicSubscriber` (#40) |
+| 0.7 | 2026-11-12 | `tracking/tracks`, `tracking/status` 의 포트 6357 → 6375 (`process_interfaces.md` 3장, #60) |

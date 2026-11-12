@@ -25,8 +25,8 @@ flowchart LR
     i_obs([PUB perception/observations])
     i_overlay([PUB vision/overlay/jpeg])
     i_npu([PUB vision/npu_input/jpeg])
-    i_tracks([PUB tracking/tracks 6357])
-    i_tstatus([PUB tracking/status 6357])
+    i_tracks([PUB tracking/tracks 6375])
+    i_tstatus([PUB tracking/status 6375])
 
     vision --> i_frame
     vision --> i_obs
@@ -168,3 +168,4 @@ flowchart LR
 |---|---|---|
 | 0.1 | 2026-10-16 | 초안 (#31) |
 | 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): `vision/npu_input/jpeg` 추가, `vision/overlay/jpeg` 를 구독하는 `argus_preview_udp_relay` 와 UDP 미리보기 경로 추가 |
+| 0.3 | 2026-11-12 | `tracking/tracks`, `tracking/status` 의 포트 6357 → 6375 (`process_interfaces.md` 3장, #60) |

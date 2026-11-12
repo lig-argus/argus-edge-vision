@@ -141,7 +141,7 @@ classDiagram
 |---|---|---|
 | S | 1·2절 | 모으기·XML 생성·RTP 패킷화·RTSP·수신·파싱·동기화가 각각 한 클래스 |
 | O | `VideoEncodeConfig`, `VideoDecodeConfig` | 코덱 추가 = 설정 항목 추가. `RtspServer`·`RtspReceiver` 수정 없음 (video 5·6장 "요소만 바꾼다") |
-| L | `ZmqFrameSource` ↔ `FileFrameSource` ↔ `FakeFrameSource` | 같은 `Frame` 계약(unix_ns, frame_id, stride)과 같은 호출 규칙(handler 는 `process_events()` 안에서). 녹화 파일로 송신부를 재현 테스트 |
+| L | `ZmqFrameSource` ↔ `FileFrameSource` ↔ `FakeFrameSource` | 같은 `Frame` contract(unix_ns, frame_id, stride)과 같은 호출 규칙(handler 는 `process_events()` 안에서). 녹화 파일로 송신부를 재현 테스트 |
 | I | `IFrameSource` | 메서드 하나짜리 인터페이스 |
 | D | `VideoSender`, `FrameSynchronizer` | GStreamer 는 `RtspServer`·`RtspReceiver` 안에만. 모으기·동기화 로직은 GStreamer 없이 gtest·Qt Test. 인터페이스는 구현 교체(`IFrameSource`)나 테스트 대체가 필요한 곳에만 두고, 구현이 하나이고 대체할 이유가 없는 직렬화는 구체 클래스로 둔다 |
 
@@ -162,3 +162,4 @@ classDiagram
 | 0.3 | 2026-10-25 | `MessageJoiner`→`FrameJoiner` (#40), bus 인터페이스 이름 `IPublisher`·`ISubscriber`→`ITopicPublisher`·`ITopicSubscriber` (#40) |
 | 0.4 | 2026-10-26 | 코드(#41)와 맞춤: `IFrameSource.subscribe(handler)` 가 `Subscription` 반환, `FrameJoiner`→`FrameCollector`, `JoinedFrame`→`CollectedFrame`(클래스로 추가), `IMetadataEncoder`/`OnvifXmlEncoder`→구체 클래스 `OnvifMetadataSerializer`, `IMetadataParser`/`OnvifMetadataParser`→`OnvifMetadataDeserializer`, `VideoTrackConfig`→`VideoEncodeConfig`. SOLID 표, 검토 4·5 추가 |
 | 0.5 | 2026-11-04 | `FrameCollector` 가 세 메시지를 한 프레임으로 묶는 기준을 `(source, session_id, frame_id)` 로, `Tracks.session_id` 와 `GroundAnchor.anchor_y_ratio` 반영 (#41 리뷰) |
+| 0.6 | 2026-11-07 | "계약"→contract (#60) |

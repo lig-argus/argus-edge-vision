@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.14 (팀 검토 전 초안) |
+| 문서 버전 | 0.15 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -12,7 +12,7 @@
 이 문서가 정하는 것
 - RPi 에서 실행되는 프로세스와 각 프로세스의 책임
 - 프로세스 사이 메시지(ZeroMQ + protobuf)의 이름, 방식(PUB/SUB 또는 REQ/REP), 발행자·구독자, 주기, 필드
-- onboard 프로세스 안 C++ 인터페이스의 역할과 계약
+- onboard 프로세스 안 C++ 인터페이스의 역할과 contract
 
 이 문서가 정하지 않는 것
 - FC·통제기와 주고받는 MAVLink 메시지 → `docs/spec/icd.md`
@@ -69,9 +69,11 @@ flowchart LR
 
 ## 3. 공통 규칙
 
-- 전송: ZeroMQ + protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다. 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **PUB/SUB**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **REQ/REP**. REQ/REP 는 중복 실행과 오래된 명령 실행을 막는다.
-- multipart 구성: `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`.
-- 공통 필드: 모든 메시지에 `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`. 메시지 타입을 나타내는 필드(`schema` 문자열)는 두지 않는다. 타입은 토픽 이름(RPC 는 요청 이름)이 정하고 받는 쪽은 그 토픽의 생성 클래스로 바로 파싱한다. 값이 항상 같은 문자열(`clock_domain`, `coordinate_frame` 등)은 메시지에 넣지 않고 이 문서에 적는다.
+- 전송 방식 둘: 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **토픽 발행·구독**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **요청-응답**. 요청-응답은 중복 실행과 오래된 명령 실행을 막는다. 토픽마다 보관할 최대 메시지 수(queue_depth)를 정하며 기본값은 `onboard/libs/protocol/include/argus/protocol/topics.hpp`.
+- 메시지 구성: 직렬화된 본문 하나와, 필요하면 바이너리(프레임 픽셀) 하나. 통신 구현(`onboard/libs/bus`)은 둘을 하나로 합쳐 보낼 수 있고, 토픽 이름을 그 통신 라이브러리가 허용하는 형식으로 변환할 수 있다.
+- 현재 구현 (ZeroMQ): 토픽은 PUB/SUB, 요청-응답은 REQ/REP. multipart 구성 `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`. 주소는 `onboard/libs/protocol/include/argus/protocol/zmq_endpoints.hpp`.
+- 직렬화: protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다.
+- 공통 필드: 모든 메시지에 `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`. 메시지 타입을 나타내는 필드(`schema` 문자열)는 두지 않는다. 타입은 토픽 이름(요청-응답은 요청 이름)이 정하고 받는 쪽은 그 토픽의 생성 클래스로 바로 파싱한다. 값이 항상 같은 문자열(`clock_domain`, `coordinate_frame` 등)은 메시지에 넣지 않고 이 문서에 적는다.
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(요청을 만들 때 onboard 가 `fc/attitude`·`fc/state` 에 발행하고 있는 현재 값, 아래), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. C++ 값 타입에서는 `valid_until_monotonic_ns` 를 뺀 네 필드를 `RequestId` 로 묶어 요청(`RequestHeader.id`)과 결과(`FollowResult.id`)가 같은 멤버를 가진다 (`onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp`). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
 - `fc_epoch`: FC 연결의 epoch(uint64). onboard 가 FC 와 연결을 새로 맺거나 FC 재부팅을 감지할 때마다 1 증가시킨다. `fc/attitude`·`fc/state` 메시지와 요청이 같은 FC 연결·같은 FC 부팅 구간에서 나온 것인지 확인하는 데 쓴다. 추적기 `generation` 과 같은 방식이지만 세는 대상(추적기 재시작이 아니라 FC 연결·FC 부팅)이 다르다. FC 시각, MAVLink 패킷 번호와도 다르다.
   - onboard(FC 통신)가 1 증가시키는 때: FC 연결을 새로 구성하거나 다시 연결할 때, FC 부팅 후 경과 시간(`time_boot_ms`)이 직전 메시지보다 작아져 FC 재부팅을 감지하고 보관 중인 FC 데이터를 지울 때. 메시지마다, 일반 모드 변경마다 바꾸지 않는다.
@@ -96,10 +98,10 @@ flowchart LR
 | `IFlightModeControlClient` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 요청은 바로 반환하고 응답(수락 여부)은 handler 로, 전환 완료·Offboard 이탈은 이벤트 |
 | `IFollowControl` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
 
-- 구현을 기체 FC, SITL, 테스트용 가짜로 바꿔도 같은 계약을 지킨다.
+- 구현을 기체 FC, SITL, 테스트용 가짜로 바꿔도 같은 contract 를 지킨다.
 - 새 행동(예: Scan)은 `IFollowControl` 의 명령 종류 추가로 넣고 FC 통신 코드는 바꾸지 않는다.
 - 헤더는 `onboard/libs/vehicle_api/include/argus/vehicle_api/`, 테스트용 Fake 는 `onboard/libs/vehicle_api_testing` (#39, #40).
-- 계약(사전·사후 조건, 시간 제한)은 인터페이스 확정 뒤 헤더 주석과 테스트로 적는다.
+- contract(사전·사후 조건, 시간 제한)는 인터페이스 확정 뒤 헤더 주석과 테스트로 적는다.
 
 ## 5. 메시지
 
@@ -121,7 +123,7 @@ flowchart LR
 | `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
 | `fc/mode_event` | onboard → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
-- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 기존 6357 추적기 bind. 탐지 토픽은 기존 버스 5556. `fc/mode_event` 의 발행 엔드포인트는 **[미결 1]**.
+- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** onboard bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. onboard 는 FC 메시지를 그대로 넘긴다.
 - `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
@@ -171,7 +173,7 @@ flowchart LR
 | fc_fresh, cmc_valid | bool | FC 데이터 최신 여부, 카메라 회전 보상 유효 여부. `ARGUS_SENSOR_STATUS.flags` 에 넣을지는 #21 후속 |
 | fps | number | 처리 FPS |
 
-### 5.2 REQ/REP
+### 5.2 요청-응답 (REQ/REP)
 
 | 요청 | 요청자 → 응답자 | 내용 | 응답 |
 |---|---|---|---|
@@ -228,9 +230,9 @@ flowchart LR
 
 ## 7. 검토 필요 사항
 
-1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 `.proto` 메시지 이름·필드 고정, 두 REQ/REP 의 타임아웃, `fc/mode_event` 의 발행 엔드포인트. `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. 모드 요청 계약에서 정할 것 (#39 리뷰): ① 요청 수락과 실제 모드 전환 완료의 구분 ② 수락 뒤 실패해 모드가 바뀌지 않은 경우의 결과 전달 ③ 요청 식별자(command_id)로 완료·실패를 원래 요청에 연결하는 방법 ④ 요청 없이 일어난 모드 변경과 원인 불명의 구분 ⑤ 취소·세션 변경 뒤 늦게 도착한 응답의 무효화. 또한 stop 이나 RC 개입 때 대기 중인 송신을 폐기하는 책임과 호출 경로. 참조 모델은 ROS 2 action 의 goal 상태(ACCEPTED → EXECUTING → SUCCEEDED/ABORTED/CANCELED)와 CancelGoal 응답 코드. — 추적/추종, 통신
+1. `control/mode_request` 요청·응답과 `fc/mode_event` 의 `.proto` 메시지 이름·필드 고정, 두 요청-응답의 타임아웃. (`fc/mode_event` 의 발행 엔드포인트는 6370 으로 해소, 0.15.) `follow/command` 의 응답(`follow/result`)과 거부·실패 구분(outcome)은 5.2 에 반영함. 모드 요청 계약에서 정할 것 (#39 리뷰): ① 요청 수락과 실제 모드 전환 완료의 구분 ② 수락 뒤 실패해 모드가 바뀌지 않은 경우의 결과 전달 ③ 요청 식별자(command_id)로 완료·실패를 원래 요청에 연결하는 방법 ④ 요청 없이 일어난 모드 변경과 원인 불명의 구분 ⑤ 취소·세션 변경 뒤 늦게 도착한 응답의 무효화. 또한 stop 이나 RC 개입 때 대기 중인 송신을 폐기하는 책임과 호출 경로. 참조 모델은 ROS 2 action 의 goal 상태(ACCEPTED → EXECUTING → SUCCEEDED/ABORTED/CANCELED)와 CancelGoal 응답 코드. — 추적/추종, 통신
 2. 해소 (0.8): `follow/status` 발행 주기(1 Hz + 변경 시), 세션 필드의 뜻, `scan_config` SI 필드를 5.1·5.1.2 에 반영함. — 추적/추종
-3. 해소 (0.8): `vision/frame/gray8` 의 전송 경로는 기존 버스(5555/5556)로 확정. — 탐지
+3. 해소 (0.15): `vision/frame/gray8` 의 전송 경로를 6374 직접 연결로 변경했다 (#60). 0.8 에서는 기존 버스(5555/5556)로 확정했으며, 아래 측정은 프록시를 사용한 구성의 값이다. — 탐지
    - 측정(2026-10-19, drone Pi 5): 전송 경로만 따로 잰 결과 기존 버스(Python PUSH → 어댑터 → XSUB/XPUB 프록시 → SUB)는 버림 0, 지연 p50 1.5 ms 로 IPC 직결(p50 0.4 ms)과 약 1 ms 차이.
    - 탐지·추적·추종을 함께 켜고 gray8 끔/켬을 5회씩 120 초 비교: 탐지·추적 30 FPS, gray8·overlay·npu_input 버림 0, `perception/observations` 지연 p50 0.85 → 0.95 ms, 카메라 수신 → `tracking/tracks` 도착 p50 25.0 → 26.3 ms, CPU 코어 하나 기준 +24 %p(Pi 전체의 약 6 %).
    - 조건: 카메라 대신 RAW14 녹화 재생, FC 대신 가상 기체(MAVLink 연결 없음), 영상 송신부 없음. 추적기는 gray8 을 구독하지 않아 gray8 은 프록시에서 걸러졌다. 영상 송신부를 구현하면 gray8 을 실제로 받는 구독자가 생기므로 같은 방법으로 다시 측정한다.
@@ -240,8 +242,8 @@ flowchart LR
 7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 값마다의 원수신 시각과 유효성)은 합의됨. 이름은 `onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp` 의 `Attitude`, `LocalPosition`, `DownwardDistance`, `GlobalPosition`, `FlightStatus` 를 따른다 (#39). — 통신, 추적/추종
 8. 해소 (0.8): 추종 제어의 거부 이유 "another writer owns FC" 는 onboard 가 관리하는 FC 제어 명령 송신권을 다른 소유자가 가진 경우다 (6장). — 추적/추종, 통신
 9. 해소 (0.8): `fc_epoch` 는 FC 연결의 epoch(FC 와 새로 연결하거나 FC 재부팅을 감지할 때마다 1 증가)이고, 요청에는 onboard 가 발행하는 현재 값을 넣는다 (3장). — 추적/추종, 통신
-10. 버스 프록시(XSUB 5555 / XPUB 5556)의 담당과 실행 방식. 탐지 토픽(`perception/observations`, `vision/frame/gray8` 등)이 모두 이 프록시를 지나는데, 누가 실행하고 관리하는지(별도 프로세스인지, 어느 프로세스 안인지, 죽으면 어떻게 되는지)가 정해져 있지 않다. — 통신, 탐지
-11. RPi 안 토픽 연결 방식 통일 여부. 지금은 직접 연결(발행자가 bind: 6370, 6372, 6357)과 프록시(탐지 토픽: 5555 / 5556)가 섞여 있어, 구독자가 주소를 여러 개 알아야 한다. 선택지는 (가) 모든 토픽을 직접 연결하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리, (나) 모든 토픽을 프록시로, (다) 지금처럼 유지. (가) 를 제안한다. 프로세스와 포트가 고정된 한 기기 안에서는 데이터를 직접 연결하고 주소 표를 한 곳에 두는 방식이 일반적이고(openpilot 의 서비스 표, ROS 2 의 직접 연결), 프록시가 SPOF가 되어 멈추면 탐지 토픽 전체가 끊기는 문제가 없어진다. 다만 탐지 쪽 발행 코드를 바꿔야 한다. — 통신, 탐지, 추적/추종
+10. 해소 (0.15): 버스 프록시(XSUB 5555 / XPUB 5556)를 제거하고 탐지 토픽도 탐지(C++ 어댑터)가 6374 에 bind 한다 (#60).
+11. 해소 (0.15): (가) 채택. 모든 토픽을 직접 연결(발행자 bind, 구독자 connect)하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리한다. 추적기는 6357 에서 6375 로 옮겨 포트 목록을 6370 대로 통일한다 (#60).
 12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
 13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. onboard 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
 
@@ -263,3 +265,4 @@ flowchart LR
 | 0.12 | 2026-10-29 | 5.1.2 `scan_remaining_s` 의 미제공 표현(키 없음 또는 nil) 규칙 (#40 리뷰) |
 | 0.13 | 2026-11-04 | 5.1.1 에 `session_id` 행(v3 의 값을 추적기가 옮김)과 `ground_anchor` 의 `anchor_y` 뜻(상대 비율), 7장 영상 송신부가 세 메시지를 한 프레임으로 묶는 기준을 `(source, session_id, frame_id)` 로 (#41 리뷰) |
 | 0.14 | 2026-11-06 | 직렬화를 MessagePack 에서 protobuf 로 (#56): 1장, 3장 전송 규칙(`.proto` 위치와 import), 공통 필드에서 `schema` 제거(타입은 토픽 이름), 버전 규칙(`reserved`, `optional`, 새 토픽 이름), 5장 머리의 전환 중 표기, 5.1 `vision/frame/gray8` 의 헤더 표기, 7장 1 |
+| 0.15 | 2026-11-07 | 3장 전송 표현을 구현 중립(토픽 발행·구독, 요청-응답, 본문 + 바이너리, queue_depth, 이름 변환)으로 바꾸고 ZeroMQ 구성을 "현재 구현" 으로 분리, 5.1 엔드포인트(탐지 6374, 추적기 6375, `fc/mode_event` 6370, 프록시 제거), 5.2 제목, 7장 1 의 엔드포인트·10·11 해소, 3 의 전송 경로를 6374 직접 연결로 변경, "계약" 을 contract 로 (#60) |

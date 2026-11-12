@@ -45,3 +45,4 @@
 | 0.6 | 2026-10-25 | 코드(#39, #40)와 이름 맞춤: class_onboard 0.5(실행 루프, `IMavlinkConnection`, `FcCommandGate`, `MavlinkCommandReceiver`·`CommandResponder`), class_follow 0.5(구현용·호출용 인터페이스 분리), class_gcs 0.2, class_tracker 0.5, class_video(`FrameJoiner`), sequence 0.4 |
 | 0.7 | 2026-10-26 | class_video 0.4(코드 #41 과 맞춤: `IFrameSource.subscribe`, `FrameCollector`·`CollectedFrame`, 직렬화는 구체 클래스), sequence 0.5 |
 | 0.8 | 2026-10-29 | class_vision 0.4(Python 쪽 내부 인터페이스, 코드 `onboard/vision/python/` 과 맞춤) |
+| 0.9 | 2026-11-07 | bus 인터페이스를 구현 교체 가능 구조로(#60): class_onboard 0.8(`IBus`, `IRequester`, `IReplier`), class_follow 0.9, class_video 0.6, "계약"→contract, class_tracker 0.7 과 component 0.3(추적기 포트 6375) |

@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -17,11 +18,13 @@ namespace argus::bus_testing {
 namespace {
 
 using bus::BusMessage;
+using bus::Bytes;
 using std::chrono::milliseconds;
 
 constexpr std::int64_t kMs = 1'000'000;
+constexpr int kDepth = 4;
 
-BusMessage message(const std::string& topic, std::uint8_t value) { return {topic, {{value}}}; }
+BusMessage message(const std::string& topic, std::uint8_t value) { return {topic, {value}, {}}; }
 
 class FakeBusTest : public ::testing::Test {
 protected:
@@ -35,11 +38,17 @@ protected:
 };
 
 TEST_F(FakeBusTest, DeliversPublishedMessageOnlyInsideProcessEvents) {
+    const auto publisher = bus_.create_publisher("fc/attitude", kDepth);
+    const auto subscriber = bus_.create_subscriber("fc/attitude", kDepth);
+    ASSERT_TRUE(publisher && subscriber);
+    EXPECT_EQ(publisher->topic(), "fc/attitude");
+    EXPECT_EQ(subscriber->topic(), "fc/attitude");
+
     std::vector<BusMessage> received;
     const core::Subscription subscription =
-        bus_.subscribe("fc/attitude", [&](const BusMessage& m) { received.push_back(m); });
+        subscriber->subscribe([&](const BusMessage& m) { received.push_back(m); });
 
-    bus_.publish(message("fc/attitude", 1));
+    EXPECT_TRUE(publisher->publish({1}, {}));
     EXPECT_TRUE(received.empty());
 
     process();
@@ -47,12 +56,59 @@ TEST_F(FakeBusTest, DeliversPublishedMessageOnlyInsideProcessEvents) {
     EXPECT_EQ(bus_.published().size(), 1U);
 }
 
+TEST_F(FakeBusTest, DeliversBinaryWithBody) {
+    const auto publisher = bus_.create_publisher("vision/frame/gray8", kDepth);
+    const auto subscriber = bus_.create_subscriber("vision/frame/gray8", kDepth);
+    std::vector<BusMessage> received;
+    const core::Subscription subscription =
+        subscriber->subscribe([&](const BusMessage& m) { received.push_back(m); });
+
+    EXPECT_TRUE(publisher->publish({1, 2}, {9, 9, 9}));
+    process();
+
+    ASSERT_EQ(received.size(), 1U);
+    EXPECT_EQ(received[0].body, (Bytes{1, 2}));
+    EXPECT_EQ(received[0].binary, (Bytes{9, 9, 9}));
+}
+
+TEST_F(FakeBusTest, PublishReturnsFalseWhenQueueIsFull) {
+    const auto publisher = bus_.create_publisher("t", 2);
+
+    EXPECT_TRUE(publisher->publish({1}, {}));
+    EXPECT_TRUE(publisher->publish({2}, {}));
+    EXPECT_FALSE(publisher->publish({3}, {}));  // 큐 길이 2 를 넘김. 유실
+    EXPECT_EQ(bus_.published().size(), 2U);
+
+    process();  // 전달되어 큐가 빔
+    EXPECT_TRUE(publisher->publish({4}, {}));
+}
+
+// 거부 테스트는 원인마다 하나. 같은 값으로 성공하는 호출을 먼저 두어 다른 입력은 정상임을 보인다
+TEST_F(FakeBusTest, RejectsEmptyTopicName) {
+    EXPECT_NE(bus_.create_publisher("t", kDepth), nullptr);
+    EXPECT_EQ(bus_.create_publisher("", kDepth), nullptr);
+    EXPECT_EQ(bus_.create_subscriber("", kDepth), nullptr);
+}
+
+TEST_F(FakeBusTest, RejectsNonPositiveQueueDepth) {
+    EXPECT_NE(bus_.create_publisher("t", 1), nullptr);
+    EXPECT_EQ(bus_.create_publisher("t", 0), nullptr);
+    EXPECT_EQ(bus_.create_subscriber("t", -1), nullptr);
+}
+
+TEST_F(FakeBusTest, RejectsEmptyRequestName) {
+    EXPECT_NE(bus_.create_requester("r"), nullptr);
+    EXPECT_EQ(bus_.create_requester(""), nullptr);
+    EXPECT_EQ(bus_.create_replier(""), nullptr);
+}
+
 TEST_F(FakeBusTest, MatchesTopicExactly) {
+    const auto subscriber = bus_.create_subscriber("fc/state", kDepth);
     int received = 0;
     const core::Subscription subscription =
-        bus_.subscribe("fc/state", [&](const BusMessage&) { ++received; });
+        subscriber->subscribe([&](const BusMessage&) { ++received; });
 
-    bus_.simulate_message_received(message("fc/state_extra", 1));  // 앞부분만 같은 토픽
+    bus_.simulate_message_received(message("fc/state_extra", 1));
     bus_.simulate_message_received(message("fc", 1));
     process();
 
@@ -60,11 +116,13 @@ TEST_F(FakeBusTest, MatchesTopicExactly) {
 }
 
 TEST_F(FakeBusTest, CallsEverySubscriberInOrder) {
+    const auto first_subscriber = bus_.create_subscriber("t", kDepth);
+    const auto second_subscriber = bus_.create_subscriber("t", kDepth);
     std::vector<int> order;
     const core::Subscription first =
-        bus_.subscribe("t", [&](const BusMessage&) { order.push_back(1); });
+        first_subscriber->subscribe([&](const BusMessage&) { order.push_back(1); });
     const core::Subscription second =
-        bus_.subscribe("t", [&](const BusMessage&) { order.push_back(2); });
+        second_subscriber->subscribe([&](const BusMessage&) { order.push_back(2); });
 
     bus_.simulate_message_received(message("t", 0));
     process();
@@ -73,8 +131,9 @@ TEST_F(FakeBusTest, CallsEverySubscriberInOrder) {
 }
 
 TEST_F(FakeBusTest, StopsDeliveringAfterSubscriptionReleased) {
+    const auto subscriber = bus_.create_subscriber("t", kDepth);
     int received = 0;
-    core::Subscription subscription = bus_.subscribe("t", [&](const BusMessage&) { ++received; });
+    core::Subscription subscription = subscriber->subscribe([&](const BusMessage&) { ++received; });
 
     subscription.reset();
     bus_.simulate_message_received(message("t", 0));
@@ -83,29 +142,45 @@ TEST_F(FakeBusTest, StopsDeliveringAfterSubscriptionReleased) {
     EXPECT_EQ(received, 0);
 }
 
-TEST_F(FakeBusTest, CallGetsReplyFromServer) {
-    const core::Subscription server =
-        bus_.serve("control/mode_request",
-                   [](const BusMessage& request) { return BusMessage{request.topic, {{42}}}; });
+TEST_F(FakeBusTest, SubscriptionOutlivesSubscriberSafely) {
+    core::Subscription subscription;
+    {
+        const auto subscriber = bus_.create_subscriber("t", kDepth);
+        subscription = subscriber->subscribe([](const BusMessage&) {});
+    }
+    subscription.reset();  // subscriber 가 먼저 사라져도 해제가 안전함
+    SUCCEED();
+}
+
+TEST_F(FakeBusTest, RequestGetsReplyFromReplier) {
+    const auto replier = bus_.create_replier("control/mode_request");
+    const auto requester = bus_.create_requester("control/mode_request");
+    ASSERT_TRUE(replier && requester);
+    EXPECT_EQ(requester->name(), "control/mode_request");
+
+    const core::Subscription served = replier->serve([](const BusMessage& request) {
+        EXPECT_EQ(request.topic, "control/mode_request");
+        return Bytes{42};
+    });
     std::optional<BusMessage> reply;
-    const core::Subscription call =
-        bus_.call(message("control/mode_request", 1), milliseconds{100},
-                  [&](std::optional<BusMessage> r) { reply = std::move(r); });
+    const core::Subscription pending = requester->request(
+        {1}, milliseconds{100}, [&](std::optional<BusMessage> r) { reply = std::move(r); });
 
     EXPECT_FALSE(reply.has_value());  // 바로 반환하고, 응답은 process_events 에서
     process();
 
-    EXPECT_EQ(reply, std::optional<BusMessage>(BusMessage{"control/mode_request", {{42}}}));
+    EXPECT_EQ(reply, std::optional<BusMessage>(message("control/mode_request", 42)));
 }
 
-TEST_F(FakeBusTest, CallTimesOutWithoutServer) {
+TEST_F(FakeBusTest, RequestTimesOutWithoutReplier) {
+    const auto requester = bus_.create_requester("follow/command");
     bool called = false;
     std::optional<BusMessage> reply = message("unused", 0);
-    const core::Subscription call = bus_.call(message("follow/command", 1), milliseconds{100},
-                                              [&](std::optional<BusMessage> r) {
-                                                  called = true;
-                                                  reply = std::move(r);
-                                              });
+    const core::Subscription pending =
+        requester->request({1}, milliseconds{100}, [&](std::optional<BusMessage> r) {
+            called = true;
+            reply = std::move(r);
+        });
 
     process(milliseconds{50});
     EXPECT_FALSE(called);  // 아직 시간 초과 전
@@ -116,32 +191,33 @@ TEST_F(FakeBusTest, CallTimesOutWithoutServer) {
     EXPECT_EQ(clock_.now_monotonic_ns(), 100 * kMs);
 }
 
-TEST_F(FakeBusTest, ReleasedCallDoesNotReply) {
-    const core::Subscription server =
-        bus_.serve("r", [](const BusMessage& request) { return request; });
+TEST_F(FakeBusTest, ReleasedRequestDoesNotReply) {
+    const auto replier = bus_.create_replier("r");
+    const auto requester = bus_.create_requester("r");
+    const core::Subscription served =
+        replier->serve([](const BusMessage& request) { return request.body; });
     bool called = false;
-    core::Subscription call = bus_.call(message("r", 1), milliseconds{100},
-                                        [&](const std::optional<BusMessage>&) { called = true; });
+    core::Subscription pending = requester->request(
+        {1}, milliseconds{100}, [&](const std::optional<BusMessage>&) { called = true; });
 
-    call.reset();
+    pending.reset();
     process();
 
     EXPECT_FALSE(called);
 }
 
 TEST_F(FakeBusTest, LaterServeReplacesEarlier) {
-    const core::Subscription first =
-        bus_.serve("r", [](const BusMessage&) { return BusMessage{"r", {{1}}}; });
-    const core::Subscription second =
-        bus_.serve("r", [](const BusMessage&) { return BusMessage{"r", {{2}}}; });
+    const auto replier = bus_.create_replier("r");
+    const auto requester = bus_.create_requester("r");
+    const core::Subscription first = replier->serve([](const BusMessage&) { return Bytes{1}; });
+    const core::Subscription second = replier->serve([](const BusMessage&) { return Bytes{2}; });
     std::optional<BusMessage> reply;
-    const core::Subscription call =
-        bus_.call(message("r", 0), milliseconds{100},
-                  [&](std::optional<BusMessage> r) { reply = std::move(r); });
+    const core::Subscription pending = requester->request(
+        {0}, milliseconds{100}, [&](std::optional<BusMessage> r) { reply = std::move(r); });
 
     process();
 
-    EXPECT_EQ(reply, std::optional<BusMessage>(BusMessage{"r", {{2}}}));
+    EXPECT_EQ(reply, std::optional<BusMessage>(message("r", 2)));
 }
 
 }  // namespace
