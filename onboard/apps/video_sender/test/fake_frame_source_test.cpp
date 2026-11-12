@@ -12,7 +12,6 @@
 #include "argus/perception_api/types.hpp"
 // 인터페이스·값 타입 헤더가 ZeroMQ, GStreamer 없이 컴파일되는지 함께 확인한다
 #include "argus/video_sender/collected_frame.hpp"
-#include "argus/video_sender/video_encode_config.hpp"
 
 namespace argus::video_sender {
 namespace {
@@ -55,8 +54,8 @@ TEST_F(FakeFrameSourceTest, DeliversPushedFramesInsideProcessEventsInOrder) {
 }
 
 TEST_F(FakeFrameSourceTest, EveryHandlerReceivesAndPixelsArrive) {
-    int first = 0;
-    int second = 0;
+    std::int32_t first = 0;
+    std::int32_t second = 0;
     std::size_t pixel_bytes = 0;
     const core::Subscription a = source_.subscribe([&](const Frame&) { ++first; });
     const core::Subscription b = source_.subscribe([&](const Frame& frame) {
@@ -73,7 +72,7 @@ TEST_F(FakeFrameSourceTest, EveryHandlerReceivesAndPixelsArrive) {
 }
 
 TEST_F(FakeFrameSourceTest, ReleasedSubscriptionStopsDelivery) {
-    int received = 0;
+    std::int32_t received = 0;
     core::Subscription subscription = source_.subscribe([&](const Frame&) { ++received; });
 
     source_.simulate_frame_received(frame_with_id(1));
@@ -90,15 +89,6 @@ TEST(CollectedFrameTest, ObservationsAndTracksAreEmptyUntilCollected) {
     EXPECT_EQ(collected.frame.frame_id, 3U);
     EXPECT_FALSE(collected.observations.has_value());
     EXPECT_FALSE(collected.tracks.has_value());
-}
-
-TEST(VideoEncodeConfigTest, DefaultsToRtpJpegWithoutFixedQuality) {
-    const VideoEncodeConfig config;
-
-    EXPECT_EQ(config.codec, VideoCodec::Jpeg);
-    EXPECT_EQ(config.payload_type, 26);
-    EXPECT_FALSE(config.quality.has_value());
-    EXPECT_NE(config.gstreamer_elements.find("rtpjpegpay"), std::string::npos);
 }
 
 }  // namespace

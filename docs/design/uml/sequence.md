@@ -104,7 +104,7 @@ sequenceDiagram
     mj->>vs: CollectedFrame
     vs->>rs: pushVideo (RTP ts = unix_ns 변환)
     vs->>rs: pushMetadata (XML, UtcTime = unix_ns)
-    rs->>rr: RTP/JPEG 영상 트랙
+    rs->>rr: RTP/H.264 영상 트랙
     rs->>rr: RTP 메타데이터 트랙
     rs->>rr: RTCP SR (RTP ts ↔ NTP 시각)
     rr->>fs: DecodedFrame (UTC)

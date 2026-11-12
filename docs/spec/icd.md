@@ -76,7 +76,7 @@ flowchart LR
     tracker -->|추적 결과| follow
     vision -->|박스 없는 비압축 프레임<br/>+ 탐지 결과| rtsp
     tracker -->|추적 결과| rtsp
-    rtsp -->|RTSP + RTP/JPEG<br/>+ 메타데이터 트랙 ONVIF XML| gcs
+    rtsp -->|RTSP + RTP/H.264<br/>+ 메타데이터 트랙 ONVIF XML| gcs
 ```
 
 | 링크 | 전송 | 주소·포트 | 내용 |
@@ -86,7 +86,7 @@ flowchart LR
 | RPi 라우터 ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (서버) | 통제기가 먼저 보내면 라우터가 그 주소로 응답 |
 | RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 비행 중에는 라우터가 QGC(sysid 255)가 보낸 패킷을 모두 폐기하므로 QGC 는 telemetry 만 수신한다. 파라미터, 보정은 정비 절차(`onboard/config/mavlink-router/README.md`)로 |
 | mavlink_gateway ↔ 추적기·추종 제어, 탐지 → 추적기·영상 송신부 | ZeroMQ, RPi 안 | `docs/spec/process_interfaces.md` | 기체 상태, 탐지·추적 결과, 추종 명령·setpoint·모드 요청 |
-| 영상 송신부 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/spec/video.md` | JPEG 영상 트랙(박스 없는 비압축 프레임을 영상 송신부가 인코딩) + ONVIF XML 메타데이터 트랙(`tracking/tracks` 의 추적 박스). 통제기가 메타데이터로 박스를 그린다. 동기화 방법은 `docs/spec/video.md` 4장 |
+| 영상 송신부 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/spec/video.md` | H.264 영상 트랙(박스 없는 비압축 프레임을 영상 송신부가 인코딩) + ONVIF XML 메타데이터 트랙(`tracking/tracks` 의 추적 박스). 통제기가 메타데이터로 박스를 그린다. 동기화 방법은 `docs/spec/video.md` 4장 |
 
 - mavlink-router 가 FC 의 USB 장치를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 그래서 mavlink_gateway 와 통제기는 서로의 메시지도 받는다 (sysid·compid 로 걸러 쓴다).
 - mavlink-router 설정 파일은 `onboard/config/mavlink-router/main.conf`(비행)와 `config.d/qgc-maintenance.conf`(정비 때만 설치)다. 시동, 이륙, 모드 변경, 보정 명령이 모두 `COMMAND_LONG` 한 메시지로 가므로 라우터는 메시지 id 로 비행 명령만 골라 차단할 수 없고, 보낸 쪽 sysid 로 QGC 의 입력을 모두 차단한다. 통제기(sysid 250)의 명령은 mavlink_gateway 가 제어권으로 검사한다 (5장).
@@ -112,7 +112,7 @@ flowchart LR
 | SET_POSITION_TARGET_LOCAL_NED (84) | mavlink_gateway → FC | 20 Hz | Offboard 속도 setpoint. 추종 중에만 보낸다 |
 | MAV_CMD_DO_REPOSITION (192) | mavlink_gateway → FC | 스캔 중 | Hold 상태에서 절대 heading 요청. 스캔 구현 방식은 확인 중 [미결 E3] |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
-| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_UNKNOWN`(0) (MAVLink 에 JPEG 값이 없음. 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
+| VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_H264`(1) (JPEG 를 선택한 경우 MAVLink 에 JPEG 값이 없어 `VIDEO_STREAM_ENCODING_UNKNOWN`(0). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·mavlink_gateway 는 쓰지 않는다 |
 
 - telemetry 주기는 PX4 가 USB 연결의 MAVLink 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
@@ -237,7 +237,7 @@ sequenceDiagram
 | B3 | 센서 상태 항목 | flags 4 개 외에 필요한 것 (온도, 프레임 드롭) | 탐지 |
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 (`docs/spec/video.md`) | 탐지 |
-| C | 영상 전송 | RTSP + RTP/JPEG + ONVIF XML 메타데이터 트랙으로 정함. 영상 소스는 박스 없는 비압축 프레임(`vision/frame/gray8`)이며 영상 송신부가 4:2:0 JPEG 으로 인코딩한다 (#28). 남은 항목(RTSP 서버, 통제기 수신, 포트, Extension 요소 이름 등)은 `docs/spec/video.md` 9장 | 통제기·탐지 |
+| C | 영상 전송 | RTSP + RTP/H.264 + ONVIF XML 메타데이터 트랙으로 정함. 영상 소스는 박스 없는 비압축 프레임(`vision/frame/gray8`)이며 영상 송신부가 H.264 로 인코딩한다 (#28, #74). 남은 항목(RTSP 서버, 통제기 수신, 포트, Extension 요소 이름 등)은 `docs/spec/video.md` 9장 | 통제기·탐지 |
 | D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. 라우터의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 mavlink_gateway 가 거부한다 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |

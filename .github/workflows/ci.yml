@@ -104,9 +104,11 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         # Ubuntu 24.04 apt: ZeroMQ + cppzmq(C++ 바인딩), protobuf(런타임, protoc 3.21.12), gtest. RPi(Ubuntu 24.04)와 같은 패키지
+        # GStreamer 1.24 (영상 송신부): 개발 패키지 3개와, 테스트가 실행하는 요소(jpegenc, rtpjpegpay, rtppassthroughpay, rtspsrc 등)가 있는 plugins-base, plugins-good
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
           pip install clang-tidy==22.1.8
       - name: Configure
         run: cmake -S onboard -B build/onboard -G Ninja -DCMAKE_BUILD_TYPE=Release
