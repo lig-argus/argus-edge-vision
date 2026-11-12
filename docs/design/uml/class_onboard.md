@@ -127,7 +127,6 @@ classDiagram
         <<interface>>
         +request_offboard(RequestHeader) FlightModeReply
         +request_hold(RequestHeader) FlightModeReply
-        +request_heading(RequestHeader, rad) FlightModeReply
     }
     class MavlinkFlightModeControl {
         +on_command_ack(COMMAND_ACK)
@@ -168,14 +167,14 @@ classDiagram
     ZmqFlightModeControlServer ..> IFlightModeControl
     IFlightModeControl <|.. MavlinkFlightModeControl
     MavlinkFlightModeControl ..> IFcCommandGate : 송신 전 allow
-    MavlinkFlightModeControl ..> IMavlinkConnection : DO_SET_MODE, DO_REPOSITION 송신·COMMAND_ACK, HEARTBEAT 수신
+    MavlinkFlightModeControl ..> IMavlinkConnection : DO_SET_MODE 송신·COMMAND_ACK, HEARTBEAT 수신
     MavlinkFlightModeControl ..> ITopicPublisher : fc/mode_event
     IFcCommandGate <|.. FcCommandGate
     FcCommandGate ..> FcCommandAuthority : 송신권
     FcCommandGate ..> OnboardWatchdog : FC 상태·RC 개입
     FcCommandGate ..> IClock : valid_until
     OnboardWatchdog ..> HealthState
-    OnboardWatchdog ..> IClock : heading 요청 감시 시간
+    OnboardWatchdog ..> IClock : Scan 중 setpoint 감시 시간
 ```
 
 | 클래스 | 책임 | 출처 |
@@ -185,10 +184,10 @@ classDiagram
 | `ZmqVelocitySetpointReceiver` | `control/setpoint` 를 받아 최신 값을 20 Hz 로 `IVelocitySetpointSink` 에 넘김. `valid_until_monotonic_ns` 가 지나면 속도 0 을 넘기고 `IFlightModeControl` 로 Hold 요청 | icd 2장, pi 6장 |
 | `MavlinkVelocitySetpointSink` | `IVelocitySetpointSink` 구현. `IFcCommandGate::allow` 가 허용하면 SET_POSITION_TARGET_LOCAL_NED 로 인코드해 송신. 거부면 보내지 않는다 (거부 뒤 안전 동작은 받는 쪽 규약, pi 6장) | icd 2장 |
 | `ZmqFlightModeControlServer` | `control/mode_request` REQ 를 받아 `IFlightModeControl` 을 부르고 `FlightModeReply` 를 REP 로 보냄 | pi 5.2 |
-| `MavlinkFlightModeControl` | `IFlightModeControl` 구현. allow 가 허용하면 DO_SET_MODE·DO_REPOSITION 송신, 응답은 수락 여부. COMMAND_ACK 와 HEARTBEAT 의 실제 모드를 확인해 `fc/mode_event`(실제 모드, 요청 command_id, Offboard 이탈 원인) 발행 | pi 5.2, icd 4.2·4.3 |
+| `MavlinkFlightModeControl` | `IFlightModeControl` 구현. allow 가 허용하면 DO_SET_MODE 송신, 응답은 수락 여부. COMMAND_ACK 와 HEARTBEAT 의 실제 모드를 확인해 `fc/mode_event`(실제 모드, 요청 command_id, Offboard 이탈 원인) 발행 | pi 5.2, icd 4.2·4.3 |
 | `IFcCommandGate`, `FcCommandGate` | FC 로 나가는 명령이 반드시 거치는 한 곳. `FcCommand`(종류, 세션, `valid_until_monotonic_ns`, 모두 `vehicle_api` 값)를 받아 송신권(`FcCommandAuthority`), FC 상태·RC 개입(`OnboardWatchdog`), 유효 시간 순서로 확인하고 `Verdict`(허용, 거부 원인)를 돌려준다. MAVLink 를 모른다. 테스트용 `FakeFcCommandGate` 는 `apps/onboard/test/` | icd 5장, 6.6, pi 6장 |
 | `FcCommandAuthority` | FC 제어 명령 송신권. 통제기 제어권(sysid 250)과 별개. 다른 소유자가 있으면 시작 요청을 거부하고, 세션 변경·RC 개입·폐기 뒤에는 이전 권한으로 보내지 못하게 함 | icd 5장, pi 6장 |
-| `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입을 스스로 확인. RC 개입 우선, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않음. Scan 회전 중 감시 시간 안에 새 heading 요청이 없으면 회전을 멈춤 | icd 6.6, 6.4 ⓒ, pi 6장 |
+| `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입을 스스로 확인. RC 개입 우선, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않음. Scan 중 감시 시간 안에 새 setpoint 가 없으면 회전을 멈춤 | icd 6.6, 6.4 ⓒ, pi 6장 |
 | `HealthState` | `ARGUS_STATUS.health` 비트의 현재 값 | icd 3.1 |
 
 - `IVelocitySetpointSink`, `IFlightModeControl` 은 `vehicle_api` 의 인터페이스다(`class_follow.md`). 추종 제어 쪽에서는 같은 인터페이스를 ZeroMQ 로 보내는 어댑터가 구현하고, onboard 에서는 MAVLink 로 보내는 클래스가 구현한다.

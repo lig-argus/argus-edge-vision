@@ -2,7 +2,7 @@
 # 구현용(동기): IVehicleTelemetry, IVelocitySetpointSink, IFlightModeControl, IFollowControl
 # 호출용(비동기, 응답은 handler 로): IFollowControlClient, IFlightModeControlClient
 # core(Subscription)에만 의존한다. 추종 제어 알고리즘과 그 단위 테스트는 이 타깃과 테스트용 Fake
-# (libs/vehicle_api_testing)만 링크해 ZeroMQ·protobuf 없이 빌드된다. ZeroMQ 어댑터는 libs/vehicle_api_zmq
+# (libs/vehicle_api_testing)만 링크해 ZeroMQ·protobuf 없이 빌드된다. bus 어댑터는 libs/vehicle_api_bus
 # 헤더는 include/argus/vehicle_api/ 에 두고 #include "argus/vehicle_api/<파일>.hpp" 로 부른다. namespace 는 argus::vehicle_api
 add_library(argus_vehicle_api INTERFACE)
 add_library(argus::vehicle_api ALIAS argus_vehicle_api)

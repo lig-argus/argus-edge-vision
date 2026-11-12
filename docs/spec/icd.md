@@ -109,8 +109,7 @@ flowchart LR
 | TIMESYNC (111) | onboard(191) ↔ FC | onboard 가 주기적으로 요청 | RPi 시계와 FC `time_boot_ms` 의 차이 (아키텍처 문서 1.9) |
 | COMMAND_LONG (76) | 통제기 → FC 또는 onboard | 이벤트 | 명령 (4장). `target_component` 로 FC(1)·onboard(195) 구분 |
 | COMMAND_ACK (77) | FC, onboard → 통제기 | 응답 | 명령 결과 (4장) |
-| SET_POSITION_TARGET_LOCAL_NED (84) | onboard → FC | 20 Hz | Offboard 속도 setpoint. 추종 중에만 보낸다 |
-| MAV_CMD_DO_REPOSITION (192) | onboard → FC | 스캔 중 | Hold 상태에서 절대 heading 요청. 스캔 구현 방식은 확인 중 [미결 E3] |
+| SET_POSITION_TARGET_LOCAL_NED (84) | onboard → FC | 20 Hz | Offboard 속도 setpoint 와 yaw 회전 속도. 추종 중과 Scan 중에 보낸다 |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
 | VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_UNKNOWN`(0) (MAVLink 에 JPEG 값이 없음. 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·onboard 는 쓰지 않는다 |
@@ -188,7 +187,7 @@ sequenceDiagram
 
 - 추종 중에 받은 TRACK_START 는 TEMPORARILY_REJECTED 이다 (⑤ 불충족). 표적을 바꾸려면 TRACK_STOP(Hold) 뒤 다시 선택한다 (아키텍처 문서 2.14).
 - 추종 중 표적을 잃었을 때의 onboard 동작(예측 유지 시간, Hold 전환)은 `docs/design/system_architecture.md` 2.7·2.11 을 따른다. 통제기는 `target_state`(CONFIRMED → PREDICTED → LOST)와 `mission_state` 변화로만 본다.
-- Scan 중 FC 로 heading 을 요청하는 방식(Hold 에서 `MAV_CMD_DO_REPOSITION` 의 yaw, 또는 Offboard 유지 중 yaw setpoint)은 확인 중이다 [미결 E3].
+- Scan 의 yaw 회전은 Offboard 상태에서 `SET_POSITION_TARGET_LOCAL_NED` 의 yaw 회전 속도로 수행한다. Hold 상태에서 절대 heading 을 요청하는 방식(`MAV_CMD_DO_REPOSITION` 의 yaw)은 사용하지 않는다. GPS 가 없는 환경에서는 PX4 가 Hold 진입을 거절하기 때문이다 (기체 시험, 2026-11-12. PX4 v1.16 의 Hold 는 local 위치와 global 위치 추정을 모두 요구한다). PX4 는 위치, 속도, 가속도 값이 모두 없는 setpoint 를 폐기하므로 yaw 회전 속도는 속도 값과 함께 보낸다. 정지 절차와 감시 시간은 E3.
 
 ### 4.3 비행 명령 (FC 가 받는다, 통제기 → FC 직접)
 
@@ -207,7 +206,7 @@ sequenceDiagram
 
 - **제어권**은 sysid 250 통제기 하나가 가진다. onboard 는 다른 sysid 가 보낸 TRACK_START/STOP·SCAN_START 를 DENIED 로 거부하고 `ARGUS_STATUS.control_sysid` 에 250 을 넣는다.
 - 통제기 두 대가 동시에 붙는 경우는 지원하지 않는다 [미결 D2].
-- 통제기 제어권과 별개로, FC 로 setpoint·모드·heading 을 보낼 **FC 제어 명령 송신권**은 onboard 가 관리한다. 다른 소유자가 있으면 추종 시작을 거부하고, 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다 (`docs/spec/process_interfaces.md` 6장).
+- 통제기 제어권과 별개로, FC 로 setpoint·모드를 보낼 **FC 제어 명령 송신권**은 onboard 가 관리한다. 다른 소유자가 있으면 추종 시작을 거부하고, 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다 (`docs/spec/process_interfaces.md` 6장).
 - onboard 는 통제기의 HEARTBEAT 를 받아 `ARGUS_HEALTH_GCS_LINK` 를 유지한다 (6.1).
 - 모든 송신자는 MAVLink 2 의 `seq` 를 1 씩 올린다. 수신자는 송신자(sysid, compid)별 `seq` 빈칸으로 손실률을 센다. 라우터 때문에 "자기에게 오지 않는 메시지" 도 빈칸으로 보이므로, 링크 품질은 HEARTBEAT 수신률(1 Hz 기대)로 판단한다.
 
@@ -218,7 +217,7 @@ sequenceDiagram
 | 6.1 통제기 → onboard | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
 | 6.2 onboard → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
-| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ 스캔 중 heading 요청을 FC 로 보내기 전에 그 요청의 `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음)가 지남 | ⓐ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: onboard 가 그 요청을 FC 로 보내지 않고 거부한다. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차는 E3 |
+| 6.4 추종 제어 → onboard | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: onboard 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 | 6.6 onboard 독립 감시 | 추종 제어의 상태 보고와 관계없이 onboard 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
 
@@ -244,7 +243,7 @@ sequenceDiagram
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
 | D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
 | D6 | 최종 ACK 보관 시간 | 해소 (0.7): 시간이 아니라 번호 기준으로 보관한다 (다음 명령까지, 더 오래된 번호는 폐기. 4.1 재전송 판단). 링크 지연 측정 조건이 없어졌다. 60 초 상한은 표 정리용 | 통제기 |
-| E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차도 이 시험에서 정함 (6.4 ⓒ). 감시 시간 안에 새 heading 요청이 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 FC 정지 명령 방식은 이 시험으로 정한다 | 통제기·제어 |
+| E3 | Scan 의 정지 절차와 감시 시간 | Scan 의 yaw 회전 방식은 Offboard 상태의 yaw 회전 속도 setpoint 로 정했다 (4.2). 남은 항목: Scan 을 멈출 때 yaw 를 유지하는 방법, Scan 중 setpoint 가 없을 때의 감시 시간(6.4 ⓒ), yaw 회전 속도의 상한, Scan 시작 조건 ③(FC 모드가 Hold)을 GPS 가 없는 환경에 적용하는 방법. 기체 시험으로 정한다 | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
 | E5 | Position 모드에서 조종을 넘기는 절차 (후속) | 지금 TRACK_START 는 FC 가 실제 Hold 일 때만 허용하고 ①~⑤ 와 FC 제어 명령 송신권 검사는 그대로다 (4.2, 5장). Position 모드에서 조종을 넘기는 절차는 통제기가 보낼 요청 형식이 아직 없으므로 후속 항목으로 두고, 지원할 때 준비·취소·유효 시간·RC 개입 처리를 함께 정한다 | 통제기·제어 |
 | E6 | 규약에 없는 임무 상태 변화 | 해소 (0.2): Offboard 요청·ACK 실패, 실제 모드 확인 시간 초과는 FAULT (4.2). MANUAL·FAULT 의 복구는 6장 아래 항목 | — |

@@ -1,0 +1,71 @@
+// follow/command: onboard → 추종 제어 요청과 그 응답 follow/result
+// (docs/spec/process_interfaces.md 5.2, 5.2.1)
+// C++ 인터페이스 vehicle_api::IFollowControl 의 함수 3개과 값 타입 TrackTarget, ScanRequest,
+// StopReason, FollowResult 에 대응한다. 변환은 어댑터(vehicle_api_bus)가 한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/common.proto";
+
+// 탐지 센서. 값은 MAVLink ARGUS_SENSOR 와 같다
+enum Sensor {
+  SENSOR_UNKNOWN = 0;
+  SENSOR_IR = 1;
+  SENSOR_EO = 2;
+}
+
+// 추종 및 Scan 종료 이유
+enum StopReason {
+  STOP_REASON_UNSPECIFIED = 0;
+  STOP_REASON_OPERATOR = 1;   // 운용자의 종료 명령
+  STOP_REASON_LINK_LOSS = 2;  // 통제기 링크 두절
+  STOP_REASON_ONBOARD = 3;    // onboard 판단 (독립 감시 등)
+}
+
+// 추종 명령의 결과 (5.2.1 outcome)
+enum FollowOutcome {
+  FOLLOW_OUTCOME_UNSPECIFIED = 0;
+  FOLLOW_OUTCOME_IN_PROGRESS = 1;  // 수락하고 진행 중
+  FOLLOW_OUTCOME_SUCCEEDED = 2;    // 완료
+  FOLLOW_OUTCOME_REJECTED = 3;     // 수락 전 조건 및 입력 불충족으로 거부
+  FOLLOW_OUTCOME_FAILED = 4;       // 수락 뒤 실행 실패, 취소, RC 및 모드 개입
+}
+
+message FollowCommand {
+  // 운용자가 영상에서 고른 표적의 추종 시작
+  message TrackStart {
+    Sensor sensor = 1;
+    uint32 generation = 2;  // 1~16,777,215
+    int32 class_id = 3;
+    uint32 track_id = 4;  // 1~16,777,215
+    string label = 5;
+  }
+
+  message Stop {
+    StopReason reason = 1;
+  }
+
+  // Scan(yaw 회전 탐색) 시작. NaN 인 항목은 추종 제어 설정의 기본값을 쓴다
+  message Search {
+    double yaw_range_rad = 1;
+    double yaw_rate_rad_s = 2;  // 양수 = 시계 방향
+    double timeout_s = 3;
+  }
+
+  RequestHeader header = 1;
+  oneof action {
+    TrackStart track_start = 2;
+    Stop stop = 3;
+    Search search = 4;
+  }
+}
+
+// follow/result
+message FollowResult {
+  RequestId id = 1;  // 요청의 id 그대로
+  FollowOutcome outcome = 2;
+  bool request_accepted = 3;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
+  string reason = 4;          // 거부와 실패의 원인. 판정에는 쓰지 않는다
+}

@@ -1,5 +1,5 @@
 // 테스트용 IFollowControl. 받은 명령을 기록하고, 테스트가 지정한 결과를 반환한다.
-// onboard 의 ZeroMQ 어댑터(ZmqFollowControlServer) 테스트가 추종 제어 대신 쓴다
+// bus 어댑터(BusFollowControlServer) 테스트가 추종 제어 대신 쓴다
 #ifndef ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_HPP_
 #define ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_HPP_
 

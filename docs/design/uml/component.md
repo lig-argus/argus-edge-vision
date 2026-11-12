@@ -108,7 +108,7 @@ flowchart LR
 | `control/setpoint` | 추종 제어 | onboard FC 통신 | 20 Hz, 유효 시간 포함 |
 | `follow/status` | 추종 제어 | onboard 통제기 통신, (영상 송신부) | 영상 송신부 구독은 선택 표적 강조가 필요할 때만 (`process_interfaces.md` 5.3) |
 | `follow/command` (REQ/REP) | 추종 제어 | onboard 통제기 통신 | track_start·stop·search |
-| `control/mode_request` (REQ/REP) | onboard FC 통신 | 추종 제어 | OFFBOARD·HOLD, Hold 중 heading |
+| `control/mode_request` (REQ/REP) | onboard FC 통신 | 추종 제어 | OFFBOARD·HOLD |
 
 ## 2. RPi 밖 (MAVLink, RTSP)
 

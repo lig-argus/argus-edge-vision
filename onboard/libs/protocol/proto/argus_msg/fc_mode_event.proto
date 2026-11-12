@@ -1,0 +1,25 @@
+// fc/mode_event: onboard → 추종 제어. 실제 비행 모드가 바뀔 때마다 (docs/spec/process_interfaces.md 5.1)
+// C++ 값 타입 vehicle_api::FlightModeEvent 와 필드가 같다. 변환은 어댑터(vehicle_api_bus)가 한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/common.proto";
+
+// Offboard 를 벗어난 원인
+enum OffboardExitCause {
+  OFFBOARD_EXIT_CAUSE_NONE = 0;          // Offboard 이탈이 아닌 모드 변경
+  OFFBOARD_EXIT_CAUSE_PILOT_SWITCH = 1;  // 조종사가 RC 또는 통제기로 모드를 바꿈
+  OFFBOARD_EXIT_CAUSE_FAILSAFE = 2;      // FC failsafe
+  OFFBOARD_EXIT_CAUSE_UNKNOWN = 3;
+}
+
+message FcModeEvent {
+  uint64 seq = 1;  // 발행마다 1 증가 (3장 공통 필드)
+  FlightMode mode = 2;
+  // 이 모드 변경이 응답한 모드 요청의 command_id. 요청 없이 바뀌었으면(조종사, failsafe) 없음
+  optional uint64 request_command_id = 3;
+  OffboardExitCause exit_cause = 4;
+  int64 received_monotonic_ns = 5;  // RPi CLOCK_MONOTONIC, ns
+}

@@ -1,6 +1,6 @@
 // 추종, 스캔 명령을 보내는 인터페이스 (호출용. 응답은 handler 로 비동기로 받는다)
 // 규약: docs/spec/process_interfaces.md 5.2 follow/command, 5.2.1 follow/result
-// 구현: (다음 PR) ZmqFollowControlClient (vehicle_api_zmq, bus::IRequester 로 보냄),
+// 구현: BusFollowControlClient (vehicle_api_bus, bus::IRequester 로 보냄),
 //      테스트용 FakeFollowControlClient (vehicle_api_testing)
 // 사용: onboard 의 TrackStartHandler, TrackStopHandler, ScanStartHandler, GcsLinkMonitor
 #ifndef ARGUS_VEHICLE_API_FOLLOW_CONTROL_CLIENT_HPP_

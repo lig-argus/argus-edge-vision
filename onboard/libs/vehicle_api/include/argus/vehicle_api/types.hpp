@@ -104,11 +104,18 @@ struct GlobalPosition {
     std::uint64_t fc_epoch = 0;
 };
 
-// 비행 모드와 armed 상태 (`fc/state`, FC HEARTBEAT 메시지 하나)
+// 비행 모드와 armed 상태 (`fc/state`, FC HEARTBEAT 메시지 하나)와 onboard 의 제자리 유지 상태.
+// 기체가 실제로 정지한 상태: mode 가 Hold 이거나, mode 가 Offboard 이면서 offboard_hover 가 true
 struct FlightStatus {
     FlightMode mode = FlightMode::Unknown;
     bool armed = false;
     bool in_air = false;
+
+    // onboard 가 Offboard 상태에서 제자리 유지 setpoint(정지 시점의 위치와 yaw)를 송신 중인지.
+    // FC 의 값이 아니라 onboard 가 정하는 값이다. GPS 가 없는 환경에서는 PX4 가 Hold 진입을
+    // 거절하므로 정지를 Hold 대신 이 방식으로 수행한다
+    bool offboard_hover = false;
+
     std::int64_t received_monotonic_ns = 0;  // onboard 가 이 메시지를 처음 받은 시각
     std::uint64_t fc_epoch = 0;
 };
@@ -177,7 +184,7 @@ struct TrackTarget {
 };
 
 // Scan 요청. 비어 있는 항목은 추종 제어 설정의 기본값을 쓴다.
-// 메시지 및 MAVLink 에서는 NaN 으로 표현하며, NaN 과의 변환은 ZeroMQ 어댑터가 한다
+// 메시지 및 MAVLink 에서는 NaN 으로 표현하며, NaN 과의 변환은 bus 어댑터(vehicle_api_bus)가 한다
 struct ScanRequest {
     std::optional<double> yaw_range_rad;
     std::optional<double> yaw_rate_rad_s;  // 양수 = 시계 방향

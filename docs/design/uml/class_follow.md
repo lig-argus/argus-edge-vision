@@ -25,7 +25,6 @@ classDiagram
         <<interface>>
         +request_offboard(RequestHeader, timeout, on_reply) Subscription
         +request_hold(RequestHeader, timeout, on_reply) Subscription
-        +request_heading(RequestHeader, rad, timeout, on_reply) Subscription
     }
     class IFollowControl {
         <<interface>>
@@ -96,7 +95,7 @@ classDiagram
 |---|---|---|---|
 | `IVehicleTelemetry` | 인터페이스: 통신 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회(조회 시점 기준 200 ms 이내인 값 중 프레임 시각에 가장 가까운 것, 그 차가 50 ms 이내. 보간하지 않는다. 최근 값의 보관과 조회 시점은 구현 `ZmqVehicleTelemetrySubscriber` 가 맡는다), 비행 모드 이벤트 구독(`Subscription` 반환, handler 는 `process_events()` 안에서) | pi 4장, 5.1, `class_tracker.md` |
 | `IVelocitySetpointSink` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환. onboard 쪽 구현은 `MavlinkVelocitySetpointSink`(`class_onboard.md` 2절) | pi 4장 |
-| `IFlightModeControlClient` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading 요청. 호출은 바로 반환하고 응답(`FlightModeReply`: command_id, 수락 여부, 원인)은 `on_reply` 로, 시간 초과는 nullopt. 실제 전환은 `IVehicleTelemetry` 의 모드 이벤트로. onboard 쪽 짝은 `IFlightModeControl`(동기, `MavlinkFlightModeControl` 구현) | pi 4장, 5.2 |
+| `IFlightModeControlClient` | 인터페이스: 통신 | Offboard 진입, Hold 요청. 호출은 바로 반환하고 응답(`FlightModeReply`: command_id, 수락 여부, 원인)은 `on_reply` 로, 시간 초과는 nullopt. 실제 전환은 `IVehicleTelemetry` 의 모드 이벤트로. onboard 쪽 짝은 `IFlightModeControl`(동기, `MavlinkFlightModeControl` 구현) | pi 4장, 5.2 |
 | `IFollowControl` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 바로 반환. 표적 존재·상태·FC 조건 검사는 구현이 한다. onboard 쪽 짝은 `IFollowControlClient`(비동기, `ZmqFollowControlClient` 구현) | pi 4장, icd 4.1 |
 | `Zmq*` 어댑터 | 통신 | 위 인터페이스를 `process_interfaces.md` 5장 토픽·REQ/REP 로 구현. 받기만 하면 `…Subscriber`, 응답하면 `…Server` | pi 2장 |
 | (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(`core` 의 `Subscription` 에만 의존), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 그 단위 테스트는 `vehicle_api`·`vehicle_api_testing` 만 링크해 ZeroMQ·protobuf 에 의존하지 않는다 (#35 리뷰) | — |

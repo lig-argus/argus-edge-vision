@@ -1,9 +1,9 @@
 // 속도 setpoint 를 받는 인터페이스
 // 규약: docs/spec/process_interfaces.md 4장, 5.1 control/setpoint
-// 구현: (다음 PR) 추종 제어 프로세스의 ZmqVelocitySetpointSink (control/setpoint 발행),
+// 구현: 추종 제어 프로세스의 BusVelocitySetpointPublisher (vehicle_api_bus, control/setpoint 발행),
 //      onboard 의 MavlinkVelocitySetpointSink (FC 로 SET_POSITION_TARGET_LOCAL_NED 송신),
 //      테스트용 FakeVelocitySetpointSink (vehicle_api_testing)
-// 사용: 추종 제어(FollowController), onboard 의 ZmqVelocitySetpointReceiver
+// 사용: 추종 제어(FollowController), onboard 의 setpoint 수신 클래스 (다음 PR)
 #ifndef ARGUS_VEHICLE_API_VELOCITY_SETPOINT_SINK_HPP_
 #define ARGUS_VEHICLE_API_VELOCITY_SETPOINT_SINK_HPP_
 
