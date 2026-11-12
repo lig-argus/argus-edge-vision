@@ -1,6 +1,6 @@
 // 등록된 소켓의 이벤트를 기다리고 처리하는 인터페이스
 // 규약: docs/design/uml/class_onboard.md 1절
-// 구현: (다음 PR) ZmqPoller (bus) — zmq_poll 로 ZeroMQ 소켓과 MAVLink UDP 소켓을 함께 기다림,
+// 구현: ZmqPoller (bus_zmq) — zmq_poll 로 ZeroMQ 소켓과 MAVLink UDP 소켓을 함께 기다림,
 //      테스트용 FakePoller (core_testing)
 // 사용: EventLoop
 #ifndef ARGUS_CORE_POLLER_HPP_

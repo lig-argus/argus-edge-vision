@@ -2,11 +2,16 @@
 // 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 이 인터페이스와 넷은 바뀌지 않는다. 구현별 설정(주소,
 // QoS 프로파일)은 구현 클래스의 생성자 인자이고, 이 인터페이스에는 두지 않는다.
 // 규약: docs/spec/process_interfaces.md 3장. 설계: docs/design/uml/class_onboard.md 1절
-// 구현: (#59) ZmqBus, 테스트용 FakeBus (bus_testing)
+// 구현: ZmqBus (bus_zmq), 테스트용 FakeBus (bus_testing)
 //
 // contract (모든 구현이 따라야 한다)
 // - handler 는 core::IPoller::process_events() 안에서, 그 함수를 부른 스레드에서만 불린다.
 //   라이브러리 스레드에서 콜백을 주는 구현은 큐에 넣어 두었다가 process_events() 에서 비운다.
+// - 이 인터페이스의 create_*() 와, 여기서 만든 객체의 모든 함수(publish, subscribe, request,
+//   serve)와 소멸은 process_events() 를 부르는 스레드에서만 부른다. 구현은 여러 스레드에서의
+//   호출을 지원하지 않아도 된다 (ZmqBus 는 엔드포인트마다 소켓 하나를 공유하며, ZeroMQ 소켓은
+//   한 스레드에서만 쓸 수 있다). 다른 스레드에서 만든 데이터는 process_events() 를 부르는
+//   스레드로 넘긴 뒤 발행한다.
 // - 소멸자가 닫는다. 아직 보내지 못한 메시지는 폐기한다.
 // - 큐 길이를 연결 단위로만 설정할 수 있는 구현은 만든 엔티티들의 queue_depth 최댓값을 적용한다.
 // - 요청-응답 기능이 없는 구현은 토픽 둘과 상관 번호로 요청-응답을 만든다.
@@ -18,6 +23,7 @@
 #include <memory>
 #include <string_view>
 
+#include "argus/bus/message_type.hpp"
 #include "argus/bus/replier.hpp"
 #include "argus/bus/requester.hpp"
 #include "argus/bus/topic_publisher.hpp"
@@ -35,15 +41,24 @@ public:
     IBus& operator=(IBus&&) = delete;
 
     // 토픽마다 하나 만든다. queue_depth 는 보관할 최대 메시지 수(1 이상. 기본값은
-    // argus/protocol/topics.hpp). 실패하면 nullptr 를 반환한다. 실패 이유는 구현이 로그에 남긴다.
+    // argus/protocol/topics.hpp). 구독자가 처리하지 못한 메시지가 queue_depth 개를 넘으면 가장
+    // 오래된 메시지부터 폐기하고 최근 queue_depth 개를 받은 순서대로 전달한다. 실패하면 nullptr 를
+    // 반환한다. 실패 이유는 구현이 로그에 남긴다.
+    // type 은 이 토픽이 나르는 메시지의 타입. 구현이 그 타입의 변환 방법을 모르는 경우에도 nullptr.
     virtual std::unique_ptr<ITopicPublisher> create_publisher(std::string_view topic,
+                                                              const MessageType& type,
                                                               int queue_depth) = 0;
     virtual std::unique_ptr<ITopicSubscriber> create_subscriber(std::string_view topic,
+                                                                const MessageType& type,
                                                                 int queue_depth) = 0;
 
     // 요청-응답 이름마다 하나 만든다. 실패 규칙은 위와 같다.
-    virtual std::unique_ptr<IRequester> create_requester(std::string_view name) = 0;
-    virtual std::unique_ptr<IReplier> create_replier(std::string_view name) = 0;
+    virtual std::unique_ptr<IRequester> create_requester(std::string_view name,
+                                                         const MessageType& request,
+                                                         const MessageType& reply) = 0;
+    virtual std::unique_ptr<IReplier> create_replier(std::string_view name,
+                                                     const MessageType& request,
+                                                     const MessageType& reply) = 0;
 };
 
 }  // namespace argus::bus

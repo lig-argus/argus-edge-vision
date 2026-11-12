@@ -31,8 +31,9 @@ onboard/
   libs/                   # 프로세스들이 함께 쓰는 라이브러리
     core/                 # IClock·IPoller·EventLoop·Subscription 공통 기반
     core_testing/         # core 의 테스트용 구현 (FakeClock, FakePoller)
-    bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
+    bus/                  # 토픽 발행과 구독, 요청-응답 인터페이스 (타입 있는 값을 전달, 전송 형식은 구현이 정함)
     bus_testing/          # FakeBus
+    bus_zmq/              # bus 의 ZeroMQ 구현 (ZmqBus, ZmqPoller). ZeroMQ 로 통신하는 실행 파일만 링크
     protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수, 메시지 정의(.proto)와 Python 생성 코드
     perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, onboard, 추적기 공유. 의존성 없음)
     vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)

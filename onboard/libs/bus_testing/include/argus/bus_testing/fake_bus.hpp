@@ -1,24 +1,31 @@
 // 테스트용 IBus. 한 FakeBus 가 만든 발행자, 구독자, 요청하는 쪽, 응답하는 쪽은 같은 bus 에 붙은
 // 것처럼 동작한다. 발행하거나 simulate_message_received() 로 도착한 것으로 등록한 메시지는
 // FakePoller 에 쌓였다가 process_events() 안에서 구독자에게 간다. 요청은 같은 FakeBus 에 serve() 로
-// 등록한 handler 가 응답하고, 없으면 timeout 뒤 nullopt 가 된다. 발행자의 queue_depth:
-// process_events() 가 아직 전달하지 않은 메시지가 queue_depth 개이면 publish() 가 false 를 반환한다
-// (실제 구현과 같은 contract).
+// 등록한 handler 가 응답하고, 없으면 timeout 뒤 nullptr 가 된다.
+// 타입: 변환 표가 없으며 모든 타입을 받는다. 값은 복사해서 보관하고 그대로 전달한다. 토픽의
+// 발행자와 구독자의 타입이 다르면 그 구독자에게는 전달하지 않는다.
+// queue_depth (실제 구현과 같은 contract): 큐는 구독자마다 따로 있다. process_events() 가 아직
+// 전달하지 않은 메시지가 그 구독자의 queue_depth 개를 넘으면 가장 오래된 메시지부터 폐기하고 최근
+// queue_depth 개를 받은 순서대로 전달한다. publish() 는 큐 길이와 관계없이 true 를 반환한다. 발행
+// 실패를 처리하는 코드는 simulate_publish_failure() 로 테스트한다
 #ifndef ARGUS_BUS_TESTING_FAKE_BUS_HPP_
 #define ARGUS_BUS_TESTING_FAKE_BUS_HPP_
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <functional>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
 #include "argus/bus/bus.hpp"
-#include "argus/bus/message.hpp"
+#include "argus/bus/message_type.hpp"
 #include "argus/core/clock.hpp"
 #include "argus/core/subscription.hpp"
 #include "argus/core_testing/fake_poller.hpp"
@@ -27,46 +34,72 @@ namespace argus::bus_testing {
 
 class FakeBus : public bus::IBus {
 public:
+    // poller 와 clock 은 FakeBus 와 FakeBus 가 만든 객체보다 오래 살아야 한다
     FakeBus(core_testing::FakePoller& poller, const core::IClock& clock)
         : state_(std::make_shared<State>(poller, clock)) {}
 
     std::unique_ptr<bus::ITopicPublisher> create_publisher(std::string_view topic,
+                                                           const bus::MessageType& type,
                                                            int queue_depth) override {
         if (!check_name(topic) || !check_depth(queue_depth)) {
             return nullptr;
         }
-        return std::make_unique<Publisher>(state_, std::string(topic), queue_depth);
+        return std::make_unique<Publisher>(state_, std::string(topic), type);
     }
 
     std::unique_ptr<bus::ITopicSubscriber> create_subscriber(std::string_view topic,
+                                                             const bus::MessageType& type,
                                                              int queue_depth) override {
         if (!check_name(topic) || !check_depth(queue_depth)) {
             return nullptr;
         }
-        return std::make_unique<Subscriber>(state_, std::string(topic));
+        return std::make_unique<Subscriber>(state_, std::string(topic), type, queue_depth);
     }
 
-    std::unique_ptr<bus::IRequester> create_requester(std::string_view name) override {
+    std::unique_ptr<bus::IRequester> create_requester(std::string_view name,
+                                                      const bus::MessageType& request,
+                                                      const bus::MessageType& reply) override {
         if (!check_name(name)) {
             return nullptr;
         }
-        return std::make_unique<Requester>(state_, std::string(name));
+        return std::make_unique<Requester>(state_, std::string(name), request, reply);
     }
 
-    std::unique_ptr<bus::IReplier> create_replier(std::string_view name) override {
+    std::unique_ptr<bus::IReplier> create_replier(std::string_view name,
+                                                  const bus::MessageType& request,
+                                                  const bus::MessageType& reply) override {
         if (!check_name(name)) {
             return nullptr;
         }
-        return std::make_unique<Replier>(state_, std::string(name));
+        return std::make_unique<Replier>(state_, std::string(name), request, reply);
     }
 
     // 테스트용: 다른 프로그램이 보낸 메시지가 도착한 것처럼 넣는다
-    void simulate_message_received(const bus::BusMessage& message) {
-        State::deliver(state_, message);
+    template <typename T>
+    void simulate_message_received(std::string_view topic, const T& message,
+                                   bus::MessageInfo info = {}) {
+        State::deliver(state_, Item{std::string(topic), std::type_index(typeid(T)),
+                                    std::make_shared<T>(message), info});
     }
 
-    // 테스트용: publish() 로 발행된 메시지 기록 (모든 토픽, 발행 순서)
-    const std::vector<bus::BusMessage>& published() const { return state_->published; }
+    // 테스트용: true 로 설정한 동안 모든 발행자의 publish() 가 false 를 반환하고 메시지를 보내지
+    // 않는다 (누구에게도 보내지 못한 경우)
+    void simulate_publish_failure(bool fail) { state_->publish_fails = fail; }
+
+    // 테스트용: publish() 로 그 토픽에 발행된 타입 T 의 값들 (발행 순서)
+    template <typename T>
+    std::vector<T> published(std::string_view topic) const {
+        std::vector<T> values;
+        for (const Item& item : state_->published) {
+            if (item.topic == topic && item.type == std::type_index(typeid(T))) {
+                values.push_back(*static_cast<const T*>(item.value.get()));
+            }
+        }
+        return values;
+    }
+
+    // 테스트용: publish() 로 발행된 메시지 수 (모든 토픽)
+    std::size_t published_count() const { return state_->published.size(); }
 
 private:
     static constexpr std::int64_t kNsPerMs = 1'000'000;
@@ -75,8 +108,29 @@ private:
     using RequestHandler = bus::IReplier::RequestHandler;
     using ReplyHandler = bus::IRequester::ReplyHandler;
 
+    // 메시지 하나. 값은 복사본을 공유한다
+    struct Item {
+        std::string topic;
+        std::type_index type;
+        std::shared_ptr<const void> value;
+        bus::MessageInfo info;
+    };
+
+    // 구독자 하나의 큐와 handler 들
+    struct SubscriberQueue {
+        explicit SubscriberQueue(std::type_index t) : type(t) {}
+
+        std::type_index type;
+        std::size_t depth = 1;
+        std::deque<Item> pending;                   // 받은 순서. 아직 전달하지 않은 메시지
+        std::map<std::uint64_t, Handler> handlers;  // 등록한 순서
+        bool drain_posted = false;                  // 전달 이벤트를 poller 에 이미 넣었음
+    };
+
     struct ReplierEntry {
         std::uint64_t id = 0;
+        std::type_index request_type = std::type_index(typeid(void));
+        bus::MessageType reply_type;
         RequestHandler handler;
     };
 
@@ -87,35 +141,54 @@ private:
         core_testing::FakePoller& poller;
         const core::IClock& clock;
         std::uint64_t next_id = 1;
-        std::map<std::string, std::map<std::uint64_t, Handler>> subscribers;
+
+        // 토픽 → (구독자 번호 → 큐). 구독자를 만든 순서대로 전달한다
+        std::map<std::string, std::map<std::uint64_t, std::shared_ptr<SubscriberQueue>>>
+            subscribers;
+        bool publish_fails = false;
         std::map<std::string, ReplierEntry> repliers;
         std::map<std::uint64_t, ReplyHandler> pending_requests;
-        std::vector<bus::BusMessage> published;
+        std::vector<Item> published;
 
-        // 메시지를 다음 process_events() 에서 구독자에게 전달하도록 예약한다.
-        // on_taken 은 전달 직전에 불린다 (발행자의 큐 개수 감소용)
-        static void deliver(const std::shared_ptr<State>& state, const bus::BusMessage& message,
-                            std::function<void()> on_taken = nullptr) {
-            const std::weak_ptr<State> weak = state;
-            const auto shared_message = std::make_shared<const bus::BusMessage>(message);
-            state->poller.post([weak, shared_message, on_taken = std::move(on_taken)] {
-                if (on_taken) {
-                    on_taken();
+        // 메시지를 그 토픽의 타입이 같은 구독자마다 큐에 넣고, 다음 process_events() 에서
+        // 전달하도록 예약한다. 큐에 depth 개가 있으면 가장 오래된 메시지를 폐기한다
+        static void deliver(const std::shared_ptr<State>& state, const Item& item) {
+            const auto found = state->subscribers.find(item.topic);
+            if (found == state->subscribers.end()) {
+                return;
+            }
+            for (const auto& [id, queue] : found->second) {
+                if (queue->type != item.type) {
+                    continue;
                 }
-                const auto locked = weak.lock();
-                if (!locked) {
-                    return;
+                if (queue->pending.size() == queue->depth) {
+                    queue->pending.pop_front();
                 }
-                const auto found = locked->subscribers.find(shared_message->topic);
-                if (found == locked->subscribers.end()) {
-                    return;
+                queue->pending.push_back(item);
+                if (!queue->drain_posted) {
+                    queue->drain_posted = true;
+                    const std::weak_ptr<SubscriberQueue> weak = queue;
+                    state->poller.post([weak] { drain(weak); });
                 }
+            }
+        }
+
+        // 구독자의 큐에 있는 메시지를 받은 순서대로 handler 에 전달한다
+        static void drain(const std::weak_ptr<SubscriberQueue>& weak) {
+            const auto queue = weak.lock();
+            if (!queue) {
+                return;  // 구독자가 사라짐
+            }
+            queue->drain_posted = false;
+            std::deque<Item> items;
+            items.swap(queue->pending);
+            for (const Item& item : items) {
                 // handler 가 구독을 풀어도 안전하도록 복사해서 부른다
-                const auto handlers = found->second;
+                const auto handlers = queue->handlers;
                 for (const auto& [id, handler] : handlers) {
-                    handler(*shared_message);
+                    handler(item.value.get(), item.info);
                 }
-            });
+            }
         }
 
         template <typename Release>
@@ -131,65 +204,92 @@ private:
 
     class Publisher : public bus::ITopicPublisher {
     public:
-        Publisher(std::shared_ptr<State> state, std::string topic, int queue_depth)
-            : state_(std::move(state)),
-              topic_(std::move(topic)),
-              queue_depth_(queue_depth),
-              queued_(std::make_shared<int>(0)) {}
+        Publisher(std::shared_ptr<State> state, std::string topic, const bus::MessageType& type)
+            : state_(std::move(state)), topic_(std::move(topic)), type_(type) {}
 
         std::string_view topic() const override { return topic_; }
 
-        bool publish(const bus::Bytes& body, const bus::Bytes& binary) override {
-            if (*queued_ >= queue_depth_) {
-                return false;  // 큐가 가득 참. 이 메시지는 유실
+        bool publish(const void* message) override {
+            // 실패한 발행도 번호를 쓴다. 받는 쪽이 그 메시지를 유실로 세게 된다
+            const std::uint64_t sequence = ++sequence_;
+            if (state_->publish_fails) {
+                return false;
             }
-            const bus::BusMessage message{topic_, body, binary};
-            state_->published.push_back(message);
-            ++*queued_;
-            State::deliver(state_, message, [queued = queued_] { --*queued; });
+            const Item item{topic_, type_.type, type_.clone(message), bus::MessageInfo{sequence}};
+            state_->published.push_back(item);
+            State::deliver(state_, item);
             return true;
         }
 
     private:
         std::shared_ptr<State> state_;
         std::string topic_;
-        int queue_depth_;
-        std::shared_ptr<int> queued_;  // 예약됐지만 아직 전달되지 않은 메시지 수
+        bus::MessageType type_;
+        std::uint64_t sequence_ = 0;
     };
 
     class Subscriber : public bus::ITopicSubscriber {
     public:
-        Subscriber(std::shared_ptr<State> state, std::string topic)
-            : state_(std::move(state)), topic_(std::move(topic)) {}
+        Subscriber(std::shared_ptr<State> state, std::string topic, const bus::MessageType& type,
+                   int queue_depth)
+            : state_(std::move(state)),
+              topic_(std::move(topic)),
+              id_(state_->next_id++),
+              queue_(std::make_shared<SubscriberQueue>(type.type)) {
+            queue_->depth = static_cast<std::size_t>(queue_depth);
+            state_->subscribers[topic_][id_] = queue_;
+        }
+
+        // 소멸하면 아직 전달하지 않은 메시지는 폐기된다 (실제 구현과 같은 contract)
+        ~Subscriber() override {
+            const auto found = state_->subscribers.find(topic_);
+            if (found != state_->subscribers.end()) {
+                found->second.erase(id_);
+            }
+        }
+        Subscriber(const Subscriber&) = delete;
+        Subscriber& operator=(const Subscriber&) = delete;
+        Subscriber(Subscriber&&) = delete;
+        Subscriber& operator=(Subscriber&&) = delete;
 
         std::string_view topic() const override { return topic_; }
 
         [[nodiscard]] core::Subscription subscribe(Handler handler) override {
             const std::uint64_t id = state_->next_id++;
-            state_->subscribers[topic_][id] = std::move(handler);
-            return State::release(
-                state_, [topic = topic_, id](State& state) { state.subscribers[topic].erase(id); });
+            queue_->handlers[id] = std::move(handler);
+            const std::weak_ptr<SubscriberQueue> weak = queue_;
+            return core::Subscription([weak, id] {
+                if (const auto queue = weak.lock()) {
+                    queue->handlers.erase(id);
+                }
+            });
         }
 
     private:
         std::shared_ptr<State> state_;
         std::string topic_;
+        std::uint64_t id_;
+        std::shared_ptr<SubscriberQueue> queue_;
     };
 
     class Requester : public bus::IRequester {
     public:
-        Requester(std::shared_ptr<State> state, std::string name)
-            : state_(std::move(state)), name_(std::move(name)) {}
+        Requester(std::shared_ptr<State> state, std::string name, const bus::MessageType& request,
+                  const bus::MessageType& reply)
+            : state_(std::move(state)),
+              name_(std::move(name)),
+              request_type_(request),
+              reply_type_(reply) {}
 
         std::string_view name() const override { return name_; }
 
-        [[nodiscard]] core::Subscription request(const bus::Bytes& request,
+        [[nodiscard]] core::Subscription request(const void* request,
                                                  std::chrono::milliseconds timeout,
                                                  ReplyHandler on_reply) override {
             const std::uint64_t id = state_->next_id++;
             state_->pending_requests[id] = std::move(on_reply);
             const std::weak_ptr<State> weak = state_;
-            const auto finish = [weak, id](const std::optional<bus::BusMessage>& reply) {
+            const auto finish = [weak, id](const void* reply) {
                 const auto state = weak.lock();
                 if (!state) {
                     return;
@@ -202,19 +302,23 @@ private:
                 state->pending_requests.erase(found);
                 handler(reply);
             };
-
+            // 응답하는 쪽이 없거나 요청과 응답의 타입이 다르면 응답이 오지 않는 것으로 처리한다
             const auto replier = state_->repliers.find(name_);
-            if (replier == state_->repliers.end()) {
+            const bool matched = replier != state_->repliers.end() &&
+                                 replier->second.request_type == request_type_.type &&
+                                 replier->second.reply_type == reply_type_;
+            if (!matched) {
                 state_->poller.post_at(
                     state_->clock.now_monotonic_ns() + timeout.count() * kNsPerMs,
-                    [finish] { finish(std::nullopt); });
+                    [finish] { finish(nullptr); });
             } else {
-                const auto shared_request =
-                    std::make_shared<const bus::BusMessage>(bus::BusMessage{name_, request, {}});
-                state_->poller.post(
-                    [finish, handler = replier->second.handler, shared_request, name = name_] {
-                        finish(bus::BusMessage{name, handler(*shared_request), {}});
-                    });
+                const std::shared_ptr<const void> shared_request = request_type_.clone(request);
+                state_->poller.post([finish, handler = replier->second.handler, shared_request,
+                                     reply_type = reply_type_] {
+                    const std::shared_ptr<void> reply = reply_type.create();
+                    handler(shared_request.get(), reply.get());
+                    finish(reply.get());
+                });
             }
             return State::release(state_, [id](State& state) { state.pending_requests.erase(id); });
         }
@@ -222,18 +326,25 @@ private:
     private:
         std::shared_ptr<State> state_;
         std::string name_;
+        bus::MessageType request_type_;
+        bus::MessageType reply_type_;
     };
 
     class Replier : public bus::IReplier {
     public:
-        Replier(std::shared_ptr<State> state, std::string name)
-            : state_(std::move(state)), name_(std::move(name)) {}
+        Replier(std::shared_ptr<State> state, std::string name, const bus::MessageType& request,
+                const bus::MessageType& reply)
+            : state_(std::move(state)),
+              name_(std::move(name)),
+              request_type_(request),
+              reply_type_(reply) {}
 
         std::string_view name() const override { return name_; }
 
         [[nodiscard]] core::Subscription serve(RequestHandler handler) override {
             const std::uint64_t id = state_->next_id++;
-            state_->repliers[name_] = ReplierEntry{id, std::move(handler)};
+            state_->repliers.insert_or_assign(
+                name_, ReplierEntry{id, request_type_.type, reply_type_, std::move(handler)});
             return State::release(state_, [name = name_, id](State& state) {
                 const auto found = state.repliers.find(name);
                 if (found != state.repliers.end() && found->second.id == id) {
@@ -245,6 +356,8 @@ private:
     private:
         std::shared_ptr<State> state_;
         std::string name_;
+        bus::MessageType request_type_;
+        bus::MessageType reply_type_;
     };
 
     // 실패 이유는 로그로 남기는 것이 contract 이지만 테스트용이므로 남기지 않는다
