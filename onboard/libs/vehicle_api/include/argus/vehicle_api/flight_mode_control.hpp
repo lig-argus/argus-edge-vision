@@ -2,7 +2,7 @@
 // 규약: docs/spec/process_interfaces.md 3장(요청 공통 필드), 4장, 5.2 control/mode_request
 // 구현: (다음 PR) onboard 의 MavlinkFlightModeControl (FC 로 DO_SET_MODE 송신),
 //      테스트용 FakeFlightModeControl (vehicle_api_testing)
-// 사용: (다음 PR) onboard 의 ZeroMQ 어댑터 ZmqFlightModeControlServer 가 REQ 를 받아 부르고
+// 사용: onboard 의 bus 어댑터 BusFlightModeControlServer (vehicle_api_bus)가 요청을 받아 부르고
 //      응답을 REP 로 보낸다. 추종 제어 프로세스에서 요청하는 쪽은 IFlightModeControlClient 를 쓴다
 #ifndef ARGUS_VEHICLE_API_FLIGHT_MODE_CONTROL_HPP_
 #define ARGUS_VEHICLE_API_FLIGHT_MODE_CONTROL_HPP_
@@ -28,9 +28,6 @@ public:
     virtual FlightModeReply request_offboard(const RequestHeader& header) = 0;
 
     virtual FlightModeReply request_hold(const RequestHeader& header) = 0;
-
-    // Hold 상태에서 절대 heading(rad, NED, 북쪽 0) 으로 회전 (docs/spec/icd.md E3)
-    virtual FlightModeReply request_heading(const RequestHeader& header, double heading_rad) = 0;
 };
 
 }  // namespace argus::vehicle_api

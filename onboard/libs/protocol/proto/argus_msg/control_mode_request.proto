@@ -1,0 +1,28 @@
+// control/mode_request: 추종 제어 → onboard 요청과 그 응답 (docs/spec/process_interfaces.md 5.2)
+// 응답은 onboard 가 요청을 받아들였는지(수락)만 뜻한다. 실제 모드 전환은 fc/mode_event 로 온다.
+// C++ 인터페이스 vehicle_api::IFlightModeControl 의 함수 3개과 값 타입 FlightModeReply 에 대응한다.
+// 변환은 어댑터(vehicle_api_bus)가 한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/common.proto";
+
+message ControlModeRequest {
+  message Offboard {}
+  message Hold {}
+
+  RequestHeader header = 1;
+  oneof action {
+    Offboard offboard = 2;
+    Hold hold = 3;
+  }
+}
+
+message ControlModeReply {
+  // 요청의 id 그대로. 요청을 해석하지 못해 id 를 알 수 없으면 없음
+  optional RequestId id = 1;
+  bool accepted = 2;
+  string reason = 3;  // 거부의 원인. 판정에는 쓰지 않는다
+}

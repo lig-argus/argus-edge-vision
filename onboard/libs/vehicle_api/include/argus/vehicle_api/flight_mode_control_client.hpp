@@ -1,6 +1,6 @@
 // 비행 모드 전환을 요청하는 인터페이스 (호출용. 응답은 handler 로 비동기로 받는다)
 // 규약: docs/spec/process_interfaces.md 3장(요청 공통 필드), 5.2 control/mode_request
-// 구현: (다음 PR) ZmqFlightModeControlClient (vehicle_api_zmq, bus::IRequester 로 보냄),
+// 구현: BusFlightModeControlClient (vehicle_api_bus, bus::IRequester 로 보냄),
 //      테스트용 FakeFlightModeControlClient (vehicle_api_testing)
 // 사용: 추종 제어(FollowController)
 #ifndef ARGUS_VEHICLE_API_FLIGHT_MODE_CONTROL_CLIENT_HPP_
@@ -40,12 +40,6 @@ public:
     [[nodiscard]] virtual core::Subscription request_hold(const RequestHeader& header,
                                                           std::chrono::milliseconds timeout,
                                                           ReplyHandler on_reply) = 0;
-
-    // Hold 상태에서 절대 heading(rad, NED, 북쪽 0) 으로 회전 (docs/spec/icd.md E3)
-    [[nodiscard]] virtual core::Subscription request_heading(const RequestHeader& header,
-                                                             double heading_rad,
-                                                             std::chrono::milliseconds timeout,
-                                                             ReplyHandler on_reply) = 0;
 };
 
 }  // namespace argus::vehicle_api

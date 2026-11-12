@@ -12,7 +12,13 @@ add_library(argus::protocol ALIAS argus_protocol)
 # 생성 소스(generated/*.pb.cc)는 clang-tidy 검사에서 제외한다: run-clang-tidy 에 파일 필터
 # '^(?!.*/generated/)' 를 준다 (CONTRIBUTING.md 0장, ci.yml onboard 작업)
 protobuf_generate(TARGET argus_protocol LANGUAGE cpp
-                  PROTOS proto/argus_msg/control_setpoint.proto
+                  PROTOS proto/argus_msg/common.proto
+                         proto/argus_msg/control_mode_request.proto
+                         proto/argus_msg/control_setpoint.proto
+                         proto/argus_msg/fc_attitude.proto
+                         proto/argus_msg/fc_mode_event.proto
+                         proto/argus_msg/fc_state.proto
+                         proto/argus_msg/follow_command.proto
                   IMPORT_DIRS proto
                   PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_include_directories(argus_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

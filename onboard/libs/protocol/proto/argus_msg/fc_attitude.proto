@@ -1,0 +1,23 @@
+// fc/attitude: onboard → 추적기, 추종 제어. FC ATTITUDE 메시지마다 (docs/spec/process_interfaces.md 5.1)
+// C++ 값 타입 vehicle_api::Attitude 와 필드가 같다. 변환은 어댑터(vehicle_api_bus)가 한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+message FcAttitude {
+  uint64 seq = 1;  // 발행마다 1 증가 (3장 공통 필드)
+  double roll_rad = 2;
+  double pitch_rad = 3;
+  double yaw_rad = 4;
+  double roll_rate_rad_s = 5;
+  double pitch_rate_rad_s = 6;
+  double yaw_rate_rad_s = 7;
+  uint32 fc_time_boot_ms = 8;
+  // onboard 가 FC 메시지를 처음 받은 시각 (RPi CLOCK_MONOTONIC, ns). 다시 발행할 때 덮어쓰지 않는다
+  int64 received_monotonic_ns = 9;
+  // TIMESYNC 로 FC 시각을 RPi CLOCK_MONOTONIC 으로 바꾼 값. TIMESYNC 가 무효이면 없음
+  optional int64 fc_time_monotonic_ns = 10;
+  bool timesync_valid = 11;
+  uint64 fc_epoch = 12;  // FC 연결의 epoch (3장)
+}

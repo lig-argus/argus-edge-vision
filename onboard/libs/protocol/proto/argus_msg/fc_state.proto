@@ -1,0 +1,59 @@
+// fc/state: onboard → 추적기, 추종 제어. 30 Hz 이상 (docs/spec/process_interfaces.md 5.1)
+// 값(local 위치, 하향 거리, 전역 위치, 비행 상태)마다 그 FC 메시지를 처음 받은 시각과 fc_epoch 를
+// 따로 가진다. FC 에서 아직 받지 못한 값은 없음으로 둔다.
+// C++ 값 타입 vehicle_api::LocalPosition, DownwardDistance, GlobalPosition, FlightStatus 와 필드가
+// 같다. 변환은 어댑터(vehicle_api_bus)가 한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/common.proto";
+
+message FcState {
+  // local NED 위치와 속도 (FC LOCAL_POSITION_NED)
+  message LocalPosition {
+    double north_m = 1;
+    double east_m = 2;
+    double down_m = 3;
+    double vel_north_m_s = 4;
+    double vel_east_m_s = 5;
+    double vel_down_m_s = 6;
+    int64 received_monotonic_ns = 7;
+    uint64 fc_epoch = 8;
+  }
+
+  // 아래 방향으로 잰 거리 (FC DISTANCE_SENSOR). 기체가 기울면 수직 높이와 다르다
+  message DownwardDistance {
+    double distance_m = 1;
+    int64 received_monotonic_ns = 2;
+    uint64 fc_epoch = 3;
+  }
+
+  // 전역 위치 (FC GLOBAL_POSITION_INT). WGS84
+  message GlobalPosition {
+    double lat_deg = 1;
+    double lon_deg = 2;
+    double alt_m = 3;
+    int64 received_monotonic_ns = 4;
+    uint64 fc_epoch = 5;
+  }
+
+  // 비행 모드와 armed 상태 (FC HEARTBEAT), onboard 의 제자리 유지 상태
+  message FlightStatus {
+    FlightMode mode = 1;
+    bool armed = 2;
+    bool in_air = 3;
+    int64 received_monotonic_ns = 4;
+    uint64 fc_epoch = 5;
+    // onboard 가 Offboard 상태에서 제자리 유지 setpoint 를 송신 중인지. 실제 정지는 mode 가 Hold 이거나,
+    // mode 가 Offboard 이면서 이 값이 true 인 경우
+    bool offboard_hover = 6;
+  }
+
+  uint64 seq = 1;  // 발행마다 1 증가 (3장 공통 필드)
+  optional LocalPosition local = 2;
+  optional DownwardDistance downward_distance = 3;
+  optional GlobalPosition global = 4;
+  optional FlightStatus status = 5;
+}
