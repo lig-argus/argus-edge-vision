@@ -48,7 +48,7 @@ sequenceDiagram
 ```
 
 - 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
-- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED.
+- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED. TRACK_STOP 으로 취소한 명령은 onboard 가 CANCELLED 를 보내며, 그 뒤 추종 제어가 그 명령에 보고하는 outcome(FAILED)은 ACK 로 보내지 않는다.
 - 통제기가 ACK 를 1 s 안에 받지 못해 같은 명령 번호(p7)로 다시 보내면(`icd.md` 4.1), `MavlinkCommandReceiver` 가 handler 를 부르지 않고 답한다: 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK (보낸 쪽과 MAV_CMD 마다 다음 명령까지 보관). 진행 중에 같은 명령이나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령의 IN_PROGRESS 는 1 s 마다 다시 보낸다. 추종 제어로 다시 요청하지 않으므로 pi 5.2 의 같은 command_id 규칙은 두 번째 방어선이다.
 - onboard 검사에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK` + `STATUSTEXT` 로 답한다. 조건 ①④ 는 DENIED, ③⑤ 는 TEMPORARILY_REJECTED (`icd.md` 4.2).
 - Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 PX4 가 Offboard 에 들어간다 (`icd.md` 2장). 그 흐름은 2절.

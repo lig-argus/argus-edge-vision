@@ -257,7 +257,7 @@ classDiagram
     MavlinkCommandReceiver *-- IMavlinkCommandHandler
     MavlinkCommandReceiver ..> CommandResponder : 명령마다 하나 만들어 handler 에 넘김
     MavlinkCommandReceiver ..> IMavlinkConnection : COMMAND_LONG 수신, COMMAND_ACK·STATUSTEXT 송신
-    MavlinkCommandReceiver ..> IClock : 재송신 1 s, 보관 4 s
+    MavlinkCommandReceiver ..> IClock : 재송신 1 s, 기록 정리 60 s
     TrackStartHandler ..> ControlAuthority : 조건 ①
     TrackStartHandler ..> LatestTracks : 조건 ④
     TrackStartHandler ..> IFollowControlClient
