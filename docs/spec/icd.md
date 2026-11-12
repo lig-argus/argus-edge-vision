@@ -2,8 +2,8 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.5 (팀 검토 전 초안) |
-| 패킷 형식 | `common/mavlink/message_definitions/argus.xml` (argus dialect) + 표준 `common.xml`. 3·4장의 argus 메시지·명령 정의는 `argus.xml` 보다 앞서 있으며, `argus.xml` 반영은 #21 |
+| 문서 버전 | 0.7 (팀 검토 전 초안) |
+| 패킷 형식 | `common/mavlink/message_definitions/argus.xml` (argus dialect) + 표준 `common.xml` |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 7장의 검토 항목 번호 |
 
@@ -20,7 +20,7 @@
 - 추종 제어 알고리즘과, 임무 상태(`mission_state`)·표적 상태(`target_state`)가 바뀌는 조건과 순서 → `docs/design/system_architecture.md`
 - 탐지 모델
 - 영상 전송 규약, 영상 메타데이터의 박스·클래스 형식 → `docs/spec/video.md` (#20)
-- RPi 안 프로세스 사이 통신(ZeroMQ 토픽, REQ/REP) → `docs/spec/process_interfaces.md` (예정)
+- RPi 안 프로세스 사이 통신(ZeroMQ 토픽, REQ/REP) → `docs/spec/process_interfaces.md`
 - FC(PX4) 파라미터 값 → 배포 문서
 
 ## 1. 구성과 전송
@@ -142,14 +142,16 @@ flowchart LR
 
 ### 4.1 공통 규칙
 
-- 명령은 `COMMAND_LONG` 으로 보내고, 수신자는 `COMMAND_ACK` 로 답한다. `target_system = 1`, `target_component` 는 FC 가 1, onboard 가 195.
-- 통제기는 ACK 가 **1 초** 안에 오지 않으면 같은 명령을 다시 보내고, 3 회 뒤에도 없으면 "응답 없음" 으로 표시한다. `confirmation` 필드를 재전송 횟수로 올린다.
+- 명령은 `COMMAND_LONG` 으로 보내고, 수신자는 `COMMAND_ACK` 로 답한다. `target_system = 1`, `target_component` 는 FC 가 1, onboard 가 195. onboard 는 `target_system` 이 1 이 아니거나 `target_component` 가 195 가 아닌 명령(0 포함)을 응답 없이 폐기한다 (0 은 FC 와 onboard 가 모두 응답하므로 허용하지 않는다). `COMMAND_INT` 로 온 argus 명령에는 MAV_RESULT_COMMAND_LONG_ONLY 로 답한다.
+- **명령 번호**: 4.2 의 argus 명령은 `param7` 이 명령 번호이다. 통제기는 명령을 보낼 때마다 번호를 1 증가시킨다 (16,777,215 를 넘으면 0). 시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지다. 0 에서 시작하면 통제기 재시작 뒤 첫 명령이 onboard 가 보관한 이전 번호와 겹쳐 재전송으로 처리될 수 있다. 재전송 시에는 동일한 번호로 보낸다. 사용하지 않는 param 은 NaN 으로 보낸다 (MAVLink COMMAND_LONG 의 빈 param 규칙). onboard 는 이 번호로 재전송과 새 명령을 구분한다 (아래 재전송 판단).
+- `COMMAND_ACK` 의 `target_system`, `target_component` 는 명령을 보낸 쪽의 sysid, compid 이다. 수신자는 두 필드가 자신의 sysid, compid 이고 `command` 가 기다리는 MAV_CMD 와 같은 ACK 만 처리한다. 이유: 통제기(compid 190)와 onboard(195)가 모두 FC 에 DO_SET_MODE 를 보내고 라우터가 FC 의 ACK 를 양쪽에 전달하므로, 두 필드를 확인하지 않으면 상대의 ACK 를 자신의 것으로 처리한다.
+- 통제기는 ACK 가 **1 초** 안에 오지 않으면 같은 명령을 다시 보내고, 3 회 뒤에도 없으면 "응답 없음" 으로 표시한다. `confirmation` 필드에 재전송 횟수를 기록한다 (onboard 는 읽지 않는다). 같은 compid 에 같은 MAV_CMD 의 응답을 기다리는 동안에는 새 명령을 보내지 않는다 (화면에서 차단).
 - IN_PROGRESS 응답의 `progress` 는 진행 백분율(0~100)이고, 모르면 255 다 (MAVLink `COMMAND_ACK.progress`). 4.2 의 명령별 뜻을 따른다.
 - onboard 는 진행 중인 명령의 IN_PROGRESS 를 **1 초**마다 다시 보낸다 (진행률이 바뀌면 바로). 통제기는 마지막 IN_PROGRESS 뒤 **3 초** 안에 다음 ACK 가 없으면 "응답 없음" 으로 표시한다.
-- 진행 중인 명령과 같은 명령(같은 sysid·compid·MAV_CMD)을 다시 받으면 onboard 는 handler 를 부르지 않고 TEMPORARILY_REJECTED 로 답한다 (MAVLink command protocol: 진행 중 같은 명령은 바쁨). 첫 IN_PROGRESS 가 유실돼 재전송에 이 응답을 받은 경우를 위해, 통제기는 TEMPORARILY_REJECTED 뒤 같은 명령의 IN_PROGRESS 가 오면 진행 중으로 표시한다.
-- IN_PROGRESS 없이 바로 끝난 명령(DENIED, 즉시 ACCEPTED)의 ACK 가 유실되면 통제기는 ACK 를 못 받았으므로 위 둘째 항목대로 같은 명령을 다시 보낸다. 이때 onboard 는 명령을 다시 실행하지 않고(TRACK_START 는 두 번 실행하면 결과가 달라진다) 보냈던 최종 ACK 를 다시 보낸다. 이를 위해 최종 ACK 를 **4 초** 보관한다. 4 초인 이유: 재전송은 첫 송신 뒤 1 초, 2 초, 3 초에 오므로 마지막 재전송이 3 초에 도착하고, 여기에 여유 1 초를 더했다. 4 초가 지난 뒤 오는 같은 명령은 새 명령으로 처리한다.
+- **재전송 판단**: onboard 는 (보낸 sysid, compid, MAV_CMD) 마다 마지막으로 받은 명령 번호와 그 최종 ACK 를 다음 명령이 올 때까지 보관한다. 새로 받은 번호를 보관한 번호와 비교한다. 같으면 재전송이다: handler 를 부르지 않고, 진행 중이면 IN_PROGRESS 를, 완료 뒤면 보관한 최종 ACK 를 다시 보낸다 (TRACK_START 는 두 번 실행하면 결과가 달라진다). 보관한 번호보다 오래된 번호면 늦게 도착한 재전송으로 보고 응답 없이 폐기한다. 더 새 번호면 새 명령이다. 번호의 새로움은 24 비트 순환 비교로 정한다: 두 번호의 차이가 8,388,608 (2^23) 미만이면 큰 쪽이 새것이고, 이상이면 작은 쪽이 새것이다. 보관 기록은 마지막 명령 뒤 60 초가 지나면 지운다 (표 정리용. 재전송 판단은 번호로만 한다).
+- onboard 는 명령을 동시에 하나만 처리한다. 진행 중(PREPARING, HOLD_TRANSITION, SCAN_ACTIVE)에 번호가 다른 명령을 받으면 다음과 같이 답한다. 같은 MAV_CMD, 또는 다른 시작 명령(TRACK_START, SCAN_START)은 handler 를 부르지 않고 TEMPORARILY_REJECTED (MAVLink command protocol: 진행 중 같은 명령은 바쁨, 병렬 처리를 지원하지 않으면 새 명령도 바쁨). 시작 명령이 진행 중일 때 받은 TRACK_STOP 은 받는다: 진행 중이던 명령의 최종 ACK 를 CANCELLED 로 보낸 뒤 TRACK_STOP 을 처리한다. 정지 명령은 진행 중인 시작 명령을 취소하는 반대 동작이므로 바쁨으로 거부하지 않는다. 통제기는 ACK 의 `command` 로 어느 명령의 결과인지 구분한다. 진행 중인 시작 명령을 새 내용으로 바꾸려면 끝난 뒤 다시 보낸다. `COMMAND_CANCEL` 은 사용하지 않는다 (MAVLink 정의가 "Work in Progress" 로 표시한 메시지이고 PX4, ArduPilot, MAVSDK, QGroundControl 이 구현하지 않는다).
 - IN_PROGRESS 를 받은 뒤에는 통제기가 재전송하지 않으므로, 그 뒤의 최종 ACK 가 유실되면 통제기는 위 3 초 규칙으로 "응답 없음" 을 표시한다. 운용자는 실제 상태를 `ARGUS_STATUS` 의 `mission_state` 로 확인한다.
-- `COMMAND_ACK.result` 의 뜻: ACCEPTED 실행함 / IN_PROGRESS 진행 중(뒤에 최종 결과가 한 번 더 온다) / DENIED 조건 불충족(재시도해도 같음) / TEMPORARILY_REJECTED 지금은 안 됨(나중에 가능) / FAILED 시도했으나 실패 / UNSUPPORTED 모르는 명령.
+- `COMMAND_ACK.result` 의 뜻: ACCEPTED 실행함 / IN_PROGRESS 진행 중(뒤에 최종 결과가 한 번 더 온다) / DENIED 값이 잘못됨(재시도해도 같음) / TEMPORARILY_REJECTED 상태 때문에 지금은 안 됨(나중에 가능) / FAILED 시도했으나 실패 / CANCELLED 진행 중에 받은 TRACK_STOP 으로 취소됨 / UNSUPPORTED 모르는 명령. 4.2 의 조건 중 상태 조건(비행 중, FOLLOWABLE, `mission_state`, FC 모드)은 TEMPORARILY_REJECTED, 값 조건(트랙 없음, generation 불일치, 매개변수 범위)과 제어권 없음은 DENIED 이다.
 - onboard 는 DENIED·FAILED 때 이유를 `STATUSTEXT` 로 같이 보낸다.
 - 명령 매개변수는 float 다. 정수 값(track_id, generation 등)은 2^24−1 = 16,777,215 까지만 정확하게 전달되므로, 그 범위를 넘는 값은 쓰지 않는다.
 - onboard 는 아래 명령의 제어권·매개변수 범위 검사를 하고, 표적 존재·상태·FC 조건 검사와 실행은 추종 제어가 한다 (`docs/spec/process_interfaces.md`).
@@ -158,9 +160,9 @@ flowchart LR
 
 | 명령 | param | 조건 | 결과 |
 |---|---|---|---|
-| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값 | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold. Position 모드라는 것만으로는 허용하지 않는다. Position 모드에서 조종을 넘기는 절차는 후속 항목이다 [E5] | 조건 불충족 → DENIED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT) |
-| MAV_CMD_ARGUS_TRACK_STOP (45001) | 없음 | 보낸 sysid 가 제어권 통제기 | IN_PROGRESS 를 먼저 보내고(HOLD_TRANSITION), 추종 또는 스캔을 끝내고 FC 가 실제로 Hold 인 것을 확인하면 ACCEPTED (HOLD_WAIT). 둘 다 아니면 바로 ACCEPTED. 먼저 IN_PROGRESS 를 보내는 이유: Hold 전환의 DO_SET_MODE ACK 와 HEARTBEAT 확인이 4.1 의 재전송 기한(1 초)에 걸릴 수 있다 [미결 E7] |
-| MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 onboard 설정 기본값(2π, 10 deg/s 상당, 60 s) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 FC 모드가 Hold ④ 매개변수가 범위 안 | 조건 불충족 → DENIED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 운용자가 TRACK_START 로 선택해야 추종이 시작된다. IN_PROGRESS 의 `progress` 는 회전한 yaw / p1 × 100 이다 (`follow/status` 의 `scan_progress_deg`). TRACK_START·TRACK_STOP 의 IN_PROGRESS 는 `progress` 255 다. 진행 단계는 `ARGUS_STATUS.mission_state` 로 확인한다 |
+| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값. p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold. Position 모드라는 것만으로는 허용하지 않는다. Position 모드에서 조종을 넘기는 절차는 후속 항목이다 [E5] | ①④ 불충족 → DENIED. ②③⑤⑥ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT). 진행 중(PREPARING)에 TRACK_STOP 을 받으면 CANCELLED (4.1) |
+| MAV_CMD_ARGUS_TRACK_STOP (45001) | p7 명령 번호 (4.1) | 보낸 sysid 가 제어권 통제기 | 불충족 → DENIED. TRACK_START 또는 SCAN_START 가 진행 중이어도 받는다 (4.1). IN_PROGRESS 를 먼저 보내고(HOLD_TRANSITION), 추종 또는 스캔을 끝내고 FC 가 실제로 Hold 인 것을 확인하면 ACCEPTED (HOLD_WAIT). 둘 다 아니면 바로 ACCEPTED. 먼저 IN_PROGRESS 를 보내는 이유: Hold 전환의 DO_SET_MODE ACK 와 HEARTBEAT 확인이 4.1 의 재전송 기한(1 초)에 걸릴 수 있다 [미결 E7] |
+| MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 onboard 설정 기본값(2π, 10 deg/s 상당, 60 s). p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 FC 모드가 Hold ④ 매개변수가 범위 안 | ①④ 불충족 → DENIED. ②③ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 진행 중에 TRACK_STOP 을 받으면 CANCELLED (4.1). 운용자가 TRACK_START 로 선택해야 추종이 시작된다. IN_PROGRESS 의 `progress` 는 회전한 yaw / p1 × 100 이다 (`follow/status` 의 `scan_progress_deg`). TRACK_START·TRACK_STOP 의 IN_PROGRESS 는 `progress` 255 다. 진행 단계는 `ARGUS_STATUS.mission_state` 로 확인한다 |
 
 ```mermaid
 sequenceDiagram
@@ -184,7 +186,7 @@ sequenceDiagram
     O-->>G: ARGUS_STATUS mission_state=HOLD_WAIT, target_state=NONE
 ```
 
-- 추종 중에 받은 TRACK_START 는 DENIED 다. 표적을 바꾸려면 TRACK_STOP(Hold) 뒤 다시 선택한다 (아키텍처 문서 2.14).
+- 추종 중에 받은 TRACK_START 는 TEMPORARILY_REJECTED 이다 (⑤ 불충족). 표적을 바꾸려면 TRACK_STOP(Hold) 뒤 다시 선택한다 (아키텍처 문서 2.14).
 - 추종 중 표적을 잃었을 때의 onboard 동작(예측 유지 시간, Hold 전환)은 `docs/design/system_architecture.md` 2.7·2.11 을 따른다. 통제기는 `target_state`(CONFIRMED → PREDICTED → LOST)와 `mission_state` 변화로만 본다.
 - Scan 중 FC 로 heading 을 요청하는 방식(Hold 에서 `MAV_CMD_DO_REPOSITION` 의 yaw, 또는 Offboard 유지 중 yaw setpoint)은 확인 중이다 [미결 E3].
 
@@ -241,12 +243,14 @@ sequenceDiagram
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
 | D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 TELEM2 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
+| D6 | 최종 ACK 보관 시간 | 해소 (0.7): 시간이 아니라 번호 기준으로 보관한다 (다음 명령까지, 더 오래된 번호는 폐기. 4.1 재전송 판단). 링크 지연 측정 조건이 없어졌다. 60 초 상한은 표 정리용 | 통제기 |
 | E3 | 스캔의 heading 명령 | 추종 제어는 Hold 상태에서 절대 heading(rad)을 요청한다. onboard 의 FC 변환은 `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하고, PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인한 뒤 결정. Offboard 방식이면 진입·유지·종료 절차를 함께 정함. 이미 FC 로 보낸 회전 중에 추종 제어의 새 heading 요청이 오지 않을 때 회전을 멈추는 기준과 정지 절차도 이 시험에서 정함 (6.4 ⓒ). 감시 시간 안에 새 heading 요청이 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 FC 정지 명령 방식은 이 시험으로 정한다 | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
 | E5 | Position 모드에서 조종을 넘기는 절차 (후속) | 지금 TRACK_START 는 FC 가 실제 Hold 일 때만 허용하고 ①~⑤ 와 FC 제어 명령 송신권 검사는 그대로다 (4.2, 5장). Position 모드에서 조종을 넘기는 절차는 통제기가 보낼 요청 형식이 아직 없으므로 후속 항목으로 두고, 지원할 때 준비·취소·유효 시간·RC 개입 처리를 함께 정한다 | 통제기·제어 |
 | E6 | 규약에 없는 임무 상태 변화 | 해소 (0.2): Offboard 요청·ACK 실패, 실제 모드 확인 시간 초과는 FAULT (4.2). MANUAL·FAULT 의 복구는 6장 아래 항목 | — |
 | E7 | TRACK_STOP 의 IN_PROGRESS | stop 요청에 추종 제어가 outcome IN_PROGRESS 를 먼저 돌려주고 Hold 확인 뒤 SUCCEEDED 로 바꿔야 한다 (`process_interfaces.md` 7장 12). 합의 전까지 4.2 의 TRACK_STOP 결과는 제안이다 | 통제기·제어 |
 | E8 | 스캔 남은 시간 | `ARGUS_STATUS.scan_remaining_s` 의 값은 추종 제어가 `follow/status` 에 넣어 줘야 한다 (`process_interfaces.md` 7장 13). 그 전까지 onboard 는 NaN 을 보낸다 | 통제기·제어 |
+| E9 | 추종 제어 거부의 MAV_RESULT 대응 | `sequence.md` 1절의 REJECTED → DENIED 는 임시다. 추종 제어의 거부가 값 조건(DENIED)인지 상태 조건(TEMPORARILY_REJECTED)인지 통제기가 구분하려면 `FollowOutcome` 을 둘로 나누어야 한다 (`follow/result` 스키마 변경). 추적/추종 담당 답을 받은 뒤 결정 | 제어, 통제기 |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
 
@@ -267,7 +271,7 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 
 ## 부록 B. 임무 상태와 표적 상태 (`ARGUS_STATUS`)
 
-상태가 바뀌는 조건과 순서는 `docs/design/system_architecture.md` 2장이 정한다. 여기에는 통제기가 구분해 표시해야 하는 값과 뜻만 둔다. enum 번호는 `argus.xml` 반영(#21) 때 정한다.
+상태가 바뀌는 조건과 순서는 `docs/design/system_architecture.md` 2장이 정한다. 여기에는 통제기가 구분해 표시해야 하는 값과 뜻만 둔다. enum 번호는 `argus.xml` 이 정한다.
 
 | `mission_state` | 뜻 | 통제기 표시 |
 |---|---|---|
@@ -296,3 +300,5 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | 0.3 | 2026-10-26 | 1.1 onboard 행의 MAVSDK 표기 제거(onboard 는 생성 C 헤더 사용), 1.2 QGC 행과 mavlink-router 설정 파일 bullet(비행 중 QGC 입력 차단, 정비 절차), 7장 D1 에 14550 노출과 서명의 효과 (#42) |
 | 0.4 | 2026-10-25 | 4.1 에 `progress`, IN_PROGRESS 1 초 재송신과 통제기 3 초 대기, 진행 중 같은 명령 TEMPORARILY_REJECTED, 최종 ACK 4 초 보관과 재송신, ACK 유실 처리. 4.2 TRACK_STOP 결과를 IN_PROGRESS → ACCEPTED 로(E7), SCAN_START `progress`. 3.1 `ARGUS_STATUS` 에 `scan_yaw_done_rad`·`scan_remaining_s`(E8). 7장 E7·E8 추가 (#40) |
 | 0.5 | 2026-10-29 | 4.1 `ARGUS_STATUS` 의 `scan_yaw_done_rad`, `scan_remaining_s` 표시 조건(SCAN_ACTIVE 이고 NaN 이 아닐 때)과 확장 필드 0 복원 주의 (#40 리뷰) |
+| 0.6 | 2026-11-07 | 4.1 명령 번호(`param7`)와 재전송 판단, 진행 중 재전송에 IN_PROGRESS 재송신, 동시에 하나 처리와 번호가 다른 명령 TEMPORARILY_REJECTED, `COMMAND_ACK` 대상 필드 확인, 통제기의 같은 MAV_CMD 응답 대기 중 송신 금지, target 불일치 폐기, `COMMAND_INT` 와 `COMMAND_CANCEL`, DENIED 와 TEMPORARILY_REJECTED 구분. 4.2 세 명령에 p7, 조건별 결과 값. 7장 D6. 머리말과 0장, 부록 B 의 #21 문구 정리 (#61) |
+| 0.7 | 2026-11-08 | #62 리뷰 반영: 4.1 진행 중 TRACK_STOP 수신과 CANCELLED, 값 비교 삭제, 번호 시작값 시각 기반, 보관을 번호 기준으로(D6 해소), 빈 param NaN. 4.2 세 명령의 결과 열에 CANCELLED 와 진행 중 TRACK_STOP 수신. 7장 E9 추가 |

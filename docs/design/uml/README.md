@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.8 (팀 검토 전 초안) |
+| 문서 버전 | 0.9 (팀 검토 전 초안) |
 | 목적 | 규약 문서(`docs/spec/`)에 글과 표로 있는 구조와 동작을 UML 로 옮겨 빠진 인터페이스·상태를 찾는다. 규약과 다르면 규약이 맞고, 이 문서를 고친다 |
 | 표기 | Mermaid. GitHub 에서 바로 렌더된다. 다이어그램 안 라벨은 한국어, 다이어그램 종류 이름은 영어 |
 | 대상 독자 | 추적·추종 담당(onboard control), 탐지 담당(onboard vision), 통제기 담당(gcs) |
@@ -46,3 +46,5 @@
 | 0.7 | 2026-10-26 | class_video 0.4(코드 #41 과 맞춤: `IFrameSource.subscribe`, `FrameCollector`·`CollectedFrame`, 직렬화는 구체 클래스), sequence 0.5 |
 | 0.8 | 2026-10-29 | class_vision 0.4(Python 쪽 내부 인터페이스, 코드 `onboard/vision/python/` 과 맞춤) |
 | 0.9 | 2026-11-07 | bus 인터페이스를 구현 교체 가능 구조로(#60): class_onboard 0.8(`IBus`, `IRequester`, `IReplier`), class_follow 0.9, class_video 0.6, "계약"→contract, class_tracker 0.7 과 component 0.3(추적기 포트 6375) |
+| 0.10 | 2026-11-07 | icd 0.6(명령 번호, 재전송 판단, 결과 값 구분)과 맞춤: class_onboard 0.9, class_gcs 0.4, sequence 0.7 (#61) |
+| 0.11 | 2026-11-08 | icd 0.7(#62 리뷰 반영)과 맞춤: class_onboard 0.10, class_gcs 0.5, sequence 0.8, state_machine 0.3 |
