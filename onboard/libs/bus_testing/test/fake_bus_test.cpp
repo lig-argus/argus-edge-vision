@@ -71,16 +71,87 @@ TEST_F(FakeBusTest, DeliversBinaryWithBody) {
     EXPECT_EQ(received[0].binary, (Bytes{9, 9, 9}));
 }
 
-TEST_F(FakeBusTest, PublishReturnsFalseWhenQueueIsFull) {
+TEST_F(FakeBusTest, PublishSucceedsBeyondQueueDepth) {
     const auto publisher = bus_.create_publisher("t", 2);
+    const auto subscriber = bus_.create_subscriber("t", 2);
 
     EXPECT_TRUE(publisher->publish({1}, {}));
     EXPECT_TRUE(publisher->publish({2}, {}));
-    EXPECT_FALSE(publisher->publish({3}, {}));  // 큐 길이 2 를 넘김. 유실
-    EXPECT_EQ(bus_.published().size(), 2U);
+    EXPECT_TRUE(publisher->publish({3}, {}));  // 큐 길이 2 를 넘겨도 발행은 성공
+    EXPECT_EQ(bus_.published().size(), 3U);
+}
 
-    process();  // 전달되어 큐가 빔
-    EXPECT_TRUE(publisher->publish({4}, {}));
+TEST_F(FakeBusTest, DeliversOnlyLatestQueueDepthMessagesInOrder) {
+    const auto publisher = bus_.create_publisher("t", kDepth);
+    const auto subscriber = bus_.create_subscriber("t", 2);
+    std::vector<BusMessage> received;
+    const core::Subscription subscription =
+        subscriber->subscribe([&](const BusMessage& m) { received.push_back(m); });
+
+    // 구독자가 이벤트를 처리하지 않는 동안 queue_depth 보다 많이 발행한다
+    for (std::uint8_t value = 1; value <= 5; ++value) {
+        EXPECT_TRUE(publisher->publish({value}, {}));
+    }
+    process();
+
+    EXPECT_EQ(received, (std::vector<BusMessage>{message("t", 4), message("t", 5)}));
+
+    // 전달한 뒤에는 큐가 비어 다시 queue_depth 개까지 보관한다
+    received.clear();
+    EXPECT_TRUE(publisher->publish({6}, {}));
+    process();
+    EXPECT_EQ(received, (std::vector<BusMessage>{message("t", 6)}));
+}
+
+TEST_F(FakeBusTest, EachSubscriberAppliesItsOwnQueueDepth) {
+    const auto shallow_subscriber = bus_.create_subscriber("t", 1);
+    const auto deep_subscriber = bus_.create_subscriber("t", 3);
+    std::vector<BusMessage> shallow;
+    std::vector<BusMessage> deep;
+    const core::Subscription first =
+        shallow_subscriber->subscribe([&](const BusMessage& m) { shallow.push_back(m); });
+    const core::Subscription second =
+        deep_subscriber->subscribe([&](const BusMessage& m) { deep.push_back(m); });
+
+    for (std::uint8_t value = 1; value <= 3; ++value) {
+        bus_.simulate_message_received(message("t", value));
+    }
+    process();
+
+    EXPECT_EQ(shallow, (std::vector<BusMessage>{message("t", 3)}));
+    EXPECT_EQ(deep, (std::vector<BusMessage>{message("t", 1), message("t", 2), message("t", 3)}));
+}
+
+TEST_F(FakeBusTest, PublishFailsWhileFailureIsSimulated) {
+    const auto publisher = bus_.create_publisher("t", kDepth);
+    const auto subscriber = bus_.create_subscriber("t", kDepth);
+    int received = 0;
+    const core::Subscription subscription =
+        subscriber->subscribe([&](const BusMessage&) { ++received; });
+
+    bus_.simulate_publish_failure(true);
+    EXPECT_FALSE(publisher->publish({1}, {}));
+    process();
+    EXPECT_EQ(received, 0);
+    EXPECT_TRUE(bus_.published().empty());
+
+    bus_.simulate_publish_failure(false);
+    EXPECT_TRUE(publisher->publish({2}, {}));
+    process();
+    EXPECT_EQ(received, 1);
+}
+
+TEST_F(FakeBusTest, DestroyedSubscriberDropsUndeliveredMessages) {
+    auto subscriber = bus_.create_subscriber("t", kDepth);
+    int received = 0;
+    const core::Subscription subscription =
+        subscriber->subscribe([&](const BusMessage&) { ++received; });
+
+    bus_.simulate_message_received(message("t", 1));
+    subscriber.reset();
+    process();
+
+    EXPECT_EQ(received, 0);
 }
 
 // 거부 테스트는 원인마다 하나. 같은 값으로 성공하는 호출을 먼저 두어 다른 입력은 정상임을 보인다
