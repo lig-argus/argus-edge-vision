@@ -7,13 +7,29 @@
 #   argus::msg). 커밋하지 않는다. Python 코드는 tools/generate_proto.sh 로 python/argus_msg/ 에 생성해 커밋한다
 #   (CI 가 재생성해 비교).
 # - 다른 모듈에 의존하지 않는다. protobuf 런타임만 링크한다.
+# 타깃은 둘이다.
+# - argus::protocol_names: 이름과 기본값 상수 헤더(topics.hpp, zmq_endpoints.hpp)만 제공하는 INTERFACE
+#   라이브러리. protobuf 를 링크하지 않는다. 메시지 정의를 쓰지 않는 모듈(통신 구현과 무관한 어댑터
+#   등)은 이 타깃만 링크한다. zmq_endpoints.hpp 는 ZeroMQ 로 통신하는 실행 파일의 main() 만 쓴다.
+# - argus::protocol: 메시지 정의의 생성 코드. argus::protocol_names 를 PUBLIC 으로 링크하므로 상수
+#   헤더도 함께 쓸 수 있다.
+add_library(argus_protocol_names INTERFACE)
+add_library(argus::protocol_names ALIAS argus_protocol_names)
+target_include_directories(argus_protocol_names INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_library(argus_protocol STATIC)
 add_library(argus::protocol ALIAS argus_protocol)
 # 생성 소스(generated/*.pb.cc)는 clang-tidy 검사에서 제외한다: run-clang-tidy 에 파일 필터
 # '^(?!.*/generated/)' 를 준다 (CONTRIBUTING.md 0장, ci.yml onboard 작업)
 protobuf_generate(TARGET argus_protocol LANGUAGE cpp
-                  PROTOS proto/argus_msg/control_setpoint.proto
+                  PROTOS proto/argus_msg/common.proto
+                         proto/argus_msg/control_mode_request.proto
+                         proto/argus_msg/control_setpoint.proto
                          proto/argus_msg/detection.proto
+                         proto/argus_msg/fc_attitude.proto
+                         proto/argus_msg/fc_mode_event.proto
+                         proto/argus_msg/fc_state.proto
+                         proto/argus_msg/follow_command.proto
                          proto/argus_msg/perception_ipc.proto
                          proto/argus_msg/vision_frame_gray8.proto
                          proto/argus_msg/vision_npu_input_jpeg.proto
@@ -23,7 +39,8 @@ protobuf_generate(TARGET argus_protocol LANGUAGE cpp
 target_include_directories(argus_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # 생성 코드는 우리 경고 설정(-Wall -Wextra -Wpedantic -Wshadow)과 clang-tidy 검사에서 제외한다
 target_include_directories(argus_protocol SYSTEM PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
-target_link_libraries(argus_protocol PUBLIC protobuf::libprotobuf argus_onboard_warnings)
+target_link_libraries(argus_protocol
+                      PUBLIC argus::protocol_names protobuf::libprotobuf argus_onboard_warnings)
 
 argus_add_test(protocol_test SOURCES test/protocol_test.cpp LIBS argus::protocol)
 argus_add_test(protocol_proto_test SOURCES test/proto_test.cpp LIBS argus::protocol)

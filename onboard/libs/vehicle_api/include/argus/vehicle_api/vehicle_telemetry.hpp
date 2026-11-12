@@ -1,7 +1,7 @@
 // 기체 상태(자세, 위치, 비행 모드)를 읽는 인터페이스
 // 규약: docs/spec/process_interfaces.md 4장, 5.1 fc/attitude·fc/state·fc/mode_event,
 //      docs/design/uml/class_follow.md, docs/design/uml/class_tracker.md (선택 순서)
-// 구현: (다음 PR) ZmqVehicleTelemetrySubscriber (vehicle_api_zmq. 조회 시점은 core::IClock),
+// 구현: BusVehicleTelemetrySubscriber (vehicle_api_bus. 조회 시점은 core::IClock),
 //      테스트용 FakeVehicleTelemetry (vehicle_api_testing)
 // 사용: 추종 제어, 추적기
 #ifndef ARGUS_VEHICLE_API_VEHICLE_TELEMETRY_HPP_

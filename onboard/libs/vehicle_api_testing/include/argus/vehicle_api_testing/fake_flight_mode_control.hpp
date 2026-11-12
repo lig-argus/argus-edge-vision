@@ -3,7 +3,6 @@
 #define ARGUS_VEHICLE_API_TESTING_FAKE_FLIGHT_MODE_CONTROL_HPP_
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -15,28 +14,22 @@ namespace argus::vehicle_api_testing {
 enum class FlightModeRequestKind : std::uint8_t {
     Offboard,
     Hold,
-    Heading,
 };
 
 // FakeFlightModeControl 이 받은 요청 하나
 struct FlightModeRequestRecord {
     FlightModeRequestKind kind = FlightModeRequestKind::Hold;
     vehicle_api::RequestHeader header;
-    std::optional<double> heading_rad;  // Heading 요청일 때만
 };
 
 class FakeFlightModeControl : public vehicle_api::IFlightModeControl {
 public:
     vehicle_api::FlightModeReply request_offboard(
         const vehicle_api::RequestHeader& header) override {
-        return record({FlightModeRequestKind::Offboard, header, std::nullopt});
+        return record({FlightModeRequestKind::Offboard, header});
     }
     vehicle_api::FlightModeReply request_hold(const vehicle_api::RequestHeader& header) override {
-        return record({FlightModeRequestKind::Hold, header, std::nullopt});
-    }
-    vehicle_api::FlightModeReply request_heading(const vehicle_api::RequestHeader& header,
-                                                 double heading_rad) override {
-        return record({FlightModeRequestKind::Heading, header, heading_rad});
+        return record({FlightModeRequestKind::Hold, header});
     }
 
     // 다음 요청부터 반환할 응답(accepted, reason). id 는 요청의 RequestId 로 채운다.
