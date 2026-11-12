@@ -31,7 +31,7 @@ TEST_F(EventLoopTest, CallsPeriodicTaskEveryPeriod) {
     const PeriodicTimer timer = loop_.add_periodic(
         milliseconds{50}, [&] { called_at_ns.push_back(clock_.now_monotonic_ns()); });
 
-    for (int i = 0; i < 3; ++i) {
+    for (std::int32_t i = 0; i < 3; ++i) {
         loop_.run_once();
     }
 
@@ -56,18 +56,18 @@ TEST_F(EventLoopTest, WaitsMaxWaitWithoutTimers) {
 }
 
 TEST_F(EventLoopTest, HandlesInputBeforeTimer) {
-    std::vector<int> order;
+    std::vector<std::int32_t> order;
     const PeriodicTimer timer = loop_.add_periodic(milliseconds{50}, [&] { order.push_back(2); });
     poller_.post_at(10 * kMs, [&] { order.push_back(1); });
 
     loop_.run_once();  // 10 ms 에 이벤트가 와서 깨어남
     loop_.run_once();  // 50 ms 까지 기다린 뒤 주기 작업
 
-    EXPECT_EQ(order, (std::vector<int>{1, 2}));
+    EXPECT_EQ(order, (std::vector<std::int32_t>{1, 2}));
 }
 
 TEST_F(EventLoopTest, DestroyedTimerIsNotCalled) {
-    int calls = 0;
+    std::int32_t calls = 0;
     {
         const PeriodicTimer timer = loop_.add_periodic(milliseconds{50}, [&] { ++calls; });
     }
@@ -87,7 +87,7 @@ TEST_F(EventLoopTest, LateTaskDoesNotBurst) {
         }
     });
 
-    for (int i = 0; i < 3; ++i) {
+    for (std::int32_t i = 0; i < 3; ++i) {
         loop_.run_once();
     }
 
@@ -96,7 +96,7 @@ TEST_F(EventLoopTest, LateTaskDoesNotBurst) {
 }
 
 TEST_F(EventLoopTest, StopFromTaskEndsRun) {
-    int calls = 0;
+    std::int32_t calls = 0;
     const PeriodicTimer timer = loop_.add_periodic(milliseconds{50}, [&] {
         if (++calls == 3) {
             loop_.stop();

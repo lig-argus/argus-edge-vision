@@ -2,13 +2,14 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <utility>
 
 namespace argus::core {
 namespace {
 
 TEST(SubscriptionTest, ReleasesWhenDestroyed) {
-    int released = 0;
+    std::int32_t released = 0;
     {
         const Subscription subscription([&released] { ++released; });
         EXPECT_EQ(released, 0);
@@ -22,7 +23,7 @@ TEST(SubscriptionTest, DefaultIsEmpty) {
 }
 
 TEST(SubscriptionTest, MoveTransfersRegistration) {
-    int released = 0;
+    std::int32_t released = 0;
     Subscription first([&released] { ++released; });
     Subscription second = std::move(first);
 
@@ -32,8 +33,8 @@ TEST(SubscriptionTest, MoveTransfersRegistration) {
 }
 
 TEST(SubscriptionTest, MoveAssignReleasesPreviousRegistration) {
-    int first_released = 0;
-    int second_released = 0;
+    std::int32_t first_released = 0;
+    std::int32_t second_released = 0;
     Subscription target([&first_released] { ++first_released; });
 
     target = Subscription([&second_released] { ++second_released; });
@@ -43,7 +44,7 @@ TEST(SubscriptionTest, MoveAssignReleasesPreviousRegistration) {
 }
 
 TEST(SubscriptionTest, ResetReleasesOnlyOnce) {
-    int released = 0;
+    std::int32_t released = 0;
     Subscription subscription([&released] { ++released; });
 
     subscription.reset();
