@@ -2,7 +2,7 @@
 // 필드와 단위는 docs/spec/process_interfaces.md 5.1 (vision/frame/gray8, perception/observations,
 // tracking/tracks 5.1.1, tracking/status 5.1.3)과 같다. 각도는 rad, 거리는 m, 시각은 RPi monotonic
 // clock 의 ns, 박스 좌표는 원본 영상 픽셀(원점 왼쪽 위, y 아래 방향)이다.
-// 메시지(MessagePack) 안의 deg·ms 값은 어댑터가 받을 때 rad·s 로 바꾼다 (process_interfaces.md
+// 메시지(protobuf) 안의 deg·ms 값은 어댑터가 받을 때 rad·s 로 바꾼다 (process_interfaces.md
 // 3장).
 // 타입의 범위: Tracks, Track, TrackingStatus 는 tracking/tracks 와 tracking/status 를 구독하는 영상
 // 송신부와 onboard 가 소비하는 타입이다. 추적기가 발행할 때 쓰는 타입이 아니며 메시지의 모든 필드를
