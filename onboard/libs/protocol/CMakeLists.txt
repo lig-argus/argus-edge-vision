@@ -13,6 +13,11 @@ add_library(argus::protocol ALIAS argus_protocol)
 # '^(?!.*/generated/)' 를 준다 (CONTRIBUTING.md 0장, ci.yml onboard 작업)
 protobuf_generate(TARGET argus_protocol LANGUAGE cpp
                   PROTOS proto/argus_msg/control_setpoint.proto
+                         proto/argus_msg/detection.proto
+                         proto/argus_msg/perception_ipc.proto
+                         proto/argus_msg/vision_frame_gray8.proto
+                         proto/argus_msg/vision_npu_input_jpeg.proto
+                         proto/argus_msg/vision_overlay_jpeg.proto
                   IMPORT_DIRS proto
                   PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_include_directories(argus_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -45,7 +45,7 @@ flowchart LR
     i_overlay -.-> relay
 ```
 
-- `vision/npu_input/jpeg` 은 진단용이라 지금 구독하는 프로세스가 없다 (점선 없음).
+- `vision/npu_input/jpeg` 은 이 그림의 영상 송신부가 구독하지 않는다 (점선 없음). 지금 실기체에서는 영상 송신기 `argus_main_gcs_video` 가 이 토픽과 `tracking/tracks` 를 받아 통제기에 보내며, 영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용이다 (`process_interfaces.md` 5.1).
 
 ### 1.2 FC 상태와 제어 (onboard FC 통신 ↔ 추적기·추종 제어)
 
@@ -100,7 +100,7 @@ flowchart LR
 | `vision/frame/gray8` | 탐지 | 영상 송신부 | 박스 없는 비압축 프레임. 기본 꺼짐, 설정으로 켬 |
 | `perception/observations` | 탐지 | 추적기, 영상 송신부 | |
 | `vision/overlay/jpeg` | 탐지 | `argus_preview_udp_relay` | 박스 그린 JPEG, 최대 15 FPS. RTSP 전환 전까지 `argus_preview_udp_relay` 가 구독해 UDP 로 지상 미리보기에 보낸다 |
-| `vision/npu_input/jpeg` | 탐지 | (없음) | Hailo 입력 640×640 레터박스 JPEG, 진단용. 박스 좌표계가 원본 픽셀과 다르다 |
+| `vision/npu_input/jpeg` | 탐지 | (지금 실기체는 `argus_main_gcs_video`) | Hailo 입력 영상 JPEG. 지금 실기체 HEF 는 640×480 1채널이라 원본과 같은 크기의 흑백이고, 640×640 HEF 를 쓰면 레터박스라 박스 좌표계가 원본 픽셀과 다르다 |
 | `tracking/tracks` | 추적기 | 추종 제어, onboard 통제기 통신, 영상 송신부 | |
 | `tracking/status` | 추적기 | onboard 통제기 통신 | `ARGUS_SENSOR_STATUS` 보고에 사용 |
 | `fc/attitude`, `fc/state` | onboard FC 통신 | 추적기, 추종 제어 | 30 Hz 이상 |

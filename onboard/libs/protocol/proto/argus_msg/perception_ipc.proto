@@ -1,0 +1,46 @@
+// 탐지 프로세스 안의 요청-응답: C++ 어댑터 ↔ Python 작업자 (ipc REQ/REP).
+// 공개 토픽이 아니다 (docs/design/uml/class_vision.md 1절). 요청은 [이 메시지] 또는 infer 일 때
+// [이 메시지][RAW14 픽셀], 응답은 [이 메시지] 하나.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/detection.proto";
+
+enum PerceptionOp {
+  PERCEPTION_OP_UNSPECIFIED = 0;
+  PERCEPTION_OP_READY = 1;     // 스트림 시작. 전처리 상태를 지우고 모델 정보를 돌려준다
+  PERCEPTION_OP_INFER = 2;     // 프레임 하나를 전처리하고 추론한다
+  PERCEPTION_OP_SHUTDOWN = 3;  // 응답한 뒤 끝낸다
+}
+
+message PerceptionRequest {
+  string session_id = 1;  // C++ 어댑터가 작업자 실행 인자로 넘긴 값과 같아야 한다
+  PerceptionOp op = 2;
+  // 아래는 infer 일 때만 쓴다
+  uint64 frame_id = 3;  // 요청마다 늘어나야 한다
+  uint32 width = 4;
+  uint32 height = 5;
+  uint32 stride = 6;         // 한 줄의 바이트 수
+  string pixel_format = 7;   // 픽셀 형식. 지금은 RAW14_LE16 만 받는다
+  int64 received_unix_ns = 8;        // RPi 가 프레임을 받은 시각 (wall clock)
+  int64 received_monotonic_ns = 9;   // RPi 가 프레임을 받은 시각 (CLOCK_MONOTONIC)
+  optional int64 exposure_monotonic_ns = 10;  // 노출 시각. 지금 카메라는 제공하지 않는다
+}
+
+message PerceptionReply {
+  string session_id = 1;
+  bool ok = 2;
+  string error = 3;  // ok 가 false 일 때 원인
+  string model = 4;  // 모델(HEF) 이름. ready, infer
+  // ready 만
+  uint32 input_width = 5;  // 모델 입력 가로
+  uint32 input_height = 6;
+  // 아래는 infer 만
+  uint64 frame_id = 7;
+  int64 infer_done_monotonic_ns = 8;
+  double preprocess_ms = 9;
+  double inference_ms = 10;
+  repeated Detection detections = 11;  // 원본 픽셀 좌표, 신뢰도 내림차순
+}

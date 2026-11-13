@@ -1,0 +1,21 @@
+// vision/frame/gray8: 탐지 → 영상 송신부, 최대 30 FPS (docs/spec/process_interfaces.md 5.1.5)
+// 본문은 이 메시지, 픽셀(stride × height 바이트의 8 비트 흑백)은 바이너리로 따로 보낸다.
+// C++ 값 타입 perception_api::Frame 과 필드 뜻이 같다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+message VisionFrameGray8 {
+  string source = 1;      // 카메라 식별 문자열. perception/observations 와 같은 값
+  string session_id = 2;  // 탐지 프로세스가 시작할 때마다 새로 만드는 값
+  uint64 frame_id = 3;    // perception/observations 와 같은 frame_id
+  uint64 seq = 4;         // frame_id 와 같은 값 (3장 공통 필드)
+  int64 unix_ns = 5;      // RPi 가 프레임을 받은 시각 (wall clock)
+  // RPi 가 프레임을 받은 시각 (CLOCK_MONOTONIC, ns). 노출 시각이 아니다
+  int64 received_monotonic_ns = 6;
+  uint32 width = 7;
+  uint32 height = 8;
+  uint32 stride = 9;       // 한 줄의 바이트 수
+  string preprocess = 10;  // 전처리 이름. 현재 double_plateau_adaptive
+}

@@ -22,7 +22,8 @@ inline constexpr int kVisionFrameGray8QueueDepth = kDefaultQueueDepth;
 // 탐지 → 지상 미리보기
 inline constexpr std::string_view kVisionOverlayJpeg = "vision/overlay/jpeg";
 inline constexpr int kVisionOverlayJpegQueueDepth = kDefaultQueueDepth;
-// 탐지 → (진단용, 구독자 없음)
+// 탐지 → 실기체 영상 송신기 argus_main_gcs_video (영상 송신부가 vision/frame/gray8 로 바뀐 뒤에는
+// 진단용, process_interfaces.md 5.1)
 inline constexpr std::string_view kVisionNpuInputJpeg = "vision/npu_input/jpeg";
 inline constexpr int kVisionNpuInputJpegQueueDepth = kDefaultQueueDepth;
 // 탐지 → 추적기, 영상 송신부

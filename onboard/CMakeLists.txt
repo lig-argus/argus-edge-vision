@@ -1,5 +1,6 @@
 # Raspberry Pi 에서 도는 프로세스(onboard, 영상 송신부, 추종 제어, 추적기)와 그 공용 라이브러리.
-# 통제기(gcs/)와 별도인 CMake 프로젝트이다. 탐지 프로세스(vision/)는 Python 이라 여기서 빌드하지 않는다.
+# 통제기(gcs/)와 별도인 CMake 프로젝트이다. 탐지 프로세스(vision/)는 Python 이고, 여기서는 그 C++ 전처리
+# 라이브러리만 빌드한다.
 # 구조와 모듈 규칙: README.md "onboard 구조와 빌드", CONTRIBUTING.md 0.4
 #
 # 의존성 (Ubuntu 24.04 apt): libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
@@ -50,3 +51,6 @@ add_subdirectory(apps/onboard)
 add_subdirectory(apps/video_sender)
 add_subdirectory(apps/follow_controller)
 add_subdirectory(apps/tracker)
+
+# 탐지 모듈의 C++ 라이브러리 (탐지 작업자는 Python)
+add_subdirectory(vision)

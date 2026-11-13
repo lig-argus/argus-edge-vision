@@ -1,0 +1,28 @@
+// vision/npu_input/jpeg: 탐지 → 실기체 영상 송신기 (docs/spec/process_interfaces.md 5.1)
+// 본문은 이 메시지, NPU 에 넣은 모델 입력 영상의 JPEG 는 바이너리로 따로 보낸다.
+// 모델 입력이 원본과 크기가 다르면 레터박스 영상이고, 박스 좌표는 원본 픽셀이다
+// (모델 입력 좌표 = 원본 좌표 × lb_scale + lb_pad).
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/detection.proto";
+
+message VisionNpuInputJpeg {
+  string source = 1;
+  string session_id = 2;
+  uint64 frame_id = 3;
+  uint64 seq = 4;  // frame_id 와 같은 값
+  int64 unix_ns = 5;
+  int64 received_monotonic_ns = 6;
+  uint32 width = 7;  // 원본 영상 가로 (JPEG 크기가 아님)
+  uint32 height = 8;
+  string backend = 9;
+  string model = 10;
+  string preprocess = 11;
+  repeated Detection detections = 12;  // 원본 픽셀 좌표 (신뢰도 내림차순)
+  double lb_scale = 13;  // 레터박스 배율. 원본과 같은 크기의 1채널 HEF 는 1
+  int32 lb_pad_x = 14;   // 레터박스 왼쪽 패딩 (모델 입력 픽셀)
+  int32 lb_pad_y = 15;   // 레터박스 위쪽 패딩 (모델 입력 픽셀)
+}
