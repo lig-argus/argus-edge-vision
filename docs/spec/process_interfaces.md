@@ -70,8 +70,8 @@ flowchart LR
 ## 3. 공통 규칙
 
 - 전송 방식 둘: 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **토픽 발행·구독**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **요청-응답**. 요청-응답은 중복 실행과 오래된 명령 실행을 막는다. 토픽마다 보관할 최대 메시지 수(queue_depth)를 정하며 기본값은 `onboard/libs/protocol/include/argus/protocol/topics.hpp`.
-- 메시지 구성: 직렬화된 본문 하나와, 필요하면 바이너리(프레임 픽셀) 하나. 통신 구현(`onboard/libs/bus`)은 둘을 하나로 합쳐 보낼 수 있고, 토픽 이름을 그 통신 라이브러리가 허용하는 형식으로 변환할 수 있다.
-- 현재 구현 (ZeroMQ): 토픽은 PUB/SUB, 요청-응답은 REQ/REP. multipart 구성 `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`. 주소는 `onboard/libs/protocol/include/argus/protocol/zmq_endpoints.hpp`.
+- 메시지 구성: 토픽마다(요청-응답은 요청과 응답마다) 메시지 타입 하나. 값을 전송 형식으로 바꾸는 일은 통신 구현(`onboard/libs/bus` 의 구현)이 하며, 토픽 이름을 그 통신 라이브러리가 허용하는 형식으로 변환할 수 있다.
+- 현재 구현 (ZeroMQ): 토픽은 PUB/SUB, 요청-응답은 REQ/REP. multipart 구성 `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`(프레임 픽셀과 같이 큰 값은 본문과 따로 보낸다). 주소는 `onboard/libs/protocol/include/argus/protocol/zmq_endpoints.hpp`.
 - 직렬화: protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다.
 - 공통 필드: 모든 메시지에 `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 onboard 설정), `seq`, RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`. 메시지 타입을 나타내는 필드(`schema` 문자열)는 두지 않는다. 타입은 토픽 이름(요청-응답은 요청 이름)이 정하고 받는 쪽은 그 토픽의 생성 클래스로 바로 파싱한다. 값이 항상 같은 문자열(`clock_domain`, `coordinate_frame` 등)은 메시지에 넣지 않고 이 문서에 적는다.
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(요청을 만들 때 onboard 가 `fc/attitude`·`fc/state` 에 발행하고 있는 현재 값, 아래), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. C++ 값 타입에서는 `valid_until_monotonic_ns` 를 뺀 네 필드를 `RequestId` 로 묶어 요청(`RequestHeader.id`)과 결과(`FollowResult.id`)가 같은 멤버를 가진다 (`onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp`). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
