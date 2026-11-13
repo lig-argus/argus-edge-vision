@@ -1,5 +1,6 @@
 # onboard 프로세스: FC 통신, 통제기 통신 (docs/design/uml/class_onboard.md). 통신 담당
-# 실행 파일 이름: argus_onboard. 첫 소스와 함께 add_executable 을 추가하고 argus_onboard_warnings 를 링크한다.
+# 실행 파일 이름: argus_onboard (main.cpp 로 add_executable). 그 밖의 소스는 라이브러리 argus_onboard_core(STATIC)에
+# 추가하고 실행 파일과 테스트가 링크한다 (CONTRIBUTING.md 0.4). 모두 argus_onboard_warnings 를 링크한다.
 # 헤더는 include/argus/onboard/, namespace 는 argus::onboard
 
 # onboard 안 클래스들이 쓰는 인터페이스 헤더 (IMavlinkConnection, IMavlinkCommandHandler)

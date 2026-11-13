@@ -194,6 +194,8 @@ git ls-files -z -- '*.py' ':!common/mavlink/generated' ':!*_pb2.py' | xargs -0 m
 - 헤더 경로에 `argus/<모듈>/` 을 넣는 이유: 모듈마다 같은 파일 이름(`types.hpp` 등)이 있어도 include 가 겹치지 않고, 어느 모듈의 헤더인지 include 문만 보고 알 수 있다 (ROS 2 `rclcpp` 의 `include/rclcpp/` 와 같은 방식).
 - 모듈이 다른 모듈을 사용할 때는 `target_link_libraries` 로 연결한다. 다른 모듈의 `src/` 나 상대 경로(`../`)로 헤더를 부르지 않는다.
 - 라이브러리는 헤더만 있으면 INTERFACE, `src/` 에 `.cpp` 가 생기면 STATIC 으로 바꾼다.
+- 실행 파일 모듈(`onboard/apps/` 아래)은 실행 파일 타깃이 `argus_<모듈>` 을 사용하므로 라이브러리 타깃에는 접미사를 사용한다. 인터페이스와 값 타입 헤더는 `argus_<모듈>_interfaces`(INTERFACE)에 둔다. `src/` 의 소스는 `main.cpp` 를 제외하고 `argus_<모듈>_core`(STATIC) 하나에 두며, 실행 파일과 테스트가 이 라이브러리를 링크한다. 클래스를 추가할 때는 라이브러리를 추가하지 않고 `argus_<모듈>_core` 에 소스를 추가한다 (예: `argus_video_sender`, `argus::video_sender_interfaces`, `argus::video_sender_core`).
+- 실행 파일 모듈의 소스 중 통신 구현이나 외부 라이브러리(ZeroMQ, protobuf, GStreamer)에 의존하는 것은 `argus_<모듈>_core` 에 넣지 않고 `argus_<모듈>_<이름>`(STATIC) 으로 분리한다. `argus_<모듈>_core` 의 테스트가 그 라이브러리 없이 gtest 만으로 실행되게 하기 위함이며, 라이브러리 모듈에서 `<모듈>_zmq` 를 따로 두는 것과 같은 이유이다.
 - 인터페이스만 있는 모듈(`vehicle_api`)은 통신 구현(ZeroMQ, protobuf)에 의존하지 않고 `core`(`Subscription`)에만 의존한다. ZeroMQ 구현은 `<모듈>_zmq` 모듈(`vehicle_api_zmq`)로 따로 두어, 알고리즘 코드와 테스트용 구현이 인터페이스 모듈만 링크하게 한다.
 - 테스트용 구현(`Fake…`)의 위치: 여러 모듈의 테스트가 사용하면 `<모듈>_testing` 모듈(`core_testing`, `bus_testing`, `vehicle_api_testing`)에, 한 모듈만 사용하면 그 모듈의 `test/` 에 둔다(`apps/onboard/test/fake_mavlink_connection.hpp`). 제품 실행 파일은 `*_testing` 을 링크하지 않는다.
 - (모든 프로세스) `vehicle_api` 와 `bus` 의 handler(토픽 구독, RPC 응답, 모드 이벤트, 주기 작업)는 그 통신 객체를 소유한 스레드의 `core::IPoller::process_events()` 안에서만 불리고, 짧게 끝내야 한다. `Subscription` 의 해제도 같은 스레드에서 한다. 추적기와 추종 제어가 통신 스레드와 감시 스레드를 따로 두는 구조는 이 규칙만 지키면 된다.

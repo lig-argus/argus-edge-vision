@@ -18,12 +18,13 @@ classDiagram
     class ZmqFrameSource
     class FileFrameSource
     class FrameCollector {
-        -pending map~(source, frame_id), Partial~
+        -pending list~PendingFrame~
         -max_pending, max_wait
         +on_frame(Frame)
         +on_observations(Observations)
         +on_tracks(Tracks)
         +on_session_change() 비움
+        +process_timeouts()
         +subscribe(handler) Subscription
     }
     class CollectedFrame {
@@ -55,8 +56,6 @@ classDiagram
     IFrameSource <|.. ZmqFrameSource
     IFrameSource <|.. FileFrameSource
     ZmqFrameSource ..> ITopicSubscriber : vision/frame/gray8
-    FrameCollector ..> IFrameSource : subscribe
-    FrameCollector ..> ITopicSubscriber : perception/observations, tracking/tracks
     FrameCollector ..> IClock : max_wait
     FrameCollector ..> CollectedFrame : 출력
     OnvifMetadataSerializer ..> CollectedFrame : 입력
@@ -70,7 +69,7 @@ classDiagram
 | 클래스 | 책임 | 출처 |
 |---|---|---|
 | `IFrameSource` / `ZmqFrameSource` / `FileFrameSource` | 비압축 프레임 공급. `subscribe(handler)` 가 `Subscription` 을 반환하고 handler 는 `process_events()` 안에서 불린다. 구현 교체로 토픽·녹화 파일(테스트·재현) 전환. 테스트용 `FakeFrameSource` 는 `apps/video_sender/test/` | pi 5.3 |
-| `FrameCollector` | 세 토픽을 `(source, session_id, frame_id)` 로 모은다 (`session_id` 가 없는 메시지는 `(source, frame_id)`, `process_interfaces.md` 7장). 보관 개수·대기 시간 제한, 대기 시간 안에 다 오지 않으면 모인 것만으로 `CollectedFrame` 을 만들고, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음 | pi 5.3 |
+| `FrameCollector` | 세 토픽을 `(source, session_id, frame_id)` 로 모은다 (`session_id` 가 없는 메시지는 `(source, frame_id)`, `process_interfaces.md` 7장). 보관 개수·대기 시간 제한, 대기 시간 안에 다 오지 않으면 모인 것만으로 `CollectedFrame` 을 만들고, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음. 입력은 `on_frame()`, `on_observations()`, `on_tracks()` 호출로 받는다. `IFrameSource` 와 bus 를 구독해 이 함수를 호출하는 연결은 `main` 과 bus 입력 연결이 담당한다. 대기 시간이 지난 프레임은 `process_timeouts()` 가 처리하며, 이후 메시지가 도착하지 않아도 마지막 프레임이 출력되도록 `EventLoop::add_periodic()` 에 등록해 호출한다. 같은 `source` 의 출력 순서는 도착 순서다. 기본값은 대기 시간 100 ms, 보관 개수 8 (`FrameCollectorConfig`) | pi 5.3 |
 | `CollectedFrame` | 프레임(항상 있음) + 탐지 결과·추적 결과(optional). `OnvifMetadataSerializer`·`RtspServer` 의 입력 | pi 5.3, video 3.2 |
 | `OnvifMetadataSerializer` | `CollectedFrame` 의 `tracks` → ONVIF XML (`tt:Frame`, `tt:Object`, `argus:` 확장, 좌표 변환). 추적 결과 없는 프레임은 빈 `tt:Frame`. 구체 클래스다: 구현이 ONVIF XML 하나이고(video 1장) 테스트에서 대체할 이유가 없다(순수 함수) | video 3장 |
 | `MetadataRtpPacketizer` | XML → RTP 패킷(헤더 12 B, 조각, 마지막 marker=1, 타임스탬프 = unix_ns × 90000 / 10^9) | video 3.1, 4장 |
@@ -148,7 +147,7 @@ classDiagram
 ## 4. 검토 필요 사항
 
 1. `RtspReceiver` 의 메타데이터 경로 — `rtponvifmetadatadepay` 가 Windows 배포에 있는지 (video 미결 1).
-2. `FrameCollector` 의 보관 개수·대기 시간 값 (pi 5.3).
+2. 해소: 대기 시간 100 ms, 보관 개수 8 을 `FrameCollectorConfig` 의 기본값으로 정했다. 100 ms 는 카메라 수신부터 `tracking/tracks` 도착까지의 측정값 p50 26.3 ms (pi 7장 3) 의 약 4배이며 p99 측정 후 조정한다.
 3. 녹화(`FileFrameSource` 입력 파일 형식)는 별도 결정.
 4. `RtspServer`·`RtspReceiver` 의 인터페이스: `VideoSender`·`FrameSynchronizer` 테스트에 GStreamer 없는 Fake 가 필요하면 구현 PR 에서 둔다.
 5. `perception/observations` v2 의 필드 표가 `process_interfaces.md` 5.1 에 없다. 탐지 담당의 표를 받으면 `perception_api::Observations` 를 맞춘다.

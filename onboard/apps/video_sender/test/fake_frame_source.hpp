@@ -4,11 +4,10 @@
 #ifndef ARGUS_VIDEO_SENDER_TEST_FAKE_FRAME_SOURCE_HPP_
 #define ARGUS_VIDEO_SENDER_TEST_FAKE_FRAME_SOURCE_HPP_
 
-#include <cstdint>
-#include <map>
 #include <memory>
 #include <utility>
 
+#include "argus/core/handler_list.hpp"
 #include "argus/core/subscription.hpp"
 #include "argus/core_testing/fake_poller.hpp"
 #include "argus/perception_api/types.hpp"
@@ -22,40 +21,24 @@ public:
         : poller_(poller), handlers_(std::make_shared<Handlers>()) {}
 
     [[nodiscard]] core::Subscription subscribe(FrameHandler handler) override {
-        const std::uint64_t id = handlers_->next_id++;
-        handlers_->by_id[id] = std::move(handler);
-        const std::weak_ptr<Handlers> weak = handlers_;
-        return core::Subscription([weak, id] {
-            if (const auto handlers = weak.lock()) {
-                handlers->by_id.erase(id);
-            }
-        });
+        return handlers_->subscribe(std::move(handler));
     }
 
     // 테스트용: 프레임 하나를 도착한 것으로 등록한다. 다음 process_events() 에서 handler 에
     // 전달되며, 전달 시점에 등록돼 있는 handler 에게만 간다
     void simulate_frame_received(perception_api::Frame frame) {
         const auto shared_frame = std::make_shared<const perception_api::Frame>(std::move(frame));
+        // FakeFrameSource 가 전달 전에 소멸할 수 있으므로 weak_ptr 로 참조한다
         const std::weak_ptr<Handlers> weak = handlers_;
         poller_.post([weak, shared_frame] {
-            const auto handlers = weak.lock();
-            if (!handlers) {
-                return;
-            }
-            const auto snapshot = handlers->by_id;
-            for (const auto& [id, handler] : snapshot) {
-                if (handlers->by_id.count(id) != 0) {
-                    handler(*shared_frame);
-                }
+            if (const auto handlers = weak.lock()) {
+                handlers->notify(*shared_frame);
             }
         });
     }
 
 private:
-    struct Handlers {
-        std::map<std::uint64_t, FrameHandler> by_id;
-        std::uint64_t next_id = 1;
-    };
+    using Handlers = core::HandlerList<const perception_api::Frame&>;
 
     core_testing::FakePoller& poller_;
     std::shared_ptr<Handlers> handlers_;
