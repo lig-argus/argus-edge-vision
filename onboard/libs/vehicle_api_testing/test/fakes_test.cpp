@@ -198,18 +198,16 @@ TEST(FakeFlightModeControlTest, AcceptsByDefaultAndRecordsRequestsWithCommandId)
     FakeFlightModeControl mode;
 
     const FlightModeReply offboard = mode.request_offboard(header_with_id(7));
-    const FlightModeReply heading = mode.request_heading(header_with_id(8), 1.5);
+    const FlightModeReply hold = mode.request_hold(header_with_id(8));
 
     EXPECT_TRUE(offboard.accepted);
     EXPECT_EQ(command_id_of(offboard), CommandId{7});
-    EXPECT_TRUE(heading.accepted);
-    EXPECT_EQ(command_id_of(heading), CommandId{8});
+    EXPECT_TRUE(hold.accepted);
+    EXPECT_EQ(command_id_of(hold), CommandId{8});
 
     ASSERT_EQ(mode.requests().size(), 2U);
     EXPECT_EQ(mode.requests()[0].kind, FlightModeRequestKind::Offboard);
-    EXPECT_FALSE(mode.requests()[0].heading_rad.has_value());
-    EXPECT_EQ(mode.requests()[1].kind, FlightModeRequestKind::Heading);
-    EXPECT_EQ(mode.requests()[1].heading_rad, 1.5);
+    EXPECT_EQ(mode.requests()[1].kind, FlightModeRequestKind::Hold);
     EXPECT_EQ(mode.requests()[1].header.valid_until_monotonic_ns, 10 * kMs);
 }
 
@@ -352,8 +350,8 @@ TEST_F(FakeClientTest, FlightModeControlClientRepliesOldestRequestFirst) {
     };
     const core::Subscription hold =
         client.request_hold(header_with_id(1), std::chrono::milliseconds{500}, record);
-    const core::Subscription heading =
-        client.request_heading(header_with_id(2), 0.5, std::chrono::milliseconds{500}, record);
+    const core::Subscription offboard =
+        client.request_offboard(header_with_id(2), std::chrono::milliseconds{500}, record);
 
     EXPECT_TRUE(client.simulate_reply(flight_mode_reply(CommandId{1}, true, "")));
     EXPECT_TRUE(client.simulate_reply(flight_mode_reply(CommandId{2}, false, "busy")));
@@ -362,7 +360,7 @@ TEST_F(FakeClientTest, FlightModeControlClientRepliesOldestRequestFirst) {
     ASSERT_EQ(replied.size(), 2U);
     EXPECT_EQ(replied[0], CommandId{1});
     EXPECT_EQ(replied[1], CommandId{2});
-    EXPECT_EQ(client.requests()[1].heading_rad, 0.5);
+    EXPECT_EQ(client.requests()[1].kind, FlightModeRequestKind::Offboard);
 }
 
 }  // namespace

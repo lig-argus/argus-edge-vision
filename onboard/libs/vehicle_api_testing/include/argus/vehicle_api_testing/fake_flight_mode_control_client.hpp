@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <cstddef>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,22 +27,14 @@ public:
     [[nodiscard]] core::Subscription request_offboard(const vehicle_api::RequestHeader& header,
                                                       std::chrono::milliseconds timeout,
                                                       ReplyHandler on_reply) override {
-        requests_.push_back({FlightModeRequestKind::Offboard, header, std::nullopt});
+        requests_.push_back({FlightModeRequestKind::Offboard, header});
         return pending_.add(timeout, std::move(on_reply));
     }
 
     [[nodiscard]] core::Subscription request_hold(const vehicle_api::RequestHeader& header,
                                                   std::chrono::milliseconds timeout,
                                                   ReplyHandler on_reply) override {
-        requests_.push_back({FlightModeRequestKind::Hold, header, std::nullopt});
-        return pending_.add(timeout, std::move(on_reply));
-    }
-
-    [[nodiscard]] core::Subscription request_heading(const vehicle_api::RequestHeader& header,
-                                                     double heading_rad,
-                                                     std::chrono::milliseconds timeout,
-                                                     ReplyHandler on_reply) override {
-        requests_.push_back({FlightModeRequestKind::Heading, header, heading_rad});
+        requests_.push_back({FlightModeRequestKind::Hold, header});
         return pending_.add(timeout, std::move(on_reply));
     }
 

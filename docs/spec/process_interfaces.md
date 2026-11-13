@@ -52,7 +52,7 @@ flowchart LR
 | 영상 송신부 | RTSP 영상·메타데이터 송신 (5.3) | 통신 |
 | mavlink-router | FC UART 와 로컬·통제기 UDP 중계 | 통신 (설정) |
 
-- **FC 링크는 onboard 하나만 사용한다.** 다른 프로세스는 FC 데이터를 onboard 의 토픽으로 받고, FC 로 보낼 것(setpoint, 모드, heading)은 onboard 에 요청한다. 사례: PX4 의 `mavlink` 모듈, MAVROS·px4_ros_com, Aerostack2 `platform` 노드.
+- **FC 링크는 onboard 하나만 사용한다.** 다른 프로세스는 FC 데이터를 onboard 의 토픽으로 받고, FC 로 보낼 것(setpoint, 모드)은 onboard 에 요청한다. 사례: PX4 의 `mavlink` 모듈, MAVROS·px4_ros_com, Aerostack2 `platform` 노드.
 - 추종 제어 코드는 4장의 C++ 인터페이스에만 의존하고, 통신 담당이 그 인터페이스의 ZeroMQ 어댑터를 제공한다. 프로세스 배치를 바꿔도(onboard 안으로 합쳐도) 추종 제어 코드는 바뀌지 않는다 (의존 역전).
 
 ### 2.2 검토한 대안 (안 A: 추종 제어를 onboard 안에)
@@ -69,7 +69,7 @@ flowchart LR
 
 ## 3. 공통 규칙
 
-- 전송 방식 둘: 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **토픽 발행·구독**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드·heading 요청)은 **요청-응답**. 요청-응답은 중복 실행과 오래된 명령 실행을 막는다. 토픽마다 보관할 최대 메시지 수(queue_depth)를 정하며 기본값은 `onboard/libs/protocol/include/argus/protocol/topics.hpp`.
+- 전송 방식 둘: 주기적으로 갱신되는 값(상태, 속도, 추적 결과)은 **토픽 발행·구독**, 수락·실패 확인이 필요한 요청(추종 시작·종료, 모드 요청)은 **요청-응답**. 요청-응답은 중복 실행과 오래된 명령 실행을 막는다. 토픽마다 보관할 최대 메시지 수(queue_depth)를 정하며 기본값은 `onboard/libs/protocol/include/argus/protocol/topics.hpp`.
 - 메시지 구성: 직렬화된 본문 하나와, 필요하면 바이너리(프레임 픽셀) 하나. 통신 구현(`onboard/libs/bus`)은 둘을 하나로 합쳐 보낼 수 있고, 토픽 이름을 그 통신 라이브러리가 허용하는 형식으로 변환할 수 있다.
 - 현재 구현 (ZeroMQ): 토픽은 PUB/SUB, 요청-응답은 REQ/REP. multipart 구성 `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`. 주소는 `onboard/libs/protocol/include/argus/protocol/zmq_endpoints.hpp`.
 - 직렬화: protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다.
@@ -95,7 +95,7 @@ flowchart LR
 |---|---|---|---|
 | `IVehicleTelemetry` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어, 추적기 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회, 비행 모드 이벤트 구독 (5.1 `fc/attitude`·`fc/state`·`fc/mode_event` 와 같은 값). 조회는 조회 시점 기준 200 ms 이내인 값 중 가장 가까운 것, 시각 차 50 ms 이내 (`docs/design/uml/class_tracker.md`) |
 | `IVelocitySetpointSink` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | FRD 전진·우측·하강 속도(m/s), yaw 회전 속도(rad/s), 유효 시간. 매 주기 호출, 즉시 반환 |
-| `IFlightModeControlClient` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환, Hold 상태 절대 heading 요청. 요청은 바로 반환하고 응답(수락 여부)은 handler 로, 전환 완료·Offboard 이탈은 이벤트 |
+| `IFlightModeControlClient` | onboard FC 통신 (ZeroMQ 어댑터) | 추종 제어 | Offboard 진입, Hold 전환. 요청은 바로 반환하고 응답(수락 여부)은 handler 로, 전환 완료·Offboard 이탈은 이벤트 |
 | `IFollowControl` | 추종 제어 (ZeroMQ 어댑터) | onboard 통제기 통신 | 추종 시작(sensor, generation, class_id, track_id, label)·종료·Scan 시작, 수락·거부 응답, 임무·표적 상태 |
 
 - 구현을 기체 FC, SITL, 테스트용 가짜로 바꿔도 같은 contract 를 지킨다.
@@ -118,7 +118,7 @@ flowchart LR
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
 | `tracking/status` | 추적기 → onboard | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
 | `fc/attitude` | onboard → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
-| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air. 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
+| `fc/state` | onboard → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, offboard_hover(onboard 가 Offboard 상태에서 제자리 유지 setpoint 를 송신 중인지. 기체가 실제로 정지한 상태는 비행 모드가 Hold 이거나, Offboard 이면서 이 값이 true 인 경우). 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → onboard | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
 | `follow/status` | 추종 제어 → onboard | 1 Hz + 변경 시 | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
 | `fc/mode_event` | onboard → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
@@ -230,7 +230,7 @@ flowchart LR
 | 요청 | 요청자 → 응답자 | 내용 | 응답 |
 |---|---|---|---|
 | `follow/command` | onboard → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(onboard 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·onboard 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
-| `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD), 또는 HOLD 상태 절대 heading(rad, NED) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
+| `control/mode_request` | 추종 제어 → onboard | mode(OFFBOARD·HOLD) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
 - 엔드포인트(기본값): `control/mode_request` 는 onboard RPC REP **6371** (onboard bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 schema·필드와 두 요청의 타임아웃은 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
 - 검사 분담: 제어권·매개변수 범위 검사는 onboard, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
@@ -275,9 +275,9 @@ flowchart LR
 - setpoint 유효 시간: `control/setpoint` 의 `valid_until_monotonic_ns` 가 지나도록 새 값이 없으면 onboard 가 속도 0 을 보내고 Hold 를 요청한다.
 - 상태 보고 두절 판단: onboard 는 `follow/status`(1 Hz) 가 3 초 동안 오지 않으면 추종 제어가 멈춘 것으로 보고, 추종·Scan 중이면 Hold 로 전환하고 `mission_state` FAULT 를 보고한다 (`docs/spec/icd.md` 6.4).
 - 요청 대응: REQ/REP 응답이 정해진 시간 안에 오지 않으면 실패로 본다. `valid_until_monotonic_ns` 가 지난 요청은 실행하지 않고 REJECTED 로 답한다.
-- FC 제어 명령 송신권: FC 로 setpoint·모드·heading 을 보낼 권한은 onboard 가 관리한다. 통제기 제어권(sysid 250, `docs/spec/icd.md` 5장)과는 별개다. 다른 소유자가 송신권을 가지고 있으면 추종 제어의 시작 요청을 거부하고(reason "another writer owns FC"), 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다.
+- FC 제어 명령 송신권: FC 로 setpoint·모드를 보낼 권한은 onboard 가 관리한다. 통제기 제어권(sysid 250, `docs/spec/icd.md` 5장)과는 별개다. 다른 소유자가 송신권을 가지고 있으면 추종 제어의 시작 요청을 거부하고(reason "another writer owns FC"), 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다.
 - onboard 독립 감시: onboard 는 추종 제어가 정상이라고 보고해도 FC 상태·RC 개입·유효 시간을 스스로 확인해 위험한 송신을 막는다. RC 개입이 항상 우선하고, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다.
-- Scan 회전 감시: heading 요청의 실행 기한(FC 로 보내기 전 검사)과, 회전 중 다음 heading 요청을 기다리는 감시 시간은 따로 둔다. 회전 중 감시 시간 안에 추종 제어의 새 heading 요청이 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 FC 정지 명령 방식은 기체 시험으로 정한다 (`docs/spec/icd.md` E3).
+- Scan 회전 감시: Scan 의 yaw 회전은 `control/setpoint` 의 yaw 회전 속도로 수행한다. Scan 중 감시 시간 안에 추종 제어의 새 setpoint 가 오지 않으면 onboard 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 기체 시험으로 정한다 (`docs/spec/icd.md` E3).
 - 재시작: 추적기가 재시작하면 generation 이 바뀌므로, 이전 generation 의 표적을 가리키는 명령은 REJECTED. 추종 제어·onboard 재시작 시 상대는 `follow/status` 의 `controller_session`, `fc/mode_event` 의 세션 식별자 변화로 알아챈다.
 
 ## 7. 검토 필요 사항
@@ -288,7 +288,7 @@ flowchart LR
    - 측정(2026-10-19, drone Pi 5): 전송 경로만 따로 잰 결과 기존 버스(Python PUSH → 어댑터 → XSUB/XPUB 프록시 → SUB)는 버림 0, 지연 p50 1.5 ms 로 IPC 직결(p50 0.4 ms)과 약 1 ms 차이.
    - 탐지·추적·추종을 함께 켜고 gray8 끔/켬을 5회씩 120 초 비교: 탐지·추적 30 FPS, gray8·overlay·npu_input 버림 0, `perception/observations` 지연 p50 0.85 → 0.95 ms, 카메라 수신 → `tracking/tracks` 도착 p50 25.0 → 26.3 ms, CPU 코어 하나 기준 +24 %p(Pi 전체의 약 6 %).
    - 조건: 카메라 대신 RAW14 녹화 재생, FC 대신 가상 기체(MAVLink 연결 없음), 영상 송신부 없음. 추적기는 gray8 을 구독하지 않아 gray8 은 프록시에서 걸러졌다. 영상 송신부를 구현하면 gray8 을 실제로 받는 구독자가 생기므로 같은 방법으로 다시 측정한다.
-4. Hold 상태 절대 heading 요청을 onboard 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신, 추적/추종
+4. 해소 (#69): Scan 의 yaw 회전은 Offboard 상태의 yaw 회전 속도 setpoint 로 수행하고, Hold 상태 절대 heading 요청은 삭제했다 (`docs/spec/icd.md` 4.2). 정지 절차와 감시 시간은 `docs/spec/icd.md` E3. — 통신, 추적/추종
 5. `fc/attitude`·`fc/state` 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 `fc/attitude`·`fc/state` 메시지의 시각 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신, 추적/추종
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기, 추적/추종
 7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 값마다의 원수신 시각과 유효성)은 합의됨. 이름은 `onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp` 의 `Attitude`, `LocalPosition`, `DownwardDistance`, `GlobalPosition`, `FlightStatus` 를 따른다 (#39). — 통신, 추적/추종
