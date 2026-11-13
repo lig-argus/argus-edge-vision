@@ -1,12 +1,13 @@
 import random
 import unittest
 from dataclasses import replace
-from typing import Any
 
 import cv2
 import numpy as np
 import zmq
-from argus_vision.messagepack import unpack_message
+from argus_msg.vision_frame_gray8_pb2 import VisionFrameGray8
+from argus_msg.vision_npu_input_jpeg_pb2 import VisionNpuInputJpeg
+from argus_msg.vision_overlay_jpeg_pb2 import VisionOverlayJpeg
 from argus_vision.types import Classification, Detection, Gray8Frame, PixelBox
 from argus_vision.zmq_preview_sink import (
     GRAY8_TOPIC,
@@ -111,9 +112,9 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         # 미리보기는 카메라 수신 시각으로 간격을 고르므로 시계에 맞춘 프레임을 만든다
         return replace(frame, received_monotonic_ns=int(self.clock.now * 1e9))
 
-    def receive(self) -> tuple[str, dict[str, Any], bytes]:
+    def receive(self) -> tuple[str, bytes, bytes]:
         topic, header, payload = self.pull.recv_multipart()
-        return topic.decode(), unpack_message(header), payload
+        return topic.decode(), header, payload
 
     def wait_connected(self, sink: ZmqPreviewSink, frame: Gray8Frame) -> None:
         # IMMEDIATE 라 연결 전에 보낸 것은 버려진다. 메시지가 올 때까지 보내고,
@@ -142,53 +143,50 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         messages = {topic: (header, payload) for topic, header, payload in received}
         self.assertEqual(set(messages), {GRAY8_TOPIC, OVERLAY_TOPIC, NPU_INPUT_TOPIC})
 
-        gray_header, gray_payload = messages[GRAY8_TOPIC]
+        gray_bytes, gray_payload = messages[GRAY8_TOPIC]
         self.assertEqual(gray_payload, frame.pixels)
+        gray_header = VisionFrameGray8()
+        gray_header.ParseFromString(gray_bytes)
         self.assertEqual(
             gray_header,
-            {
-                "schema": "argus.vision.frame.v1",
-                "source": "ir_sdk:0",
-                "session_id": "s1",
-                "frame_id": 5,
-                "seq": 5,
-                "unix_ns": 111,
-                "received_monotonic_ns": frame.received_monotonic_ns,
-                "width": 64,
-                "height": 48,
-                "stride": 64,
-                "encoding": "gray8",
-                "preprocess": "double_plateau_adaptive",
-            },
+            VisionFrameGray8(
+                source="ir_sdk:0",
+                session_id="s1",
+                frame_id=5,
+                seq=5,
+                unix_ns=111,
+                received_monotonic_ns=frame.received_monotonic_ns,
+                width=64,
+                height=48,
+                stride=64,
+                preprocess="double_plateau_adaptive",
+            ),
         )
 
-        overlay_header, overlay_jpeg = messages[OVERLAY_TOPIC]
-        self.assertEqual(overlay_header["schema"], "argus.vision.overlay.v1")
+        overlay_bytes, overlay_jpeg = messages[OVERLAY_TOPIC]
+        overlay_header = VisionOverlayJpeg()
+        overlay_header.ParseFromString(overlay_bytes)
         self.assertEqual(
-            (overlay_header["model"], overlay_header["backend"]), ("m.hef", "hailo")
+            (overlay_header.model, overlay_header.backend), ("m.hef", "hailo")
         )
-        self.assertEqual(
-            overlay_header["detections"],
-            [
-                {
-                    "label": "tank",
-                    "confidence": 0.8,
-                    "x1": 10,
-                    "y1": 12,
-                    "x2": 30,
-                    "y2": 40,
-                }
-            ],
-        )
+        self.assertEqual((overlay_header.width, overlay_header.height), (64, 48))
+        self.assertEqual(len(overlay_header.detections), 1)
+        box = overlay_header.detections[0]
+        self.assertEqual((box.class_id, box.label), (0, "tank"))
+        self.assertAlmostEqual(box.confidence, 0.8)
+        self.assertEqual((box.x1, box.y1, box.x2, box.y2), (10, 12, 30, 40))
         image = cv2.imdecode(np.frombuffer(overlay_jpeg, np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(image.shape, (48, 64, 3))
 
-        npu_header, npu_jpeg = messages[NPU_INPUT_TOPIC]
-        self.assertEqual(npu_header["schema"], "argus.vision.npu_input.v1")
+        npu_bytes, npu_jpeg = messages[NPU_INPUT_TOPIC]
+        npu_header = VisionNpuInputJpeg()
+        npu_header.ParseFromString(npu_bytes)
         self.assertEqual(
-            (npu_header["lb_scale"], npu_header["lb_pad_x"], npu_header["lb_pad_y"]),
+            (npu_header.lb_scale, npu_header.lb_pad_x, npu_header.lb_pad_y),
             (1.0, 0, 8),
         )
+        self.assertEqual((npu_header.width, npu_header.height), (64, 48))
+        self.assertEqual(npu_header.received_monotonic_ns, frame.received_monotonic_ns)
         npu_image = cv2.imdecode(
             np.frombuffer(npu_jpeg, np.uint8), cv2.IMREAD_UNCHANGED
         )

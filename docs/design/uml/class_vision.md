@@ -45,7 +45,7 @@ classDiagram
 | `I3SdkFrameSource` | C++ | IR 카메라(i3system, USB 2.0) 수신. 커널 드라이버 없이 i3 SDK 가 usbfs 로 RAW14(LE16) 640×480 을 읽음. frame_id 부여, `unix_ns` 는 RPi 수신 시각(노출 시각 아님) | video 4장, #33 리뷰 |
 | `PythonVisionAdapter` | C++ | RAW14 를 ipc REQ 로 Python 쪽에 보내고 탐지 결과를 받음. Python 이 PUSH 한 미리보기 영상 3개를 받아 버스로 발행. 미리보기 수신 rcvhwm 4 | pi 5.1, 7장 3 |
 | `PerceptionWorker` | C++ | `perception/observations` v2 발행 (pi 5.1.4). 추론한 프레임마다, 객체 없으면 `detections: []` | pi 5.1 |
-| `PythonVisionWorker` | Python | ipc 요청 한 건마다 2절의 전처리 → 추론 → 미리보기를 차례로 부르고 탐지 결과를 응답. ipc REP 소켓과 메시지(`argus.ipc.perception.v1`)는 `zmq_worker_server.py` 가 맡는다 | pi 5.1 |
+| `PythonVisionWorker` | Python | ipc 요청 한 건마다 2절의 전처리 → 추론 → 미리보기를 차례로 부르고 탐지 결과를 응답. ipc REP 소켓과 메시지(protobuf `perception_ipc.proto`)는 `zmq_worker_server.py` 가 맡는다 | pi 5.1 |
 
 - 발행 토픽은 4개다: `perception/observations`(`PerceptionWorker`), `vision/frame/gray8`·`vision/overlay/jpeg`·`vision/npu_input/jpeg`(`PythonVisionAdapter`). `vision/frame/gray8` 은 설정으로 켜고 끄며 기본은 꺼짐.
 - 미리보기 소켓이 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 gray8 프레임이 있지는 않다.
@@ -125,7 +125,7 @@ classDiagram
 
 1. 해소 (0.4): Python 쪽 내부 Class Diagram 을 2절에 추가함.
 2. C++ 코드를 `onboard/vision/` 로 옮길 때 카메라 수신(`I3SdkFrameSource`)과 RAW14 녹화 파일을 읽는 클래스가 같은 인터페이스를 구현하게 해, i3 SDK 가 없는 CI 에서도 빌드·테스트한다 (#35).
-3. 해소 (0.5): 구현(`DoublePlateauPreprocessor`, `HailoDetector`, `ZmqPreviewSink`, `PythonVisionWorker`)을 RPi 코드에서 옮김. CI 에 없는 numpy, OpenCV, pyzmq, msgpack, HailoRT 는 `pyproject.toml` 의 mypy 예외로 둠.
+3. 해소 (0.5): 구현(`DoublePlateauPreprocessor`, `HailoDetector`, `ZmqPreviewSink`, `PythonVisionWorker`)을 RPi 코드에서 옮김. CI 에 없는 numpy, OpenCV, pyzmq, HailoRT 는 `pyproject.toml` 의 mypy 예외로 둠.
 4. `vision/frame/gray8` 발행은 Python 쪽에 있다(기본 꺼짐). 지금 RPi 의 C++ 어댑터는 미리보기 토픽으로 overlay, npu_input 만 받으므로, 어댑터를 `onboard/vision/` 로 옮기는 PR 에서 gray8 을 받게 하고 rcvhwm 을 4 로 맞춘다 (지금 2).
 
 ## 변경 이력
@@ -136,4 +136,4 @@ classDiagram
 | 0.2 | 2026-10-19 | 탐지 담당 리뷰 반영(#33): 실제 C++ 클래스(`I3SdkFrameSource`, `PythonVisionAdapter`, `PerceptionWorker`)와 Python 처리로 나눠 다시 그림, 발행 토픽 4개, 전처리 순서, RAW14 640×480, 미리보기 SNDHWM 4·rcvhwm 4. 제목 "경계" → "외부 인터페이스" |
 | 0.3 | 2026-10-25 | bus 인터페이스 이름 `IPublisher`→`ITopicPublisher` (#40) |
 | 0.4 | 2026-10-29 | 2절 Python 쪽 내부 인터페이스(`IPreprocessor`, `IDetector`, `IPreviewSink`와 구현, Fake) 추가. 1절의 Python 처리 셋(`Preprocessor`, `HailoInference`, `OverlayEncoder`)을 `PythonVisionWorker` 하나로 묶고 세부는 2절로. 모델 입력 변환(레터박스)을 전처리에서 탐지기 구현으로 옮김. 지금 실기체 HEF 입력 640×480 1채널 반영 |
-| 0.5 | 2026-11-02 | 2절 구현 반영: `PythonVisionWorker` 의 `handle` 결과를 `FrameResult` 로, `DoublePlateauPreprocessor` 의 C++ 경로, `ZmqPreviewSink` 의 npu_input 영상 만들기. 검토 필요 사항 3 해소, 4 추가 (gray8 은 C++ 어댑터 이전 뒤) |
+| 0.5 | 2026-11-13 | 2절 구현 반영: `PythonVisionWorker` 의 `handle` 결과를 `FrameResult` 로, `DoublePlateauPreprocessor` 의 C++ 경로, `ZmqPreviewSink` 의 npu_input 영상 만들기, 메시지는 protobuf, npu_input 의 실기체 구독자. 검토 필요 사항 3 해소, 4 추가 (gray8 은 C++ 어댑터 이전 뒤) |

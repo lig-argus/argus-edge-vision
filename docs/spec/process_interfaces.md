@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | 0.16 (팀 검토 전 초안) |
+| 문서 버전 | 0.17 (팀 검토 전 초안) |
 | 범위 | RPi 안 프로세스 구성, 프로세스 사이 메시지(ZeroMQ), onboard 안 C++ 인터페이스 |
 | 관련 문서 | `docs/spec/icd.md` (FC·통제기 MAVLink), `docs/spec/video.md` (영상 전송, #20), `docs/design/system_architecture.md` (추적·추종 설계) |
 | 상태 표기 | **[미결 n]** 은 7장 검토 항목 번호 |
@@ -111,9 +111,9 @@ flowchart LR
 
 | 토픽 | 발행 → 구독 | 주기 | 필드 |
 |---|---|---|---|
-| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus.vision.frame.v1` (헤더 필드는 5.1.5). 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][protobuf 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
-| `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus.vision.overlay.v1` (기존). 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
-| `vision/npu_input/jpeg` | 탐지 → 실기체 영상 송신기 `argus_main_gcs_video` (영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용) | 최대 30 FPS | `argus.vision.npu_input.v1`. Hailo 에 넣은 입력 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 지금 실기체 HEF 는 입력 640×480 1채널이라 원본과 같은 크기의 흑백 JPEG 이고 lb_scale 1, 패딩 0 이다. 640×640 3채널 HEF 를 쓰면 레터박스 영상이 되어 박스 좌표계가 원본 픽셀과 다르다 |
+| `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus_msg/vision_frame_gray8.proto` (헤더 필드는 5.1.5). 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][protobuf 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
+| `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus_msg/vision_overlay_jpeg.proto`. 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
+| `vision/npu_input/jpeg` | 탐지 → 실기체 영상 송신기 `argus_main_gcs_video` (영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용) | 최대 30 FPS | `argus_msg/vision_npu_input_jpeg.proto`. Hailo 에 넣은 입력 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 지금 실기체 HEF 는 입력 640×480 1채널이라 원본과 같은 크기의 흑백 JPEG 이고 lb_scale 1, 패딩 0 이다. 640×640 3채널 HEF 를 쓰면 레터박스 영상이 되어 박스 좌표계가 원본 픽셀과 다르다 |
 | `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존, 5.1.4). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, onboard, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
 | `tracking/status` | 추적기 → onboard | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
@@ -208,9 +208,9 @@ flowchart LR
 - 호환용 필드(seq, captured_*, t_infer_us, t_publish_us)는 다음 버전에서 뺄 수 있다.
 - 탐지 프로세스의 세션(`session_id`)은 C++ 탐지 프로세스가 시작할 때 만들어 Python 작업자와 미리보기 헤더에 이미 쓰고 있지만, 이 메시지에는 아직 없다 **[미결 14]**.
 
-#### 5.1.5 `vision/frame/gray8` 헤더 필드 (2026-11-12 기준, 구현 전)
+#### 5.1.5 `vision/frame/gray8` 헤더 필드 (2026-11-13 기준, 실기체 발행 전)
 
-메시지 본문(protobuf)이 이 헤더이고, 픽셀은 바이너리로 따로 보낸다 (3장. 현재 ZeroMQ 구현에서는 multipart `[토픽][헤더][픽셀 바이트]`). 픽셀 바이트는 `stride × height` 바이트의 8 비트 흑백 영상이다. 아직 실기체에서 발행하지 않으며, 처음부터 protobuf 로 발행한다 (3장. `schema` 와 값이 항상 같은 `encoding` 은 두지 않는다). `.proto` 는 탐지 구현 PR(#53)에서 이 표에 맞춰 추가한다.
+메시지 본문(protobuf)이 이 헤더이고, 픽셀은 바이너리로 따로 보낸다 (3장. 현재 ZeroMQ 구현에서는 multipart `[토픽][헤더][픽셀 바이트]`). 픽셀 바이트는 `stride × height` 바이트의 8 비트 흑백 영상이다. 아직 실기체에서 발행하지 않으며, 처음부터 protobuf 로 발행한다 (3장. `schema` 와 값이 항상 같은 `encoding` 은 두지 않는다). `.proto` 는 `argus_msg/vision_frame_gray8.proto` 다.
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
@@ -320,3 +320,4 @@ flowchart LR
 | 0.14 | 2026-11-06 | 직렬화를 MessagePack 에서 protobuf 로 (#56): 1장, 3장 전송 규칙(`.proto` 위치와 import), 공통 필드에서 `schema` 제거(타입은 토픽 이름), 버전 규칙(`reserved`, `optional`, 새 토픽 이름), 5장 머리의 전환 중 표기, 5.1 `vision/frame/gray8` 의 헤더 표기, 7장 1 |
 | 0.15 | 2026-11-07 | 3장 전송 표현을 구현 중립(토픽 발행·구독, 요청-응답, 본문 + 바이너리, queue_depth, 이름 변환)으로 바꾸고 ZeroMQ 구성을 "현재 구현" 으로 분리, 5.1 엔드포인트(탐지 6374, 추적기 6375, `fc/mode_event` 6370, 프록시 제거), 5.2 제목, 7장 1 의 엔드포인트·10·11 해소, 3 의 전송 경로를 6374 직접 연결로 변경, "계약" 을 contract 로 (#60) |
 | 0.16 | 2026-11-13 | 5.1.4 `perception/observations` v2 필드 표, 5.1.5 `vision/frame/gray8` 헤더 필드 표 추가 (#46 리뷰 요청). 5.1 표에서 두 절을 가리킴. 5.1.5 는 protobuf 기준(`schema`, `encoding` 없음). 7장 14(`perception/observations` 의 `session_id`) 추가. `vision/npu_input/jpeg` 를 실기체의 640×480 1채널 HEF 입력과 실제 구독자에 맞춤 |
+| 0.17 | 2026-11-13 | 5.1 `vision/frame/gray8`, `vision/overlay/jpeg`, `vision/npu_input/jpeg` 를 protobuf 로 (`argus_msg/vision_*.proto`, 함께 쓰는 `detection.proto`), 5.1.5 의 `.proto` (#53) |

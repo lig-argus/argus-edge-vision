@@ -1,0 +1,18 @@
+// 탐지 결과 하나. 탐지가 내보내는 여러 메시지가 함께 쓴다
+// (vision/overlay/jpeg, vision/npu_input/jpeg, 탐지 프로세스 안의 perception_ipc. docs/spec/process_interfaces.md 5.1)
+// C++ 값 타입 perception_api::Detection, Python argus_vision.types.Detection 과 뜻이 같다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+message Detection {
+  int32 class_id = 1;  // 모델의 클래스 번호. 라벨과의 대응은 모델마다 다르다
+  string label = 2;
+  double confidence = 3;  // 0~1
+  // 원본 영상 픽셀 좌표 (정수로 반올림해 영상 안으로 자른 값). (x1, y1) 왼쪽 위, (x2, y2) 오른쪽 아래
+  int32 x1 = 4;
+  int32 y1 = 5;
+  int32 x2 = 6;
+  int32 y2 = 7;
+}

@@ -1,10 +1,12 @@
 # C++ 어댑터(PythonVisionAdapter)의 ipc REQ 를 받아 탐지 작업자를 부르는 REP 서버와
 # 실행 진입점.
 # 출처: 실기체 RPi `src/argus/perception/detection/python_vision_worker.py`.
-# 요청과 응답은 MessagePack map `argus.ipc.perception.v1` 이며 RPi 의 C++ 어댑터와 같다.
+# 요청과 응답은 protobuf `argus_msg/perception_ipc.proto` 의 PerceptionRequest,
+# PerceptionReply 다 (실기체 RPi 의 MessagePack map `argus.ipc.perception.v1` 과
+# 필드 뜻이 같다).
 # - ready: 스트림 시작. 전처리 상태를 지우고 모델 이름, 모델 입력 크기를 돌려준다.
-# - infer: multipart [헤더][RAW14 픽셀]. frame_id 는 늘어나야 하고,
-#   시각은 host_monotonic 이다.
+# - infer: multipart [요청][RAW14 픽셀]. frame_id 는 늘어나야 하고,
+#   시각은 RPi CLOCK_MONOTONIC 이다.
 # - shutdown: 응답한 뒤 끝낸다.
 # 요청이 틀리거나 처리가 실패하면 ok=False 와 error 를 돌려주고 다음 요청을 기다린다.
 # 부모(C++) 가 끝나 stdin 이 닫히면 같이 끝낸다.
@@ -18,9 +20,10 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from types import FrameType
-from typing import Any
 
 import zmq
+from argus_msg import perception_ipc_pb2
+from google.protobuf.message import DecodeError
 
 from argus_vision.double_plateau import DoublePlateauPreprocessor
 from argus_vision.hailo_detector import (
@@ -29,7 +32,7 @@ from argus_vision.hailo_detector import (
     parse_class_suppress,
     read_labels,
 )
-from argus_vision.messagepack import pack_message, unpack_message
+from argus_vision.messages import detection_messages
 from argus_vision.plateau_native import DEFAULT_LIBRARY_PATH, PlateauNativeLibrary
 from argus_vision.preview_sink import IPreviewSink
 from argus_vision.types import RAW14_PIXEL_FORMAT, RawFrame
@@ -40,8 +43,6 @@ from argus_vision.zmq_preview_sink import (
     ZmqPreviewSink,
 )
 
-SCHEMA = "argus.ipc.perception.v1"
-CLOCK_DOMAIN = "host_monotonic"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 POLL_MS = 100
 
@@ -62,7 +63,7 @@ class ModelInfo:
 
 
 class RequestHandler:
-    """요청 한 건을 검사해 작업자를 부르고 응답 map 을 만든다. 소켓은 다루지 않는다."""
+    """요청 한 건을 검사해 작업자를 부르고 응답을 만든다. 소켓은 다루지 않는다."""
 
     def __init__(
         self,
@@ -86,102 +87,82 @@ class RequestHandler:
         self._last_frame_id: int | None = None
         self.stopping = False
 
-    def handle(self, parts: Sequence[bytes]) -> dict[str, Any]:
+    def handle(self, parts: Sequence[bytes]) -> perception_ipc_pb2.PerceptionReply:
         """요청 한 건을 처리한다. 실패도 응답으로 돌려준다.
 
         Args:
             parts: multipart 요청.
 
         Returns:
-            응답 map. 성공이면 ok=True.
+            응답. 성공이면 ok=True.
         """
-        reply: dict[str, Any] = {
-            "schema": SCHEMA,
-            "session_id": self._session_id,
-            "ok": False,
-        }
+        reply = perception_ipc_pb2.PerceptionReply(session_id=self._session_id)
         try:
-            header = unpack_message(parts[0])
-            if (
-                header.get("schema") != SCHEMA
-                or header.get("session_id") != self._session_id
-            ):
-                raise ValueError("request schema/session mismatch")
-            op = header["op"]
-            if op == "ready" and len(parts) == 1:
+            request = perception_ipc_pb2.PerceptionRequest()
+            try:
+                request.ParseFromString(parts[0])
+            except DecodeError as exc:
+                raise ValueError("request is not a PerceptionRequest") from exc
+            if request.session_id != self._session_id:
+                raise ValueError("request session mismatch")
+            op = request.op
+            if op == perception_ipc_pb2.PERCEPTION_OP_READY and len(parts) == 1:
                 self._worker.start_stream()
-                reply.update(
-                    ok=True,
-                    model=self._model.model,
-                    input_width=self._model.input_width,
-                    input_height=self._model.input_height,
-                )
-            elif op == "shutdown" and len(parts) == 1:
-                reply.update(ok=True)
+                reply.ok = True
+                reply.model = self._model.model
+                reply.input_width = self._model.input_width
+                reply.input_height = self._model.input_height
+            elif op == perception_ipc_pb2.PERCEPTION_OP_SHUTDOWN and len(parts) == 1:
+                reply.ok = True
                 self.stopping = True
-            elif op == "infer" and len(parts) == 2:
-                reply.update(self._infer(header, parts[1]))
+            elif op == perception_ipc_pb2.PERCEPTION_OP_INFER and len(parts) == 2:
+                self._infer(request, parts[1], reply)
             else:
                 raise ValueError("invalid IPC operation/multipart")
         except Exception as exc:
-            reply["error"] = str(exc)
+            reply.ok = False
+            reply.error = str(exc)
         return reply
 
-    def _infer(self, header: dict[str, Any], pixels: bytes) -> dict[str, Any]:
-        frame_id = header["frame_id"]
-        if (
-            not isinstance(frame_id, int)
-            or frame_id < 0
-            or (self._last_frame_id is not None and frame_id <= self._last_frame_id)
-        ):
+    def _infer(
+        self,
+        request: perception_ipc_pb2.PerceptionRequest,
+        pixels: bytes,
+        reply: perception_ipc_pb2.PerceptionReply,
+    ) -> None:
+        frame_id = request.frame_id
+        if self._last_frame_id is not None and frame_id <= self._last_frame_id:
             raise ValueError("frame sequence must advance")
-        if header["clock_domain"] != CLOCK_DOMAIN:
-            raise ValueError("unmapped source clock")
-        exposure = header["exposure_monotonic_ns"]
-        if header["exposure_time_valid"] != (exposure is not None):
-            raise ValueError("inconsistent exposure validity")
-        if (
-            exposure is not None
-            and not 0 <= exposure <= header["received_monotonic_ns"]
-        ):
+        exposure = (
+            request.exposure_monotonic_ns
+            if request.HasField("exposure_monotonic_ns")
+            else None
+        )
+        if exposure is not None and not 0 <= exposure <= request.received_monotonic_ns:
             raise ValueError("invalid exposure timestamp")
-        if header.get("pixel_format") != RAW14_PIXEL_FORMAT:
+        if request.pixel_format != RAW14_PIXEL_FORMAT:
             raise ValueError("pixel format must be RAW14_LE16")
         frame = RawFrame(
             source=self._source,
             session_id=self._session_id,
             frame_id=frame_id,
-            unix_ns=int(header["received_unix_ns"]),
-            received_monotonic_ns=int(header["received_monotonic_ns"]),
+            unix_ns=request.received_unix_ns,
+            received_monotonic_ns=request.received_monotonic_ns,
             exposure_monotonic_ns=exposure,
-            width=int(header["width"]),
-            height=int(header["height"]),
-            stride=int(header["stride"]),
+            width=request.width,
+            height=request.height,
+            stride=request.stride,
             pixels=pixels,
         )
         result = self._worker.handle(frame)
         self._last_frame_id = frame_id
-        return {
-            "ok": True,
-            "frame_id": frame_id,
-            "model": self._model.model,
-            "coordinate_frame": "camera_pixel",
-            "infer_done_monotonic_ns": result.infer_done_monotonic_ns,
-            "preprocess_ms": result.preprocess_ms,
-            "inference_ms": result.inference_ms,
-            "detections": [
-                {
-                    "class_id": d.classification.class_id,
-                    "label": d.classification.label,
-                    "confidence": d.classification.confidence,
-                    "x1": int(d.box.x1),
-                    "y1": int(d.box.y1),
-                    "x2": int(d.box.x2),
-                    "y2": int(d.box.y2),
-                }
-                for d in result.detections
-            ],
-        }
+        reply.ok = True
+        reply.frame_id = frame_id
+        reply.model = self._model.model
+        reply.infer_done_monotonic_ns = result.infer_done_monotonic_ns
+        reply.preprocess_ms = result.preprocess_ms
+        reply.inference_ms = result.inference_ms
+        reply.detections.extend(detection_messages(result.detections))
 
 
 def serve(endpoint: str, handler: RequestHandler, watch_stdin: bool = True) -> None:
@@ -213,7 +194,7 @@ def serve(endpoint: str, handler: RequestHandler, watch_stdin: bool = True) -> N
             if not socket.poll(POLL_MS, zmq.POLLIN):
                 continue
             parts = socket.recv_multipart()
-            socket.send(pack_message(handler.handle(parts)))
+            socket.send(handler.handle(parts).SerializeToString())
     finally:
         socket.close(linger=0)
         context.term()

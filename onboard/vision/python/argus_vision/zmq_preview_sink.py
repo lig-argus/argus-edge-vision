@@ -7,8 +7,10 @@
 #   (실기체 2026-11-12 의 _PreviewPacer, `FpsPacer`).
 # - 송신 SNDHWM 4: 한 프레임에 최대 3개(gray8, overlay, npu_input)가 연달아 나가므로
 #   최소 3에 여유 1칸 (process_interfaces.md 5.1). 막히면 그 메시지를 버린다.
-# - `vision/frame/gray8` 헤더는 process_interfaces.md 5.1.5, overlay 와 npu_input 헤더는
-#   RPi 코드와 같다.
+# - 헤더는 protobuf 다: `vision/frame/gray8` 는 vision_frame_gray8.proto
+#   (process_interfaces.md 5.1.5), overlay 와 npu_input 은 vision_overlay_jpeg.proto,
+#   vision_npu_input_jpeg.proto (onboard/libs/protocol/proto/argus_msg/).
+#   multipart [토픽][헤더][픽셀 또는 JPEG].
 
 import math
 import queue
@@ -21,11 +23,17 @@ from typing import Any
 import cv2
 import numpy as np
 import zmq
+from argus_msg import (
+    vision_frame_gray8_pb2,
+    vision_npu_input_jpeg_pb2,
+    vision_overlay_jpeg_pb2,
+)
+from google.protobuf.message import Message
 
-from argus_vision.messagepack import pack_message
+from argus_vision.messages import detection_messages
 from argus_vision.model_input import gray8_image, make_model_input
 from argus_vision.preview_sink import IPreviewSink
-from argus_vision.types import GRAY8_ENCODING, Detection, Gray8Frame
+from argus_vision.types import Detection, Gray8Frame
 
 PREVIEW_SNDHWM = 4
 GRAY8_TOPIC = "vision/frame/gray8"
@@ -274,46 +282,24 @@ class ZmqPreviewSink(IPreviewSink):
     def _encode(self, socket: Any, job: _Job) -> None:
         frame = job.frame
         info = self._info
-        common: dict[str, Any] = {
-            "source": info.source,
-            "session_id": info.session_id,
-            "frame_id": frame.frame_id,
-            "seq": frame.frame_id,
-        }
         if job.gray8:
-            gray8_header = dict(
-                common,
-                schema="argus.vision.frame.v1",
+            gray8_header = vision_frame_gray8_pb2.VisionFrameGray8(
+                source=info.source,
+                session_id=info.session_id,
+                frame_id=frame.frame_id,
+                seq=frame.frame_id,
                 unix_ns=frame.unix_ns,
                 received_monotonic_ns=frame.received_monotonic_ns,
                 width=frame.width,
                 height=frame.height,
                 stride=frame.stride,
-                encoding=GRAY8_ENCODING,
                 preprocess=frame.preprocess,
             )
             self._send(socket, GRAY8_TOPIC, gray8_header, frame.pixels)
         if not (job.overlay or job.npu_input):
             return
         gray = gray8_image(frame)
-        jpeg_common = dict(
-            common,
-            encoding="jpeg",
-            backend=info.backend,
-            model=info.model,
-            preprocess=frame.preprocess,
-            detections=[
-                {
-                    "label": d.classification.label,
-                    "confidence": float(d.classification.confidence),
-                    "x1": int(d.box.x1),
-                    "y1": int(d.box.y1),
-                    "x2": int(d.box.x2),
-                    "y2": int(d.box.y2),
-                }
-                for d in job.detections
-            ],
-        )
+        detections = detection_messages(job.detections)
         if job.overlay:
             image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             for d in job.detections:
@@ -330,13 +316,19 @@ class ZmqPreviewSink(IPreviewSink):
                     2,
                     cv2.LINE_AA,
                 )
-            overlay_header = dict(
-                jpeg_common,
-                schema="argus.vision.overlay.v1",
+            overlay_header = vision_overlay_jpeg_pb2.VisionOverlayJpeg(
+                source=info.source,
+                session_id=info.session_id,
+                frame_id=frame.frame_id,
+                seq=frame.frame_id,
                 unix_ns=frame.unix_ns,
+                received_monotonic_ns=frame.received_monotonic_ns,
                 width=frame.width,
                 height=frame.height,
-                received_monotonic_ns=frame.received_monotonic_ns,
+                backend=info.backend,
+                model=info.model,
+                preprocess=frame.preprocess,
+                detections=detections,
             )
             jpeg = _encode_jpeg(image, self._options.overlay_jpeg_quality)
             self._send(socket, OVERLAY_TOPIC, overlay_header, jpeg)
@@ -344,16 +336,22 @@ class ZmqPreviewSink(IPreviewSink):
             model_input, transform = make_model_input(
                 gray, info.model_width, info.model_height, info.model_channels
             )
-            npu_header = dict(
-                jpeg_common,
-                schema="argus.vision.npu_input.v1",
-                t_capture_us=frame.received_monotonic_ns // 1000,
-                src_w=transform.source_width,
-                src_h=transform.source_height,
+            npu_header = vision_npu_input_jpeg_pb2.VisionNpuInputJpeg(
+                source=info.source,
+                session_id=info.session_id,
+                frame_id=frame.frame_id,
+                seq=frame.frame_id,
+                unix_ns=frame.unix_ns,
+                received_monotonic_ns=frame.received_monotonic_ns,
+                width=transform.source_width,
+                height=transform.source_height,
+                backend=info.backend,
+                model=info.model,
+                preprocess=frame.preprocess,
+                detections=detections,
                 lb_scale=transform.scale,
                 lb_pad_x=transform.pad_x,
                 lb_pad_y=transform.pad_y,
-                preprocess="letterbox_bgr_to_rgb",
             )
             if model_input.shape[2] == 1:
                 npu_image = model_input[:, :, 0]
@@ -362,12 +360,11 @@ class ZmqPreviewSink(IPreviewSink):
             jpeg = _encode_jpeg(npu_image, self._options.npu_input_jpeg_quality)
             self._send(socket, NPU_INPUT_TOPIC, npu_header, jpeg)
 
-    def _send(
-        self, socket: Any, topic: str, header: dict[str, Any], payload: bytes
-    ) -> None:
+    def _send(self, socket: Any, topic: str, header: Message, payload: bytes) -> None:
         try:
             socket.send_multipart(
-                [topic.encode(), pack_message(header), payload], flags=zmq.NOBLOCK
+                [topic.encode(), header.SerializeToString(), payload],
+                flags=zmq.NOBLOCK,
             )
             self.published += 1
         except zmq.Again:

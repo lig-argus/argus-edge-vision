@@ -1,0 +1,23 @@
+// vision/overlay/jpeg: 탐지 → 지상 미리보기, 최대 15 FPS (docs/spec/process_interfaces.md 5.1)
+// 본문은 이 메시지, 탐지 박스를 그린 원본 크기 JPEG 는 바이너리로 따로 보낸다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/detection.proto";
+
+message VisionOverlayJpeg {
+  string source = 1;
+  string session_id = 2;
+  uint64 frame_id = 3;
+  uint64 seq = 4;  // frame_id 와 같은 값
+  int64 unix_ns = 5;
+  int64 received_monotonic_ns = 6;
+  uint32 width = 7;  // 원본 영상 (= JPEG) 가로
+  uint32 height = 8;
+  string backend = 9;     // 추론 방식 이름. 예: hailo
+  string model = 10;      // 모델(HEF) 이름
+  string preprocess = 11;  // 전처리 이름
+  repeated Detection detections = 12;  // 그림에 그린 탐지 결과 (신뢰도 내림차순)
+}
