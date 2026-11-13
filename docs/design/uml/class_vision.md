@@ -110,7 +110,7 @@ classDiagram
 | `DoublePlateauPreprocessor` | Double Plateau adaptive. 프레임마다 상한, 하한 계수를 EMA 로 갱신 (상태 있음). `name` 은 `double_plateau_adaptive`. C++ 라이브러리(`native/`, OpenMP) 경로와 Python 경로가 있고 출력이 바이트 단위로 같다 | 현재 RPi 코드 |
 | `IDetector` | `Gray8Frame` → 원본 영상 픽셀 좌표의 `Detection` 목록. 모델 입력 만들기(채널, 크기, 레터박스)와 좌표 되돌리기는 구현 안에서 한다 | pi 5.1.4 |
 | `HailoDetector` | HailoRT 비동기 추론, HEF 의 NMS 출력 해석. 입력 모양은 HEF 가 정한다: 지금 실기체는 640×480 1채널 HEF(레터박스 없음), 이전 v7.3 은 640×640 3채널(레터박스). 신뢰도 경계값 0.7 | video 8장, 현재 RPi 코드 |
-| `IPreviewSink` | 한 프레임의 gray8, overlay(박스를 그린 JPEG, 최대 15 FPS), npu_input(모델 입력 영상 JPEG, 진단용) 중 켜진 것을 C++ 어댑터로 내보낸다. 기다리지 않고, 자리가 없으면 버린다 | pi 5.1, 7장 3 |
+| `IPreviewSink` | 한 프레임의 gray8, overlay(박스를 그린 JPEG, 최대 15 FPS), npu_input(모델 입력 영상 JPEG. 지금 실기체 영상 송신기 `argus_main_gcs_video` 가 구독) 중 켜진 것을 C++ 어댑터로 내보낸다. 기다리지 않고, 자리가 없으면 버린다 | pi 5.1, 7장 3 |
 | `ZmqPreviewSink` | ipc PUSH(SNDHWM 4). 한 프레임에 최대 3개가 연달아 나가므로 최소 3, 여유 1칸. 인코딩 스레드 하나, 토픽별 FPS 상한. npu_input 영상은 탐지기와 같은 함수(`model_input.py`)로 만든다 | pi 5.1, 7장 3 |
 | `PythonVisionWorker` | 전처리 → 추론 → 미리보기 순서만 맡는다. 결과 `FrameResult` 는 탐지 목록과 전처리, 추론 시간 | 현재 RPi 코드 |
 | `Fake…` (`FakePreprocessor`, `FakeDetector`, `FakePreviewSink`) | 카메라, NPU, ZeroMQ 없이 작업자와 사용자 코드를 시험 | CONTRIBUTING 0.2 |

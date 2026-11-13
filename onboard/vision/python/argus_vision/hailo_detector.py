@@ -6,9 +6,13 @@
 # - 다른 프로세스와 NPU 를 나눠 쓰도록 VDevice 그룹 "ARGUS",
 #   ROUND_ROBIN 스케줄링을 쓴다.
 # - 입력 모양은 HEF 가 정한다. 지금 실기체는 640×480 1채널(레터박스 없음).
+# - HEF 의 NMS 뒤에 클래스별 신뢰도 경계값과 클래스 사이 겹침 제거를 적용할 수 있다
+#   (실기체 2026-11 의 ARGUS_CLASS_SCORE_THRESHOLDS, ARGUS_CLASS_SUPPRESS).
+#   주지 않으면 이전과 같다.
 
 import threading
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +20,126 @@ import numpy as np
 
 from argus_vision.detector import IDetector
 from argus_vision.model_input import LetterboxTransform, gray8_image, make_model_input
-from argus_vision.types import Classification, Detection, Gray8Frame
+from argus_vision.types import Classification, Detection, Gray8Frame, PixelBox
 
 INFER_TIMEOUT_MS = 10_000
 VDEVICE_GROUP_ID = "ARGUS"
+
+
+@dataclass(frozen=True, slots=True)
+class SuppressRule:
+    """다른 클래스와 겹친 박스를 지우는 규칙.
+
+    keep 클래스 박스와 IoU 가 iou 이상인 drop 클래스 박스를 지운다. HEF 안의 NMS 는
+    클래스마다 따로 돌아서, 같은 물체를 두 클래스로 잡으면 둘 다 남기 때문이다
+    (예: 장난감 차를 탱크와 차로 함께 잡음).
+
+    Attributes:
+        keep: 남길 클래스 번호.
+        drop: 지울 클래스 번호.
+        iou: 지우는 IoU 경계값.
+    """
+
+    keep: int
+    drop: int
+    iou: float
+
+
+def parse_class_score_thresholds(raw: str, labels: Sequence[str]) -> tuple[float, ...]:
+    """클래스별 신뢰도 경계값 문자열을 읽는다.
+
+    Args:
+        raw: 라벨 순서의 값을 쉼표로 이은 문자열. 예: "0.5,0.45,0.35". 비어 있으면 없음.
+        labels: class_id 순서의 라벨.
+
+    Returns:
+        class_id 순서의 경계값. raw 가 비어 있으면 빈 tuple.
+
+    Raises:
+        ValueError: 값의 개수가 라벨 수와 다르거나 숫자가 아닐 때.
+    """
+    text = raw.strip()
+    if not text:
+        return ()
+    values = tuple(float(value) for value in text.split(","))
+    if len(values) != len(labels):
+        raise ValueError(
+            "class score thresholds need one value per label: "
+            f"{raw!r} for {list(labels)}"
+        )
+    return values
+
+
+def parse_class_suppress(raw: str, labels: Sequence[str]) -> tuple[SuppressRule, ...]:
+    """겹침 제거 규칙 문자열을 읽는다.
+
+    Args:
+        raw: "keep:drop:iou" 를 쉼표로 이은 문자열. 예: "tank:car:0.3".
+            비어 있으면 없음.
+        labels: class_id 순서의 라벨.
+
+    Returns:
+        규칙 목록. raw 가 비어 있으면 빈 tuple.
+
+    Raises:
+        ValueError: 형식이 틀렸거나, 라벨에 없는 이름이거나, keep 과 drop 이 같을 때.
+    """
+    names = list(labels)
+    rules: list[SuppressRule] = []
+    for item in raw.replace(" ", "").split(","):
+        if not item:
+            continue
+        parts = item.split(":")
+        if (
+            len(parts) != 3
+            or parts[0] not in names
+            or parts[1] not in names
+            or parts[0] == parts[1]
+        ):
+            raise ValueError(f"bad class suppress rule {item!r} for labels {names}")
+        keep, drop = names.index(parts[0]), names.index(parts[1])
+        rules.append(SuppressRule(keep, drop, float(parts[2])))
+    return tuple(rules)
+
+
+def box_iou(a: PixelBox, b: PixelBox) -> float:
+    """두 박스의 IoU.
+
+    Args:
+        a: 박스.
+        b: 박스.
+
+    Returns:
+        IoU (0~1). 두 넓이의 합이 0 이면 0.
+    """
+    width = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
+    height = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
+    inter = width * height
+    union = (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def suppress_overlaps(
+    detections: Sequence[Detection], rules: Sequence[SuppressRule]
+) -> list[Detection]:
+    """규칙마다 keep 클래스 박스와 겹친 drop 클래스 박스를 지운다.
+
+    Args:
+        detections: 탐지 목록.
+        rules: 겹침 제거 규칙.
+
+    Returns:
+        지운 뒤의 탐지 목록 (순서 유지).
+    """
+    dropped: set[int] = set()
+    for rule in rules:
+        keepers = [d.box for d in detections if d.classification.class_id == rule.keep]
+        for index, detection in enumerate(detections):
+            if detection.classification.class_id == rule.drop and any(
+                box_iou(detection.box, keeper) >= rule.iou for keeper in keepers
+            ):
+                dropped.add(index)
+    return [d for index, d in enumerate(detections) if index not in dropped]
 
 
 def parse_nms_output(
@@ -27,6 +147,8 @@ def parse_nms_output(
     transform: LetterboxTransform,
     labels: Sequence[str],
     score_threshold: float,
+    class_thresholds: Sequence[float] = (),
+    suppress: Sequence[SuppressRule] = (),
 ) -> list[Detection]:
     """HailoRT NMS 출력을 원본 영상 픽셀 좌표의 탐지 목록으로 바꾼다.
 
@@ -36,17 +158,23 @@ def parse_nms_output(
         transform: 모델 입력을 만들 때의 좌표 변환.
         labels: class_id 순서의 라벨. 모자라면 class_id 를 문자열로 쓴다.
         score_threshold: 이 값보다 낮은 신뢰도는 뺀다.
+        class_thresholds: class_id 순서의 클래스별 경계값. 있는 클래스는 score_threshold
+            대신 이 값을 쓴다. 비어 있으면 모든 클래스에 score_threshold.
+        suppress: 경계값을 넘긴 박스에 적용할 겹침 제거 규칙.
 
     Returns:
         신뢰도 내림차순의 탐지 목록.
     """
     detections: list[Detection] = []
     for class_id, rows in enumerate(result):
+        threshold = score_threshold
+        if class_id < len(class_thresholds):
+            threshold = class_thresholds[class_id]
         for row in rows:
             if len(row) < 5:
                 continue
             confidence = float(row[4])
-            if confidence < score_threshold:
+            if confidence < threshold:
                 continue
             ymin, xmin, ymax, xmax = (float(value) for value in row[:4])
             label = labels[class_id] if class_id < len(labels) else str(class_id)
@@ -56,6 +184,8 @@ def parse_nms_output(
                     transform.to_source_box(ymin, xmin, ymax, xmax),
                 )
             )
+    if suppress:
+        detections = suppress_overlaps(detections, suppress)
     detections.sort(key=lambda item: item.classification.confidence, reverse=True)
     return detections
 
@@ -77,7 +207,12 @@ class HailoDetector(IDetector):
     """HailoRT 비동기 추론과 HEF 안 NMS 로 객체를 찾는다."""
 
     def __init__(
-        self, hef_path: str | Path, labels: Sequence[str], score_threshold: float
+        self,
+        hef_path: str | Path,
+        labels: Sequence[str],
+        score_threshold: float,
+        class_thresholds: Sequence[float] = (),
+        suppress: Sequence[SuppressRule] = (),
     ) -> None:
         """HEF 를 불러 NPU 에 올린다.
 
@@ -85,6 +220,8 @@ class HailoDetector(IDetector):
             hef_path: NMS 가 들어 있는 YOLOX HEF.
             labels: class_id 순서의 라벨.
             score_threshold: 신뢰도 경계값. 이보다 낮은 박스는 뺀다.
+            class_thresholds: class_id 순서의 클래스별 경계값 (`parse_nms_output`).
+            suppress: 클래스 사이 겹침 제거 규칙 (`parse_nms_output`).
 
         Raises:
             FileNotFoundError: HEF 가 없을 때.
@@ -142,6 +279,8 @@ class HailoDetector(IDetector):
         self._model = path.name
         self._labels = tuple(labels)
         self._score_threshold = score_threshold
+        self._class_thresholds = tuple(class_thresholds)
+        self._suppress = tuple(suppress)
         self.input_width = int(width)
         self.input_height = int(height)
         self.input_channels = int(channels)
@@ -202,7 +341,14 @@ class HailoDetector(IDetector):
         if errors:
             raise RuntimeError(f"Hailo inference failed: {errors[0]}")
         result = bindings.output().get_buffer()
-        return parse_nms_output(result, transform, self._labels, self._score_threshold)
+        return parse_nms_output(
+            result,
+            transform,
+            self._labels,
+            self._score_threshold,
+            self._class_thresholds,
+            self._suppress,
+        )
 
     def close(self) -> None:
         """추론을 마저 기다리고 NPU 를 놓는다. 두 번 불러도 된다."""

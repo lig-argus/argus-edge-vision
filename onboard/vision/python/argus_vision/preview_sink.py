@@ -2,7 +2,8 @@
 # 규약: offer() 는 기다리지 않고 바로 돌아온다. 보낼 자리가 없으면 그 프레임을 버린다
 #   (process_interfaces.md 5.1: 송신 SNDHWM 4). 한 번의 offer() 로 설정에 따라
 #   `vision/frame/gray8`, `vision/overlay/jpeg`(박스를 그린 JPEG, 최대 15 FPS),
-#   `vision/npu_input/jpeg`(진단용) 중 켜진 것을 내보낸다. 각 FPS 상한은 구현이 지킨다.
+#   `vision/npu_input/jpeg`(모델 입력 영상. 지금 실기체 영상 송신기가 구독) 중 켜진 것을
+#   내보낸다. 각 FPS 상한은 구현이 지킨다.
 # 구현: ZmqPreviewSink (ipc PUSH, 별도 인코딩 스레드). 테스트용 FakePreviewSink
 #   (argus_vision_testing).
 # 사용: 탐지 작업자가 추론 뒤 프레임마다 offer() 를 부르고, 끝날 때 close() 를 부른다.

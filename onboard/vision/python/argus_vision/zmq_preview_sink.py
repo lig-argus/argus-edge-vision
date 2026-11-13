@@ -3,8 +3,8 @@
 # - offer() 는 큐(1칸)에 넣고 바로 돌아온다. 큐가 차 있으면 오래된 것을 버리고
 #   새 것을 넣는다. JPEG 인코딩과 송신은 별도 스레드가 한다.
 #   추론 버퍼에는 그리지 않는다.
-# - 토픽마다 FPS 상한을 지킨다
-#   (평균 속도를 넘지 않게 하되 도착 흔들림 한 프레임은 허용).
+# - 토픽마다 FPS 상한을 지킨다. 프레임의 카메라 수신 시각으로 고른 간격을 만든다
+#   (실기체 2026-11-12 의 _PreviewPacer, `FpsPacer`).
 # - 송신 SNDHWM 4: 한 프레임에 최대 3개(gray8, overlay, npu_input)가 연달아 나가므로
 #   최소 3에 여유 1칸 (process_interfaces.md 5.1). 막히면 그 메시지를 버린다.
 # - `vision/frame/gray8` 헤더는 process_interfaces.md 5.1.5, overlay 와 npu_input 헤더는
@@ -88,7 +88,13 @@ class PreviewHeaderInfo:
 
 
 class FpsPacer:
-    """평균 속도를 FPS 상한 아래로 두되 도착 흔들림 한 프레임은 허용한다."""
+    """카메라 수신 시각의 고른 간격으로 프레임을 고른다 (실기체 2026-11-12 방식).
+
+    추론이 끝난 시각으로 몫을 세면 추론 시간이 흔들릴 때 30 Hz 카메라를 15 FPS 로 줄여도
+    33, 66, 100 ms 간격이 섞인다. 수신 시각으로 1/fps 간격의 격자를 두고, 격자보다
+    "입력 간격의 절반" 이상 이르지 않은 프레임을 고르므로 이웃 프레임을 고르지 않는다.
+    카메라가 멈췄다가(NUC 등) 다시 오면 다음 프레임부터 격자를 새로 시작한다.
+    """
 
     def __init__(self, max_fps: float) -> None:
         """FPS 상한을 정한다.
@@ -101,26 +107,34 @@ class FpsPacer:
         """
         if not math.isfinite(max_fps) or max_fps <= 0:
             raise ValueError("preview FPS must be finite and positive")
-        self._fps = max_fps
-        self._credit = 2.0
+        self._period = 1.0 / max_fps
+        self._next: float | None = None
         self._last: float | None = None
+        self._input_dt: float | None = None
 
     def due(self, now: float) -> bool:
-        """지금 프레임을 보내도 되는지 정하고, 보내면 몫을 하나 쓴다.
+        """이 프레임을 보낼 차례인지 정한다.
 
         Args:
-            now: monotonic 시각 (초).
+            now: 프레임 수신 시각 (monotonic, 초).
 
         Returns:
-            보내도 되면 True.
+            보낼 차례면 True.
         """
         if self._last is not None:
-            elapsed = max(0.0, now - self._last)
-            self._credit = min(2.0, self._credit + elapsed * self._fps)
+            dt = now - self._last
+            if 0.0 < dt < 1.0:
+                # 입력 간격의 이동 평균 (EMA 0.1)
+                previous = self._input_dt
+                self._input_dt = dt if previous is None else 0.9 * previous + 0.1 * dt
         self._last = now
-        if self._credit + 1e-9 < 1.0:
+        tolerance = 0.5 * min(self._period, self._input_dt or self._period)
+        if self._next is not None and now < self._next - tolerance:
             return False
-        self._credit = max(0.0, self._credit - 1.0)
+        if self._next is None or now - self._next >= self._period:
+            self._next = now + self._period
+        else:
+            self._next += self._period
         return True
 
 
@@ -152,7 +166,7 @@ class ZmqPreviewSink(IPreviewSink):
             endpoint: C++ 어댑터의 미리보기 PULL 주소. 예: `ipc:///tmp/.../preview`.
             info: 헤더에 넣을 탐지 프로세스 정보.
             options: 켤 토픽과 FPS 상한, JPEG 품질.
-            clock: FPS 상한에 쓰는 monotonic 시계 (초). 테스트에서 바꾼다.
+            clock: 프레임에 수신 시각이 없을(0) 때 FPS 상한에 쓰는 monotonic 시계 (초).
         """
         self._endpoint = endpoint
         self._info = info
@@ -187,7 +201,9 @@ class ZmqPreviewSink(IPreviewSink):
             raise RuntimeError("preview encoder failed") from self._error
         if self._closed:
             return False
-        now = self._clock()
+        # 추론이 끝난 시각이 아니라 카메라 수신 시각으로 고른다. 없으면(0) 지금 시각
+        received_ns = frame.received_monotonic_ns
+        now = received_ns / 1e9 if received_ns > 0 else self._clock()
         options = self._options
         job = _Job(
             frame,

@@ -23,7 +23,12 @@ from typing import Any
 import zmq
 
 from argus_vision.double_plateau import DoublePlateauPreprocessor
-from argus_vision.hailo_detector import HailoDetector, read_labels
+from argus_vision.hailo_detector import (
+    HailoDetector,
+    parse_class_score_thresholds,
+    parse_class_suppress,
+    read_labels,
+)
 from argus_vision.messagepack import pack_message, unpack_message
 from argus_vision.plateau_native import DEFAULT_LIBRARY_PATH, PlateauNativeLibrary
 from argus_vision.preview_sink import IPreviewSink
@@ -239,7 +244,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     Returns:
         RPi 의 python_vision_worker 와 같은 인자에 `--publish-gray8`,
-        `--gray8-max-fps` 를 더한 parser.
+        `--gray8-max-fps`, `--class-score-thresholds`, `--class-suppress` 를
+        더한 parser.
     """
     p = argparse.ArgumentParser(description="ARGUS 탐지 Python 작업자")
     p.add_argument("--endpoint", required=True)
@@ -250,6 +256,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hef", required=True)
     p.add_argument("--labels", required=True)
     p.add_argument("--score-threshold", type=float, default=0.7)
+    # 실기체는 runtime.env 의 환경 변수로 준다. 인자가 있으면 인자를 쓴다
+    p.add_argument(
+        "--class-score-thresholds",
+        default=os.environ.get("ARGUS_CLASS_SCORE_THRESHOLDS", ""),
+        help='클래스별 경계값(라벨 순서). 예: "0.5,0.45,0.35"',
+    )
+    p.add_argument(
+        "--class-suppress",
+        default=os.environ.get("ARGUS_CLASS_SUPPRESS", ""),
+        help='겹친 다른 클래스 박스 지우기. 예: "tank:car:0.3"',
+    )
     p.add_argument(
         "--ir-preprocess",
         choices=("double_plateau_adaptive",),
@@ -278,7 +295,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     preprocessor = DoublePlateauPreprocessor(native, native_threads=threads)
     if native is not None:
         print(f"preprocess: native C++ {native.path}", file=sys.stderr, flush=True)
-    detector = HailoDetector(args.hef, read_labels(args.labels), args.score_threshold)
+    labels = read_labels(args.labels)
+    detector = HailoDetector(
+        args.hef,
+        labels,
+        args.score_threshold,
+        parse_class_score_thresholds(args.class_score_thresholds, labels),
+        parse_class_suppress(args.class_suppress, labels),
+    )
     preview: IPreviewSink | None = None
     worker: PythonVisionWorker | None = None
     try:

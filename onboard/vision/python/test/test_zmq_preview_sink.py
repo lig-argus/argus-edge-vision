@@ -1,4 +1,6 @@
+import random
 import unittest
+from dataclasses import replace
 from typing import Any
 
 import cv2
@@ -52,18 +54,43 @@ class FakeClock:
         return self.now
 
 
-class FpsPacerTest(unittest.TestCase):
-    def test_allows_one_frame_of_jitter_then_limits(self) -> None:
-        pacer = FpsPacer(10.0)
-        self.assertEqual(
-            [pacer.due(0.0), pacer.due(0.0), pacer.due(0.0)], [True, True, False]
-        )
-        self.assertFalse(pacer.due(0.05))
-        self.assertTrue(pacer.due(0.1))
+def picks(fps: float, times: list[float]) -> list[int]:
+    pacer = FpsPacer(fps)
+    return [i for i, t in enumerate(times) if pacer.due(t)]
 
-    def test_rejects_non_positive_rate(self) -> None:
-        with self.assertRaises(ValueError):
-            FpsPacer(0.0)
+
+class FpsPacerTest(unittest.TestCase):
+    # 실기체 tests/preview/test_preview_pacer.py (2026-11-12) 와 같은 시험
+
+    def test_half_rate_takes_every_second_frame(self) -> None:
+        chosen = picks(15, [i / 30.0 for i in range(300)])
+        self.assertEqual({b - a for a, b in zip(chosen, chosen[1:], strict=False)}, {2})
+        self.assertEqual(len(chosen), 150)
+
+    def test_capture_jitter_keeps_even_steps(self) -> None:
+        rng = random.Random(7)
+        times = [i / 30.0 + rng.uniform(-0.008, 0.008) for i in range(3000)]
+        chosen = picks(15, times)
+        steps = [b - a for a, b in zip(chosen, chosen[1:], strict=False)]
+        self.assertGreaterEqual(steps.count(2) / len(steps), 0.99)
+        self.assertNotIn(1, steps)
+
+    def test_same_rate_takes_every_frame(self) -> None:
+        rng = random.Random(3)
+        times = [i / 30.0 + rng.uniform(-0.005, 0.005) for i in range(600)]
+        self.assertEqual(len(picks(30, times)), 600)
+
+    def test_stall_restarts_grid(self) -> None:
+        times = [i / 30.0 for i in range(60)] + [2.5 + i / 30.0 for i in range(60)]
+        chosen = picks(15, times)
+        steps = [b - a for a, b in zip(chosen, chosen[1:], strict=False)]
+        self.assertEqual(steps.count(1), 0)
+        self.assertIn(60, chosen)  # 멈춘 뒤 첫 프레임은 바로 보낸다
+
+    def test_rejects_bad_fps(self) -> None:
+        for fps in (0.0, -1.0, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                FpsPacer(fps)
 
 
 class ZmqPreviewSinkTest(unittest.TestCase):
@@ -80,6 +107,10 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         self.pull.close(linger=0)
         self.context.term()
 
+    def at_now(self, frame: Gray8Frame) -> Gray8Frame:
+        # 미리보기는 카메라 수신 시각으로 간격을 고르므로 시계에 맞춘 프레임을 만든다
+        return replace(frame, received_monotonic_ns=int(self.clock.now * 1e9))
+
     def receive(self) -> tuple[str, dict[str, Any], bytes]:
         topic, header, payload = self.pull.recv_multipart()
         return topic.decode(), unpack_message(header), payload
@@ -89,7 +120,7 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         # 연결된 뒤 받은 것은 비운다.
         for _ in range(30):
             self.clock.now += 1.0
-            self.assertTrue(sink.offer(frame, [TANK]))
+            self.assertTrue(sink.offer(self.at_now(frame), [TANK]))
             if self.pull.poll(100):
                 while self.pull.poll(300):
                     self.pull.recv_multipart()
@@ -103,6 +134,7 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         frame = make_gray()
         try:
             self.wait_connected(sink, frame)
+            frame = self.at_now(frame)
             self.assertTrue(sink.offer(frame, [TANK]))
             received = [self.receive() for _ in range(3)]
         finally:
@@ -121,7 +153,7 @@ class ZmqPreviewSinkTest(unittest.TestCase):
                 "frame_id": 5,
                 "seq": 5,
                 "unix_ns": 111,
-                "received_monotonic_ns": 222,
+                "received_monotonic_ns": frame.received_monotonic_ns,
                 "width": 64,
                 "height": 48,
                 "stride": 64,
@@ -162,14 +194,33 @@ class ZmqPreviewSinkTest(unittest.TestCase):
         )
         self.assertEqual(npu_image.shape, (64, 64))
 
-    def test_fps_limit_skips_frames(self) -> None:
+    def test_fps_limit_uses_capture_time(self) -> None:
+        # 30 Hz 카메라를 10 FPS 로: 세 장에 한 장.
+        # 시계는 움직이지 않아도 수신 시각으로 고른다
         options = PreviewOptions(overlay=True, overlay_max_fps=10.0)
         sink = ZmqPreviewSink(self.endpoint, INFO, options, clock=self.clock)
+        frames = [
+            replace(make_gray(i), received_monotonic_ns=1_000_000_000 + i * 33_333_333)
+            for i in range(7)
+        ]
         try:
-            results = [sink.offer(make_gray(i), []) for i in (1, 2, 3)]
+            results = [sink.offer(frame, []) for frame in frames]
         finally:
             sink.close()
-        self.assertEqual(results, [True, True, False])
+        self.assertEqual(results, [True, False, False, True, False, False, True])
+
+    def test_frame_without_capture_time_uses_clock(self) -> None:
+        options = PreviewOptions(overlay=True, overlay_max_fps=10.0)
+        sink = ZmqPreviewSink(self.endpoint, INFO, options, clock=self.clock)
+        frame = replace(make_gray(), received_monotonic_ns=0)
+        try:
+            first = sink.offer(frame, [])
+            same_time = sink.offer(frame, [])
+            self.clock.now += 0.1
+            later = sink.offer(frame, [])
+        finally:
+            sink.close()
+        self.assertEqual([first, same_time, later], [True, False, True])
 
     def test_nothing_enabled_sends_nothing(self) -> None:
         sink = ZmqPreviewSink(self.endpoint, INFO, PreviewOptions(), clock=self.clock)
