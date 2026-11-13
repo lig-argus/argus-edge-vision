@@ -155,7 +155,8 @@ struct VelocitySetpoint {
     double right_m_s = 0.0;
     double down_m_s = 0.0;
     double yaw_rate_rad_s = 0.0;
-    // 이 시각이 지나면 mavlink_gateway 는 이 값을 쓰지 않고 속도 0 을 보낸 뒤 Hold 를 요청한다
+    // 이 시각이 지나도록 새 값이 없으면 mavlink_gateway 는 이 값의 전달을 멈추고 기체를 정지시킨다
+    // (docs/spec/icd.md 4.2 의 정지 상태)
     std::int64_t valid_until_monotonic_ns = 0;
 };
 

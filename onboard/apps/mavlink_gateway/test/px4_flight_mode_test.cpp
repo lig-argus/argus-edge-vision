@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <optional>
 
 #include "argus/vehicle_api/types.hpp"
 
@@ -39,6 +40,24 @@ TEST(Px4FlightModeTest, ValuesOutsideTableAreUnknown) {
 
 TEST(Px4FlightModeTest, IgnoresSubModeOutsideAuto) {
     EXPECT_EQ(flight_mode_from_custom_mode(main_mode(6) | (3U << 24U)), FlightMode::Offboard);
+}
+
+TEST(Px4FlightModeTest, ModeParamsRoundTripThroughCustomMode) {
+    for (const FlightMode mode :
+         {FlightMode::Manual, FlightMode::Stabilized, FlightMode::Altitude, FlightMode::Position,
+          FlightMode::Offboard, FlightMode::Hold, FlightMode::Return, FlightMode::Land,
+          FlightMode::Takeoff, FlightMode::Mission}) {
+        const std::optional<Px4ModeParams> params = px4_mode_params(mode);
+        ASSERT_TRUE(params.has_value());
+        const Px4ModeParams values = params.value_or(Px4ModeParams{});
+        const std::uint32_t custom_mode = (static_cast<std::uint32_t>(values.main_mode) << 16U) |
+                                          (static_cast<std::uint32_t>(values.sub_mode) << 24U);
+        EXPECT_EQ(flight_mode_from_custom_mode(custom_mode), mode);
+    }
+}
+
+TEST(Px4FlightModeTest, UnknownModeHasNoParams) {
+    EXPECT_FALSE(px4_mode_params(FlightMode::Unknown).has_value());
 }
 
 }  // namespace

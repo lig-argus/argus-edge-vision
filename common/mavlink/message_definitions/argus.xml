@@ -52,10 +52,10 @@
         <description>추종 중 (Offboard, setpoint 20 Hz).</description>
       </entry>
       <entry value="3" name="ARGUS_MISSION_STATE_HOLD_TRANSITION">
-        <description>추종·스캔 을 끝내고 Hold 로 전환 중.</description>
+        <description>추종·스캔 을 끝내고 정지하는 중.</description>
       </entry>
       <entry value="4" name="ARGUS_MISSION_STATE_HOLD_WAIT">
-        <description>FC 가 Hold 인 것을 확인하고 대기. 자동으로 추종을 재개하지 않는다.</description>
+        <description>기체가 정지 상태(FC 모드가 Hold 이거나, Offboard 에서 onboard 가 제자리 유지 중)인 것을 확인하고 대기. 자동으로 추종을 재개하지 않는다.</description>
       </entry>
       <entry value="5" name="ARGUS_MISSION_STATE_SCAN_ACTIVE">
         <description>yaw 스캔 중.</description>
@@ -79,7 +79,7 @@
         <description>실제 검출 없이 예측으로 표적을 유지 중. 유지 한도는 docs/design/system_architecture.md.</description>
       </entry>
       <entry value="3" name="ARGUS_TARGET_STATE_LOST">
-        <description>예측 한도를 넘어 표적을 잃음. 추종 제어가 Hold 로 전환한다.</description>
+        <description>예측 한도를 넘어 표적을 잃음. 추종 제어가 정지를 요청한다.</description>
       </entry>
     </enum>
     <enum name="ARGUS_HEALTH_FLAGS" bitmask="true">
@@ -103,7 +103,7 @@
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. onboard 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
       <entry value="45001" name="MAV_CMD_ARGUS_TRACK_STOP" hasLocation="false" isDestination="false">
-        <description>표적 추종 또는 스캔 종료. 수신자: onboard (compid 195). 추종·스캔 중이면 끝내고 Hold 모드로 전환한다. TRACK_START 또는 SCAN_START 가 진행 중이어도 받으며, 그 명령은 CANCELLED 로 끝난다. 둘 다 아니어도 ACCEPTED 로 응답한다.</description>
+        <description>표적 추종 또는 스캔 종료. 수신자: onboard (compid 195). 추종·스캔 중이면 끝내고 정지한다 (Hold 모드 전환 또는 Offboard 제자리 유지, docs/spec/icd.md 4.2). TRACK_START 또는 SCAN_START 가 진행 중이어도 받으며, 그 명령은 CANCELLED 로 끝난다. 둘 다 아니어도 ACCEPTED 로 응답한다.</description>
         <param index="1" reserved="true" default="NaN"/>
         <param index="2" reserved="true" default="NaN"/>
         <param index="3" reserved="true" default="NaN"/>
@@ -113,7 +113,7 @@
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. onboard 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
       <entry value="45002" name="MAV_CMD_ARGUS_SCAN_START" hasLocation="false" isDestination="false">
-        <description>yaw 회전으로 표적 후보를 찾는 스캔 시작. 수신자: onboard (compid 195). Hold 상태(mission_state IDLE 또는 HOLD_WAIT)에서만 받는다. IN_PROGRESS 를 먼저 보내고, 회전 범위를 다 돌았거나 제한 시간이 지났거나 후보를 찾아 정지하면 ACCEPTED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 후보를 찾아도 자동으로 추종하지 않으며 운용자가 TRACK_START 로 선택한다. 조건은 docs/spec/icd.md.</description>
+        <description>yaw 회전으로 표적 후보를 찾는 스캔 시작. 수신자: onboard (compid 195). 기체가 정지 상태(mission_state IDLE 또는 HOLD_WAIT)일 때만 받는다. IN_PROGRESS 를 먼저 보내고, 회전 범위를 다 돌았거나 제한 시간이 지났거나 후보를 찾아 정지하면 ACCEPTED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 후보를 찾아도 자동으로 추종하지 않으며 운용자가 TRACK_START 로 선택한다. 조건은 docs/spec/icd.md.</description>
         <param index="1" label="Yaw Range" units="rad" minValue="0" maxValue="6.2832" default="NaN">회전 범위. 0 초과 2π 이하. NaN 이면 onboard 설정 기본값(2π).</param>
         <param index="2" label="Yaw Rate" units="rad/s" minValue="-1.309" maxValue="1.309" default="NaN">회전 속도. 양수는 시계 방향. 0 은 DENIED 이며 절댓값은 1.309 rad/s (75 deg/s) 이하. NaN 이면 onboard 설정 기본값(0.1745 rad/s, 10 deg/s).</param>
         <param index="3" label="Timeout" units="s" minValue="0" default="NaN">제한 시간. 회전 범위를 속도 절댓값으로 나눈 값보다 커야 한다. NaN 이면 onboard 설정 기본값(60 s).</param>

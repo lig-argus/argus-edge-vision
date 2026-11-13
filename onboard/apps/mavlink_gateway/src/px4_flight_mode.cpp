@@ -1,6 +1,7 @@
 #include "argus/mavlink_gateway/px4_flight_mode.hpp"
 
 #include <cstdint>
+#include <optional>
 
 #include "argus/vehicle_api/types.hpp"
 
@@ -58,6 +59,40 @@ vehicle_api::FlightMode flight_mode_from_custom_mode(std::uint32_t custom_mode) 
         default:
             return vehicle_api::FlightMode::Unknown;
     }
+}
+
+std::optional<Px4ModeParams> px4_mode_params(vehicle_api::FlightMode mode) {
+    const auto main_only = [](std::uint32_t main_mode) {
+        return Px4ModeParams{static_cast<float>(main_mode), 0.0F};
+    };
+    const auto auto_mode = [](std::uint32_t sub_mode) {
+        return Px4ModeParams{static_cast<float>(kMainAuto), static_cast<float>(sub_mode)};
+    };
+    switch (mode) {
+        case vehicle_api::FlightMode::Manual:
+            return main_only(kMainManual);
+        case vehicle_api::FlightMode::Altitude:
+            return main_only(kMainAltitude);
+        case vehicle_api::FlightMode::Position:
+            return main_only(kMainPosition);
+        case vehicle_api::FlightMode::Offboard:
+            return main_only(kMainOffboard);
+        case vehicle_api::FlightMode::Stabilized:
+            return main_only(kMainStabilized);
+        case vehicle_api::FlightMode::Takeoff:
+            return auto_mode(kSubTakeoff);
+        case vehicle_api::FlightMode::Hold:
+            return auto_mode(kSubHold);
+        case vehicle_api::FlightMode::Mission:
+            return auto_mode(kSubMission);
+        case vehicle_api::FlightMode::Return:
+            return auto_mode(kSubReturn);
+        case vehicle_api::FlightMode::Land:
+            return auto_mode(kSubLand);
+        case vehicle_api::FlightMode::Unknown:
+            break;
+    }
+    return std::nullopt;
 }
 
 }  // namespace argus::mavlink_gateway

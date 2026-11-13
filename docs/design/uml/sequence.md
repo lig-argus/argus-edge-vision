@@ -19,7 +19,7 @@ sequenceDiagram
     participant fss as ZmqFollowStatusSubscriber (mavlink_gateway)
     participant srv as ZmqFollowControlServer (추종 제어)
     participant ctl as FollowController (추종 제어)
-    participant mode as MavlinkFlightModeControl (mavlink_gateway)
+    participant mode as FcControl (mavlink_gateway)
     participant fc as FC
 
     op->>view: 박스 클릭
@@ -36,8 +36,8 @@ sequenceDiagram
     fcc-->>ts: on_result(FollowResult IN_PROGRESS)
     ts-->>disp: responder.send(IN_PROGRESS)
     disp-->>cmd: COMMAND_ACK IN_PROGRESS (progress 255)
-    ctl->>mode: REQ control/mode_request OFFBOARD (ZmqFlightModeControlServer 경유)
-    mode->>fc: DO_SET_MODE Offboard (FcCommandGate 허용 뒤)
+    ctl->>mode: REQ control/mode_request OFFBOARD (BusFlightModeControlServer 경유)
+    mode->>fc: DO_SET_MODE Offboard (fc_command_policy 가 수락한 뒤)
     fc-->>mode: COMMAND_ACK ACCEPTED
     fc-->>mode: HEARTBEAT 실제 모드 Offboard
     mode--)ctl: PUB fc/mode_event Offboard (ACK + 실제 모드 확인)
@@ -62,7 +62,7 @@ sequenceDiagram
     participant vss as VehicleStateSubscriber (추적기)
     participant ctl as FollowController (추종 제어)
     participant fct as FcTelemetryPublisher (mavlink_gateway)
-    participant spr as ZmqVelocitySetpointReceiver·MavlinkVelocitySetpointSink (mavlink_gateway)
+    participant spr as FcControl (mavlink_gateway)
     participant fc as FC
 
     loop fc/attitude·fc/state 메시지마다 (30 Hz 이상)
@@ -77,12 +77,12 @@ sequenceDiagram
     ctl->>ctl: 표적 상태 갱신, 속도 계산
     ctl--)spr: PUB control/setpoint (valid_until)
     loop 20 Hz
-        spr->>fc: SET_POSITION_TARGET_LOCAL_NED (FcCommandGate 허용 뒤)
+        spr->>fc: SET_POSITION_TARGET_LOCAL_NED (select_setpoint 가 고른 하나)
     end
 ```
 
 - 추적기와 추종 제어는 FC 에 직접 보내지 않는다. FC 로 가는 것은 모두 mavlink_gateway 를 거친다 (`process_interfaces.md` 2.1).
-- `ZmqVelocitySetpointReceiver` 는 받은 최신 setpoint 를 20 Hz 로 `MavlinkVelocitySetpointSink` 에 넘기고, sink 는 `FcCommandGate` 가 허용하면 보낸다. `valid_until` 이 지나면 4절과 같이 속도 0 과 Hold 요청.
+- `FcControl` 은 받은 최신 setpoint 를 보관하고, 20 Hz 주기 작업에서 `select_setpoint` 가 고른 하나를 보낸다. `valid_until` 이 지나면 제자리 유지로 바꾼다 (4절).
 
 ## 3. 영상 프레임 1장 송신·수신
 
@@ -123,7 +123,7 @@ sequenceDiagram
 sequenceDiagram
     participant fc as FC
     participant fct as FcTelemetryPublisher (mavlink_gateway)
-    participant spr as MavlinkVelocitySetpointSink (mavlink_gateway)
+    participant spr as FcControl (mavlink_gateway)
     participant ctl as FollowController (추종 제어)
     participant asr as ArgusStatusReporter (mavlink_gateway)
     participant gcs as TelemetryModel·ArgusStatusModel (gcs)
@@ -131,7 +131,7 @@ sequenceDiagram
     Note over fc,fct: FC telemetry 가 오지 않음
     fct->>fct: 2 s 경과 → FC_CONNECTED = 0
     fct--)ctl: fc/attitude·fc/state 중단
-    spr->>spr: FcCommandGate 거부 (FC 연결 없음) → setpoint 송신 중단
+    spr->>spr: FC 의 비행 상태를 받지 못함 → 추종 제어의 setpoint 대신 제자리 유지 setpoint
     Note over fc: COM_OF_LOSS_T 1 s 뒤 Offboard 이탈, COM_OBL_RC_ACT 동작 (Hold, 미결 D4)
     ctl->>ctl: mission_state = FAULT
     ctl--)asr: PUB follow/status mission_state=FAULT
@@ -139,7 +139,7 @@ sequenceDiagram
     Note over gcs: 통제기는 FC HEARTBEAT 3 s 없음으로 "연결 끊김" 을 따로 표시
 ```
 
-- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 TRACK_STOP 을 받고 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
+- 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 TRACK_STOP 을 받고 최신 FC 상태·기체의 정지 상태·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
 - mavlink_gateway 는 추종 제어의 보고와 관계없이 FC 상태를 스스로 확인해 위험한 송신을 막는다 (`icd.md` 6.6).
 - 경로가 FC → mavlink-router → mavlink_gateway 이므로 mavlink-router 가 멈춰도 같은 흐름이 된다. 이때는 통제기 링크도 함께 끊긴다.
 

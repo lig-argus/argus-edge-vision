@@ -285,9 +285,9 @@ flowchart LR
 
 ## 6. 두절·시간 초과 판단과 동작
 
-- setpoint 유효 시간: `control/setpoint` 의 `valid_until_monotonic_ns` 가 지나도록 새 값이 없으면 mavlink_gateway 가 속도 0 을 보내고 Hold 를 요청한다.
-- 상태 보고 두절 판단: mavlink_gateway 는 `follow/status`(1 Hz) 가 3 초 동안 오지 않으면 추종 제어가 멈춘 것으로 보고, 추종·Scan 중이면 Hold 로 전환하고 `mission_state` FAULT 를 보고한다 (`docs/spec/icd.md` 6.4).
-- 요청 대응: REQ/REP 응답이 정해진 시간 안에 오지 않으면 실패로 본다. `valid_until_monotonic_ns` 가 지난 요청은 실행하지 않고 REJECTED 로 답한다.
+- setpoint 유효 시간: `control/setpoint` 의 `valid_until_monotonic_ns` 가 지나도록 새 값이 없으면 mavlink_gateway 가 setpoint 전달을 멈추고 정지한다 (`docs/spec/icd.md` 4.2 의 정지 상태). 값이 유한하지 않은 setpoint(NaN, 무한대)는 받지 않은 것으로 처리한다.
+- 상태 보고 두절 판단: mavlink_gateway 는 `follow/status`(1 Hz) 가 3 초 동안 오지 않으면 추종 제어가 멈춘 것으로 보고, 추종·Scan 중이면 정지하고(`docs/spec/icd.md` 4.2 의 정지 상태) `mission_state` FAULT 를 보고한다 (`docs/spec/icd.md` 6.4).
+- 요청 대응: REQ/REP 응답이 정해진 시간 안에 오지 않으면 실패로 본다. `valid_until_monotonic_ns` 가 지난 요청은 실행하지 않고 REJECTED 로 답한다. 예외: FC 제어 명령 송신권을 가진 세션의 정지 요청은 거부되는 경우(유효 시간 경과, `fc_epoch` 불일치)에도 mavlink_gateway 가 정지를 수행한다 (그 세션의 송신권을 폐기하고, FC 가 Offboard 이면 제자리 유지를 시작한다). 응답은 REJECTED 이다. 정지를 수행하지 않으면 거부 원인이 없어진 뒤 그 세션의 속도 setpoint 가 다시 FC 로 송신되기 때문이다.
 - FC 제어 명령 송신권: FC 로 setpoint·모드를 보낼 권한은 mavlink_gateway 가 관리한다. 통제기 제어권(sysid 250, `docs/spec/icd.md` 5장)과는 별개다. 다른 소유자가 송신권을 가지고 있으면 추종 제어의 시작 요청을 거부하고(reason "another writer owns FC"), 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다.
 - mavlink_gateway 독립 감시: mavlink_gateway 는 추종 제어가 정상이라고 보고해도 FC 상태·RC 개입·유효 시간을 스스로 확인해 위험한 송신을 막는다. RC 개입이 항상 우선하고, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다.
 - Scan 회전 감시: Scan 의 yaw 회전은 `control/setpoint` 의 yaw 회전 속도로 수행한다. Scan 중 감시 시간 안에 추종 제어의 새 setpoint 가 오지 않으면 mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 기체 시험으로 정한다 (`docs/spec/icd.md` E3).
