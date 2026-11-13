@@ -40,13 +40,15 @@ C++ 어댑터가 `python -m argus_vision --endpoint … --preview-endpoint … -
 | `ARGUS_NATIVE_THREADS` | C++ 전처리의 OpenMP 스레드 수 (기본 4). 다른 프로세스와 CPU 를 나눌 때 느려지지 않게 `OMP_WAIT_POLICY=passive` 를 같이 둔다 |
 | `ARGUS_CLASS_SCORE_THRESHOLDS` | `--class-score-thresholds` 의 기본값. 비우면 모든 클래스에 `--score-threshold` |
 | `ARGUS_CLASS_SUPPRESS` | `--class-suppress` 의 기본값. 예: `tank:car:0.3` 은 탱크 박스와 IoU 0.3 이상 겹친 차 박스를 지운다. 비우면 끔 |
-| `ARGUS_PLATEAU_NATIVE_LIB` | 라이브러리 경로 (기본 `python/native/build/libplateau_native.so`) |
+| `ARGUS_PLATEAU_NATIVE_LIB` | 라이브러리 경로 (기본 `build/onboard/vision/libplateau_native.so`) |
 
-C++ 전처리 라이브러리는 RPi 에서 만든다 (저장소 CI 는 만들지 않는다):
+C++ 전처리 라이브러리는 onboard CMake 의 `argus_plateau_native` 타깃이다 (`onboard/vision/CMakeLists.txt`, C++17 + OpenMP, `-ffp-contract=off`). onboard 를 빌드하면 함께 만들어지고 CI 의 onboard 작업이 빌드와 clang-tidy 를 한다. 이 타깃만 만들 때:
 
 ```bash
 onboard/vision/python/native/build.sh
 ```
+
+OpenMP 는 Ubuntu 의 g++ 에 들어 있다. macOS 는 `brew install libomp` 뒤 cmake 설정에 `-DOpenMP_ROOT="$(brew --prefix libomp)"` 를 붙인다.
 
 ### 테스트
 
@@ -56,6 +58,6 @@ PYTHONPATH=..:../../../libs/protocol/python python3 -m unittest discover
 ```
 
 - 구현 테스트는 numpy, OpenCV, pyzmq, protobuf 가 있는 환경(RPi 탐지 venv)에서 돈다. HailoRT 가 없어도 되며 NPU 추론 자체는 시험하지 않는다 (NMS 해석과 좌표 변환은 시험한다).
-- `test_double_plateau.py` 는 RPi 의 원래 식(np.percentile, np.median)과 Python 경로, C++ 경로의 출력을 바이트 단위로 비교한다. C++ 경로는 라이브러리가 있을 때만 돈다.
+- `test_double_plateau.py` 는 RPi 의 원래 식(np.percentile, np.median)과 Python 경로, C++ 경로의 출력을 바이트 단위로 비교한다. C++ 경로는 라이브러리가 있을 때만 돈다 (`ARGUS_PLATEAU_NATIVE_LIB` 또는 기본 경로).
 
 형식, 규칙, 타입 검사는 저장소 공통 규칙(CONTRIBUTING 0.2, 0.3)대로 커밋 hook 과 CI 의 python lint 작업이 한다. CI 환경에 없는 numpy, OpenCV, pyzmq, HailoRT 는 `pyproject.toml` 의 mypy 예외로 둔다.

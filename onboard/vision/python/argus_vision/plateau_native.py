@@ -2,7 +2,9 @@
 # ctypes 로 부른다.
 # 출력은 Python 경로(double_plateau.py)와 바이트 단위로 같다. 실기체 RPi 에서
 # 프레임당 7.4 → 1.6 ms (OpenMP 4스레드).
-# 라이브러리는 RPi 에서 native/build.sh 로 만든다. 저장소 CI 는 만들지 않는다.
+# 라이브러리는 onboard CMake 타깃 argus_plateau_native 다
+# (onboard/vision/CMakeLists.txt. native/build.sh 가 그 타깃만 빌드).
+# 기본 경로는 그 출력이다.
 
 import ctypes
 import os
@@ -11,8 +13,13 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+# 저장소 루트의 build/onboard (README "onboard 구조와 빌드")
 DEFAULT_LIBRARY_PATH = (
-    Path(__file__).resolve().parents[1] / "native" / "build" / "libplateau_native.so"
+    Path(__file__).resolve().parents[4]
+    / "build"
+    / "onboard"
+    / "vision"
+    / "libplateau_native.so"
 )
 
 
