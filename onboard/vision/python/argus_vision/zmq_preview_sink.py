@@ -48,7 +48,8 @@ class PreviewOptions:
 
     Attributes:
         gray8: `vision/frame/gray8` 를 보낼지. 기본 꺼짐 (5.1).
-        gray8_max_fps: gray8 FPS 상한.
+        gray8_max_fps: gray8 FPS 상한. 영상 송신부는 프레임마다 받아야 하므로 카메라
+            (실측 평균 29.94~30.01 FPS)보다 조금 높게 둔다.
         overlay: `vision/overlay/jpeg` 를 보낼지.
         overlay_max_fps: overlay FPS 상한 (5.1: 최대 15).
         overlay_jpeg_quality: overlay JPEG 품질.
@@ -58,7 +59,7 @@ class PreviewOptions:
     """
 
     gray8: bool = False
-    gray8_max_fps: float = 30.0
+    gray8_max_fps: float = 31.0
     overlay: bool = False
     overlay_max_fps: float = 10.0
     overlay_jpeg_quality: int = 75

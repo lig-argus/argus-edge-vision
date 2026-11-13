@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--jpeg-quality", type=int, default=75)
     p.add_argument("--npu-input-max-fps", type=float, default=15)
     p.add_argument("--npu-input-jpeg-quality", type=int, default=80)
-    p.add_argument("--gray8-max-fps", type=float, default=30)
+    p.add_argument("--gray8-max-fps", type=float, default=31)
     return p
 
 
