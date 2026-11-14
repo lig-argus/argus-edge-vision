@@ -1,5 +1,5 @@
-// mavlink_gateway 가 FC 로 보내는 명령의 판단: FC 의 모드에 대해 믿는 값, 상태의 전환, 주기마다
-// 보낼 setpoint 의 선택. 모든 함수는 입력만으로 결과를 정하며 MAVLink 와 시계를 사용하지 않는다
+// mavlink_gateway 가 FC 로 보내는 명령의 판단: FC 의 모드 판단, 상태의 전환, 주기마다 보낼
+// setpoint 의 선택. 모든 함수는 입력만으로 결과를 정하며 MAVLink 와 시계를 사용하지 않는다
 // 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.6
 // 사용: FcControl
 #ifndef ARGUS_ONBOARD_FC_COMMAND_POLICY_HPP_
@@ -63,7 +63,7 @@ struct SetpointChoice {
     HoverTarget target;  // kind 가 Position 인 경우
 };
 
-// FC 의 모드에 대해 믿는 값.
+// mavlink_gateway 가 판단한 FC 의 모드.
 // 쓸 수 있는 비행 상태: 지금의 fc_epoch 에서 받았고, 받은 후 status_max_age_ns 이내인 값.
 // not_offboard_after_ns 가 있는 경우, Offboard 가 아닌 비행 상태는 그 시각 후에 받은 것만
 // NotOffboard 로 판단하고 그 전의 값은 Pending 이다
@@ -96,7 +96,7 @@ FcCommandStep on_entry_command_answered(const FcCommandState& state, bool accept
 // 진입 명령의 송신에 실패함
 FcCommandStep on_entry_command_send_failed(const FcCommandState& state);
 
-// 운용자의 잠금 해제. FC 의 비행 상태가 최신인 경우에만 해제한다
+// 운용자의 Locked 해제. FC 의 비행 상태가 최신인 경우에만 해제한다
 FcRequestStep on_lock_release(const FcCommandState& state, const FcObservation& observation,
                               const FcCommandPolicyConfig& config);
 

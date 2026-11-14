@@ -67,7 +67,7 @@ struct Locked {};
 
 using FcCommandState = std::variant<Idle, Entering, Following, CancellingEntry, Hovering, Locked>;
 
-// FC 의 모드에 대해 mavlink_gateway 가 믿는 값. FC 의 비행 상태는 1 Hz 로 도착한다
+// mavlink_gateway 가 판단한 FC 의 모드. FC 의 비행 상태는 1 Hz 로 도착한다
 enum class FcModeBelief : std::uint8_t {
     Offboard,
     NotOffboard,

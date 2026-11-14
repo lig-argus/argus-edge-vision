@@ -138,7 +138,7 @@ public:
             case FcModeBelief::Offboard:
                 return to(Hovering{});
             case FcModeBelief::NotOffboard:
-                // 진입이 이루어지지 않은 것이므로 잠그지 않는다
+                // 진입이 이루어지지 않은 것이므로 Locked 로 전환하지 않는다
                 return to(Idle{});
             case FcModeBelief::Pending:
             case FcModeBelief::NotReceived:

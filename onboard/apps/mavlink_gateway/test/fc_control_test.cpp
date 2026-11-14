@@ -465,7 +465,7 @@ TEST_F(FcControlTest, LockIsReleasedOnlyByExplicitRequest) {
 
     EXPECT_TRUE(control_.release_lock());
     EXPECT_TRUE(holds<Idle>());
-    EXPECT_TRUE(control_.release_lock());  // 잠겨 있지 않은 경우에도 true
+    EXPECT_TRUE(control_.release_lock());  // Locked 가 아닌 경우에도 true
 }
 
 TEST_F(FcControlTest, LockIsNotReleasedWhileFcStatusIsStale) {

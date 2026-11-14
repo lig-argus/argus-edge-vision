@@ -122,7 +122,7 @@ protected:
             return;
         }
         if (must_stay_silent_) {
-            EXPECT_EQ(setpoints_this_tick, 0) << "잠긴 후 송신, 주기 " << tick_index_;
+            EXPECT_EQ(setpoints_this_tick, 0) << "Locked 에서 송신, 주기 " << tick_index_;
             return;
         }
         const bool may_be_offboard = clock_.now_monotonic_ns() <= entry_window_end_ns_ ||
@@ -543,7 +543,7 @@ TEST_F(FcCommandScenarioTest, FcEpochChangeWhileFcStaysInOffboardKeepsSetpointsF
     EXPECT_FALSE(rig_.locked());
     EXPECT_EQ(rig_.request_hold(old_request).reason, "fc_epoch mismatch");
 
-    // 새 fc_epoch 의 첫 비행 상태가 Offboard: 제자리 유지를 이어 가고 잠그지 않는다.
+    // 새 fc_epoch 의 첫 비행 상태가 Offboard: 제자리 유지를 이어 가고 Locked 로 전환하지 않는다.
     // 추종 제어가 계속 발행하는 속도는 다시 진입을 요청하기 전에는 송신되지 않는다
     fc_silent_ = false;
     run_until_heartbeat(true, 3.0);
@@ -612,7 +612,8 @@ TEST_F(FcCommandScenarioTest, StopDuringPendingEntryThenFcEpochChangeIsNotLocked
     steps(4, false);
     EXPECT_EQ(setpoints_since_mark(), 4);
 
-    // FC 는 진입하지 않았음: 확인 시간 후의 비행 상태로 확인한 때에 끝내며, 잠그지 않는다
+    // FC 는 진입하지 않았음: 확인 시간 후의 비행 상태로 확인한 때에 끝내며, Locked 로 전환하지
+    // 않는다
     fc_silent_ = false;
     steps(80, false);
     EXPECT_FALSE(rig_.stopping());
@@ -641,7 +642,7 @@ TEST_F(FcCommandScenarioTest, FcEpochChangeDuringPendingEntryIsNotLockedByHeartb
     request_entry();
 
     // 진입 명령을 보낸 직후 FC 연결이 다시 됨. 새 fc_epoch 의 첫 비행 상태는 FC 가 아직 전환하지
-    // 않은 때의 값일 수 있으므로 그것만으로 잠그지 않는다
+    // 않은 때의 값일 수 있으므로 그것만으로 Locked 로 전환하지 않는다
     reconnect_fc();
     step(false);
     fc_silent_ = false;
@@ -681,7 +682,7 @@ TEST_F(FcCommandScenarioTest, RejectedEntryCommandSendsZeroVelocityUntilFcModeIs
     EXPECT_EQ(setpoints_since_mark(), 5);
     EXPECT_TRUE(last_is_zero_velocity());
 
-    // 확인 시간 후의 비행 상태가 Offboard 가 아니면 끝내고, 잠그지 않는다
+    // 확인 시간 후의 비행 상태가 Offboard 가 아니면 끝내고, Locked 로 전환하지 않는다
     steps(80, false);
     EXPECT_FALSE(rig_.stopping());
     EXPECT_FALSE(rig_.locked());

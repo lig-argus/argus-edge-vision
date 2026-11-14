@@ -125,7 +125,7 @@ vehicle_api::RequestHeader request(const std::string& session = "follow",
     return header;
 }
 
-// ---- FC 의 모드에 대해 믿는 값
+// ---- FC 의 모드 판단
 
 TEST(FcModeBeliefTest, FollowsFreshStatusOfCurrentFcEpoch) {
     EXPECT_EQ(fc_mode_belief(observed(FlightMode::Offboard), kConfig), FcModeBelief::Offboard);
@@ -384,7 +384,7 @@ TEST(FcCommandPolicyTest, RulesHoldForEveryStateAndObservation) {
                 const FcCommandStep step = advance(state, observation, kConfig);
                 const SetpointKind kind = select_setpoint(step.state, observation, kConfig).kind;
 
-                // 잠긴 상태는 요청 없이 풀리지 않고, 아무것도 보내지 않는다
+                // Locked 는 해제 요청 없이 끝나지 않고, 아무것도 보내지 않는다
                 if (state.index() == kLocked) {
                     EXPECT_EQ(step.state.index(), kLocked);
                 }
@@ -406,7 +406,7 @@ TEST(FcCommandPolicyTest, RulesHoldForEveryStateAndObservation) {
                 if (state.index() != kEntering && state.index() != kFollowing) {
                     EXPECT_NE(step.state.index(), kFollowing);
                 }
-                // 잠그는 것은 FC 가 Offboard 임을 확인한 적이 있는 상태에서만
+                // Locked 로의 전환은 FC 가 Offboard 임을 확인한 적이 있는 상태에서만
                 if (step.state.index() == kLocked && state.index() != kLocked) {
                     EXPECT_TRUE(state.index() == kFollowing || state.index() == kHovering);
                 }
@@ -602,7 +602,7 @@ TEST(FcCommandRequestTest, OnboardStopNeedsNoSessionAndIsRefusedOnlyWhenLocked) 
     }
 }
 
-// ---- FC 의 응답, 송신 실패, 잠금 해제
+// ---- FC 의 응답, 송신 실패, Locked 해제
 
 TEST(FcCommandRequestTest, AcceptedAnswerMarksEntryAcknowledged) {
     const FcCommandStep step = on_entry_command_answered(entering(false), true);
@@ -645,7 +645,7 @@ TEST(FcCommandRequestTest, LockIsReleasedOnlyWithFreshFcStatus) {
     EXPECT_EQ(lost.state.index(), kLocked);
     EXPECT_EQ(lost.denial, FcCommandDenial::FcDisconnected);
 
-    // 잠겨 있지 않은 상태는 그대로 둔다
+    // Locked 가 아닌 상태는 그대로 둔다
     const FcRequestStep not_locked =
         on_lock_release(following(), observed(FlightMode::Offboard), kConfig);
     EXPECT_EQ(not_locked.state.index(), kFollowing);
