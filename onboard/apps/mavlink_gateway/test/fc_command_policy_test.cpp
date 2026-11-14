@@ -710,7 +710,8 @@ TEST(FcCommandPolicyTest, AuthorityBelongsToSessionOfEnteringAndFollowing) {
 }
 
 TEST(FcCommandPolicyTest, HasReasonTextForEveryDenial) {
-    for (int value = 1; value <= static_cast<int>(FcCommandDenial::SendFailed); ++value) {
+    for (std::int32_t value = 1; value <= static_cast<std::int32_t>(FcCommandDenial::SendFailed);
+         ++value) {
         EXPECT_FALSE(to_string(static_cast<FcCommandDenial>(value)).empty()) << value;
     }
     EXPECT_TRUE(to_string(FcCommandDenial::None).empty());

@@ -12,9 +12,9 @@ namespace {
 
 // POSITION_TARGET_TYPEMASK 의 비트들을 합친다. 비트 연산은 부호 없는 타입으로 한다
 constexpr std::uint16_t mask_of(std::initializer_list<POSITION_TARGET_TYPEMASK> bits) {
-    unsigned int mask = 0;
+    std::uint32_t mask = 0;
     for (const POSITION_TARGET_TYPEMASK bit : bits) {
-        mask |= static_cast<unsigned int>(bit);
+        mask |= static_cast<std::uint32_t>(bit);
     }
     return static_cast<std::uint16_t>(mask);
 }

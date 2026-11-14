@@ -18,7 +18,7 @@ using vehicle_api::RequestHeader;
 
 // advance() 가 전환을 이어서 적용하는 횟수의 상한. 전환은 되돌아가지 않으므로 상태의 수보다
 // 많이 이어지지 않는다
-constexpr int kMaxChainedTransitions = 6;
+constexpr std::int32_t kMaxChainedTransitions = 6;
 
 FcCommandStep to(FcCommandState state) { return FcCommandStep{std::move(state), {}}; }
 
@@ -377,7 +377,7 @@ FcModeBelief fc_mode_belief(const FcObservation& observation, const FcCommandPol
 FcCommandStep advance(const FcCommandState& state, const FcObservation& observation,
                       const FcCommandPolicyConfig& config) {
     FcCommandStep result = to(state);
-    for (int count = 0; count < kMaxChainedTransitions; ++count) {
+    for (std::int32_t count = 0; count < kMaxChainedTransitions; ++count) {
         const std::optional<FcCommandStep> next =
             std::visit(Advance{observation, config}, result.state);
         if (!next.has_value()) {

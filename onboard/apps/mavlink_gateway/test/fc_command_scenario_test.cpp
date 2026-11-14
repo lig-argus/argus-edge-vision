@@ -26,8 +26,8 @@ namespace {
 using vehicle_api::FlightMode;
 
 constexpr std::int64_t kStartNs = 10'000'000'000;
-constexpr std::int64_t kTickNs = 50'000'000;  // 20 Hz
-constexpr int kHeartbeatPeriodTicks = 20;     // 1 Hz
+constexpr std::int64_t kTickNs = 50'000'000;        // 20 Hz
+constexpr std::int32_t kHeartbeatPeriodTicks = 20;  // 1 Hz
 constexpr std::int64_t kSetpointValidNs = 200'000'000;
 constexpr std::int64_t kPoseMaxAgeNs = 200'000'000;
 constexpr std::int64_t kEntryConfirmNs = 3'000'000'000;
@@ -103,7 +103,7 @@ protected:
             publish(forward);
         }
         const std::size_t sent_before = connection_.sent().size();
-        const int commands_before = mode_command_count();
+        const std::int32_t commands_before = mode_command_count();
         rig_.tick();
         if (mode_command_count() > commands_before) {
             entry_window_end_ns_ = clock_.now_monotonic_ns() + kEntryConfirmNs;
@@ -117,7 +117,7 @@ protected:
     // 진입시킨
     //   FC 가 실제로 Offboard 인 동안) 주기마다 setpoint 가 정확히 하나 나간다
     // - FC 가 요청 없이 Offboard 를 벗어난 것을 안 후에는 해제 전까지 아무것도 나가지 않는다
-    void check_invariants(int setpoints_this_tick) {
+    void check_invariants(std::int32_t setpoints_this_tick) {
         if (!check_invariants_) {
             return;
         }
@@ -132,15 +132,15 @@ protected:
         }
     }
 
-    void steps(int count, bool follow_publishes, double forward = 1.0) {
-        for (int index = 0; index < count; ++index) {
+    void steps(std::int32_t count, bool follow_publishes, double forward = 1.0) {
+        for (std::int32_t index = 0; index < count; ++index) {
             step(follow_publishes, forward);
         }
     }
 
     // 다음 HEARTBEAT 가 도착하는 주기까지 진행한다
     void run_until_heartbeat(bool follow_publishes, double forward = 1.0) {
-        for (int index = 0; index < kHeartbeatPeriodTicks; ++index) {
+        for (std::int32_t index = 0; index < kHeartbeatPeriodTicks; ++index) {
             if (step(follow_publishes, forward)) {
                 return;
             }
@@ -167,7 +167,7 @@ protected:
     }
 
     vehicle_api::FlightModeReply request_offboard(const vehicle_api::RequestHeader& request) {
-        const int commands_before = mode_command_count();
+        const std::int32_t commands_before = mode_command_count();
         const vehicle_api::FlightModeReply reply = rig_.request_offboard(request);
         if (mode_command_count() > commands_before) {
             entry_window_end_ns_ = clock_.now_monotonic_ns() + kEntryConfirmNs;
@@ -190,8 +190,8 @@ protected:
         poller_.process_events(std::chrono::milliseconds{0}, std::chrono::milliseconds{5});
     }
 
-    int setpoints_since(std::size_t first) const {
-        int count = 0;
+    std::int32_t setpoints_since(std::size_t first) const {
+        std::int32_t count = 0;
         for (std::size_t index = first; index < connection_.sent().size(); ++index) {
             count += connection_.sent()[index].msgid == MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED
                          ? 1
@@ -202,7 +202,7 @@ protected:
 
     // 이 시점까지 FC 로 송신한 메시지 수를 기억하고, 이후 송신한 setpoint 를 확인하는 데 쓴다
     void mark() { mark_ = connection_.sent().size(); }
-    int setpoints_since_mark() const { return setpoints_since(mark_); }
+    std::int32_t setpoints_since_mark() const { return setpoints_since(mark_); }
 
     // 마지막으로 송신한 setpoint. 없는 경우 type_mask 0
     mavlink_set_position_target_local_ned_t last_setpoint() const {
@@ -222,16 +222,16 @@ protected:
                target.vy == 0.0F && target.vz == 0.0F && target.yaw_rate == 0.0F;
     }
 
-    int mode_command_count() const {
-        int count = 0;
+    std::int32_t mode_command_count() const {
+        std::int32_t count = 0;
         for (const mavlink_message_t& message : connection_.sent()) {
             count += message.msgid == MAVLINK_MSG_ID_COMMAND_LONG ? 1 : 0;
         }
         return count;
     }
 
-    int offboard_event_count() const {
-        int count = 0;
+    std::int32_t offboard_event_count() const {
+        std::int32_t count = 0;
         for (const vehicle_api::FlightModeEvent& event : events_) {
             count += event.mode == FlightMode::Offboard ? 1 : 0;
         }
@@ -273,13 +273,13 @@ protected:
     core::Subscription subscription_;
 
     FlightMode fc_mode_ = FlightMode::Hold;  // FC 의 실제 모드
-    int heartbeat_phase_ = 0;                // HEARTBEAT 가 도착하는 주기 (20주기 중 몇 번째)
+    std::int32_t heartbeat_phase_ = 0;       // HEARTBEAT 가 도착하는 주기 (20주기 중 몇 번째)
     bool pose_valid_ = true;
     bool fc_silent_ = false;       // FC 로부터 아무것도 도착하지 않음
     bool heartbeat_lost_ = false;  // HEARTBEAT 만 도착하지 않음
     bool check_invariants_ = true;
 
-    int tick_index_ = 0;
+    std::int32_t tick_index_ = 0;
     std::size_t mark_ = 0;
     std::int64_t entry_window_end_ns_ = 0;  // 마지막 진입 명령의 확인 시간이 끝나는 시각
     bool fc_offboard_by_onboard_ = false;   // FC 가 mavlink_gateway 의 진입 명령 후 Offboard 가 됨
@@ -318,7 +318,7 @@ TEST_F(FcCommandScenarioTest, FollowThenStopThenFollowAgain) {
     EXPECT_FLOAT_EQ(last_setpoint().x, 5.0F);
 
     // 다시 추종: FC 가 이미 Offboard 이므로 모드 전환 명령 없이 수락되고 속도 setpoint 로 바뀐다
-    const int commands_before = mode_command_count();
+    const std::int32_t commands_before = mode_command_count();
     ASSERT_TRUE(request_offboard(header(3)).accepted);
     steps(2, true, 2.0);
     EXPECT_EQ(mode_command_count(), commands_before);
@@ -329,7 +329,7 @@ TEST_F(FcCommandScenarioTest, FollowThenStopThenFollowAgain) {
 
 // HEARTBEAT 가 도착하는 주기(20주기 중 몇 번째)와, FC 의 응답이 HEARTBEAT 보다 먼저인지
 struct EntryTiming {
-    int heartbeat_phase;
+    std::int32_t heartbeat_phase;
     bool ack_first;
 };
 
@@ -378,7 +378,7 @@ TEST_F(FcCommandScenarioTest, FollowControlStopsPublishingWhileFollowing) {
 TEST_F(FcCommandScenarioTest, StopWithoutValidPoseSendsZeroVelocityInsteadOfLastSetpoint) {
     start_following();
     pose_valid_ = false;
-    steps(static_cast<int>(kPoseMaxAgeNs / kTickNs) + 1, true);
+    steps(static_cast<std::int32_t>(kPoseMaxAgeNs / kTickNs) + 1, true);
 
     ASSERT_TRUE(rig_.request_hold(header(2)).accepted);
     steps(5, true, 4.0);
@@ -401,7 +401,7 @@ TEST_F(FcCommandScenarioTest, StopRightAfterOffboardRequestKeepsSetpointsFlowing
 
     // FC 가 Offboard 로 바뀌는 전후로 주기마다 속도 0 이 송신된다.
     // 추종 제어는 정지 요청 후에도 한동안 발행을 계속한다고 가정한다
-    for (int index = 0; index < 4; ++index) {
+    for (std::int32_t index = 0; index < 4; ++index) {
         step(true, 3.0);
         EXPECT_TRUE(last_is_zero_velocity());
     }
@@ -441,7 +441,7 @@ TEST_F(FcCommandScenarioTest, PilotTakeoverIsNoticedAtNextHeartbeat) {
     // setpoint 를 계속 보낸다. PX4 는 Offboard 가 아닌 동안 받은 setpoint 를 비행에 쓰지 않는다
     set_fc_mode(FlightMode::Position);
     mark();
-    int ticks = 0;
+    std::int32_t ticks = 0;
     while (!rig_.locked() && ticks < kHeartbeatPeriodTicks) {
         step(true);
         ++ticks;
@@ -504,7 +504,7 @@ TEST_F(FcCommandScenarioTest, FollowingStopsWhenOnlyHeartbeatIsLostForTwoSeconds
 
 TEST_F(FcCommandScenarioTest, NoGapAtOffboardEntryWhenFollowControlPublishesSlowly) {
     // 추종 제어가 5 Hz 로 발행하고 유효 시간이 0.5초인 경우
-    for (int index = 0; index < 24; ++index) {
+    for (std::int32_t index = 0; index < 24; ++index) {
         if (index % 4 == 0) {
             publish(1.0, 500'000'000);
         }
@@ -515,7 +515,7 @@ TEST_F(FcCommandScenarioTest, NoGapAtOffboardEntryWhenFollowControlPublishesSlow
     set_fc_mode(FlightMode::Offboard);
 
     // 진입 확인 전후로 주기마다 속도 setpoint 가 송신된다
-    for (int index = 0; index < 30; ++index) {
+    for (std::int32_t index = 0; index < 30; ++index) {
         if (index % 4 == 3) {
             publish(1.0, 500'000'000);
         }
@@ -534,7 +534,7 @@ TEST_F(FcCommandScenarioTest, FcEpochChangeWhileFcStaysInOffboardKeepsSetpointsF
     // FC 로부터의 수신만 끊겼다 회복된 경우. FC 는 계속 Offboard 이다.
     // 새 fc_epoch 의 비행 상태를 받기 전: 송신권은 폐기되고, 추종 제어의 속도는 나가지 않는다
     reconnect_fc();
-    for (int index = 0; index < 10; ++index) {
+    for (std::int32_t index = 0; index < 10; ++index) {
         step(true, 3.0);
         EXPECT_NE(last_setpoint().vx, 3.0F) << "주기 " << index;
     }
@@ -587,7 +587,7 @@ TEST_F(FcCommandScenarioTest, FcEpochChangeDuringHoverKeepsPositionTarget) {
     start_hovering();
 
     reconnect_fc();
-    for (int index = 0; index < 10; ++index) {
+    for (std::int32_t index = 0; index < 10; ++index) {
         step(false);
         EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask) << "주기 " << index;
     }
@@ -660,7 +660,7 @@ TEST_F(FcCommandScenarioTest, FcEpochChangeDuringPendingEntryIsNotLockedByHeartb
 TEST_F(FcCommandScenarioTest, EntryConfirmTimeoutSendsZeroVelocityUntilFcModeIsKnown) {
     request_entry();
     // FC 가 응답하지 않고, 확인 시간이 지난 직후 Offboard 로 바뀌는 경우
-    steps(static_cast<int>(kEntryConfirmNs / kTickNs) + 1, true, 3.0);
+    steps(static_cast<std::int32_t>(kEntryConfirmNs / kTickNs) + 1, true, 3.0);
     EXPECT_TRUE(rig_.owner().empty());
     EXPECT_TRUE(last_is_zero_velocity());
 
@@ -774,7 +774,7 @@ TEST_F(FcCommandScenarioTest, NanSetpointsWhileFollowingLeadToHoverWithoutGap) {
     start_following();
 
     // 추종 제어가 NaN 을 계속 발행하는 경우: 마지막 정상 값의 유효 시간 후 위치 유지로 바뀐다
-    for (int index = 0; index < 10; ++index) {
+    for (std::int32_t index = 0; index < 10; ++index) {
         step(true, std::nan(""));
         EXPECT_FALSE(std::isnan(last_setpoint().vx));
     }
@@ -800,7 +800,7 @@ TEST_F(FcCommandScenarioTest, RestartFromHoverWithoutSetpointsKeepsHovering) {
 
     // 다시 추종을 요청했지만 추종 제어가 setpoint 를 발행하지 않는 경우: 위치 유지가 계속된다
     ASSERT_TRUE(request_offboard(header(3)).accepted);
-    for (int index = 0; index < 6; ++index) {
+    for (std::int32_t index = 0; index < 6; ++index) {
         step(false);
         EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask);
         EXPECT_FLOAT_EQ(last_setpoint().x, 5.0F);
@@ -853,7 +853,7 @@ TEST_F(FcCommandScenarioTest, SetpointLeftAfterStopIsNotSentWithAuthorityOfAnoth
     ASSERT_TRUE(request_offboard(header(3, "other")).accepted);
 
     // 남은 값은 새 송신권으로 송신되지 않고, 그 값의 유효 시간이 지나도 송신권은 유지된다
-    for (int index = 0; index < 30; ++index) {
+    for (std::int32_t index = 0; index < 30; ++index) {
         step(false);
         EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask) << "주기 " << index;
     }

@@ -75,8 +75,8 @@ protected:
         control_.tick();
     }
 
-    void steps(int count, FlightMode mode, bool follow_publishes = true) {
-        for (int index = 0; index < count; ++index) {
+    void steps(std::int32_t count, FlightMode mode, bool follow_publishes = true) {
+        for (std::int32_t index = 0; index < count; ++index) {
             step(mode, follow_publishes);
         }
     }
@@ -278,7 +278,7 @@ TEST_F(FcControlTest, HoverWithStalePoseSendsZeroVelocityAndIsNotReportedAsHover
 
 TEST_F(FcControlTest, OneSetpointIsUsedForAtMostOneSecond) {
     publish(1.0, 10'000'000'000);
-    for (int index = 0; index < 20; ++index) {
+    for (std::int32_t index = 0; index < 20; ++index) {
         clock_.advance_ns(kTickNs);
         set_fc(FlightMode::Hold);
         control_.tick();
