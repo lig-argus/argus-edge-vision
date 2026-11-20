@@ -18,9 +18,16 @@ argus_add_test(video_sender_fake_frame_source_test SOURCES test/fake_frame_sourc
 # 않도록 _core 를 붙인다. ZeroMQ, protobuf, GStreamer 를 링크하지 않으므로 테스트는 gtest 만으로 실행한다
 # - FrameCollector: 같은 프레임의 프레임, 탐지 결과, 추적 결과를 CollectedFrame 하나로 출력
 #   (process_interfaces.md 5.3 의 메시지 결합)
-add_library(argus_video_sender_core STATIC src/frame_collector.cpp)
+# - OnvifMetadataSerializer, MetadataRtpPacketizer: CollectedFrame → ONVIF XML → RTP 패킷
+#   (docs/spec/video.md 3장)
+add_library(argus_video_sender_core STATIC
+            src/frame_collector.cpp src/onvif_metadata_serializer.cpp src/metadata_rtp_packetizer.cpp)
 add_library(argus::video_sender_core ALIAS argus_video_sender_core)
 target_link_libraries(argus_video_sender_core PUBLIC argus::video_sender_interfaces)
 
 argus_add_test(video_sender_frame_collector_test SOURCES test/frame_collector_test.cpp
                LIBS argus::video_sender_core argus::core_testing)
+argus_add_test(video_sender_onvif_metadata_serializer_test
+               SOURCES test/onvif_metadata_serializer_test.cpp LIBS argus::video_sender_core)
+argus_add_test(video_sender_metadata_rtp_packetizer_test
+               SOURCES test/metadata_rtp_packetizer_test.cpp LIBS argus::video_sender_core)
