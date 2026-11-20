@@ -21,8 +21,8 @@
 
 ## onboard 구조와 빌드 (`onboard/`)
 
-Raspberry Pi 에서 도는 프로세스 5개(onboard, 영상 송신부, 추종 제어, 추적기, 탐지)의 코드를 모두 `onboard/` 아래에 둔다.
-`onboard/` 는 RPi 패키지 전체를 가리키고, onboard 프로세스(FC 통신·통제기 통신)는 `onboard/apps/onboard/` 이다.
+Raspberry Pi 에서 도는 프로세스 5개(mavlink_gateway, 영상 송신부, 추종 제어, 추적기, 탐지)의 코드를 모두 `onboard/` 아래에 둔다.
+`onboard/` 는 RPi 패키지 전체를 가리키고, mavlink_gateway 프로세스(FC 통신·통제기 통신)는 `onboard/apps/mavlink_gateway/` 이다.
 
 ```
 onboard/
@@ -34,17 +34,17 @@ onboard/
     bus/                  # ZeroMQ 토픽·RPC 인터페이스 (바이트만 나름)
     bus_testing/          # FakeBus
     protocol/             # 토픽·RPC 이름, 기본 엔드포인트 상수, 메시지 정의(.proto)와 Python 생성 코드
-    perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, onboard, 추적기 공유. 의존성 없음)
+    perception_api/       # 프레임·탐지 결과·추적 결과 값 타입 (영상 송신부, mavlink_gateway, 추적기 공유. 의존성 없음)
     vehicle_api/          # IVehicleTelemetry·IVelocitySetpointSink·IFlightModeControl(Client)·IFollowControl(Client) 인터페이스 (core 에만 의존)
     vehicle_api_testing/  # vehicle_api 의 테스트용 구현
     vehicle_api_zmq/      # vehicle_api 의 ZeroMQ 어댑터 (vehicle_api·bus 링크, 다음 PR)
   apps/                   # 실행 파일. 프로세스 하나에 폴더 하나
-    onboard/              # onboard 프로세스 (통신 담당)
+    mavlink_gateway/      # FC 통신, 통제기 통신 프로세스 (통신 담당)
     video_sender/         # 영상 송신부 (통신 담당)
     follow_controller/    # 추종 제어 (추적·추종 담당)
     tracker/              # UCMC 추적기 (추적·추종 담당)
   vision/                 # 탐지 프로세스. Python + C++ 어댑터 (탐지 담당)
-  config/                 # 설정 파일 (mavlink-router, onboard, 센서 대응표)
+  config/                 # 설정 파일 (mavlink-router, mavlink_gateway, 센서 대응표)
 ```
 
 - RPi 프로세스끼리만 사용하는 것은 `onboard/libs/`, onboard 와 통제기가 함께 사용하는 것(MAVLink, 영상 메타데이터 형식)은 `common/` 에 둔다.

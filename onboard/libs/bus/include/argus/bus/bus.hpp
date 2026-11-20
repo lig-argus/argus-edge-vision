@@ -1,7 +1,7 @@
 // 프로세스가 붙는 메시지 통로. 토픽 발행자, 구독자, 요청하는 쪽, 응답하는 쪽을 만든다.
 // 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 이 인터페이스와 넷은 바뀌지 않는다. 구현별 설정(주소,
 // QoS 프로파일)은 구현 클래스의 생성자 인자이고, 이 인터페이스에는 두지 않는다.
-// 규약: docs/spec/process_interfaces.md 3장. 설계: docs/design/uml/class_onboard.md 1절
+// 규약: docs/spec/process_interfaces.md 3장. 설계: docs/design/uml/class_mavlink_gateway.md 1절
 // 구현: (#59) ZmqBus, 테스트용 FakeBus (bus_testing)
 //
 // contract (모든 구현이 따라야 한다)

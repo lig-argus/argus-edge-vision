@@ -122,7 +122,7 @@ a=control:trackID=1
 | `tracking/tracks` 필드 (`process_interfaces.md` 5.1.1) | 들어가는 XML 요소·속성 | 비고 |
 |---|---|---|
 | JPEG `unix_ns` (같은 frame_id 의 영상 프레임) | `tt:Frame@UtcTime` | ISO 8601, ms 단위, `Z`. 4장 |
-| source | `tt:Frame@Source` | 카메라 식별 문자열. 통제기는 onboard 설정의 변환표(source 문자열 → `ARGUS_SENSOR`)로 바꾼다 |
+| source | `tt:Frame@Source` | 카메라 식별 문자열. 통제기는 mavlink_gateway 설정의 변환표(source 문자열 → `ARGUS_SENSOR`)로 바꾼다 |
 | frame_id, image_width, image_height | `tt:Frame/tt:Extension/argus:*` | ONVIF 스키마에 같은 뜻의 요소가 없어 확장 요소(`tt:Extension`)에 둔다. 요소 이름은 **[미결 4]** |
 | tracks[].track_id | `tt:Object@ObjectId` | 1~16,777,215 |
 | tracks[].x1, y1, x2, y2 | `tt:BoundingBox` left·top·right·bottom | 3.3 좌표 변환 적용 |
@@ -176,7 +176,7 @@ a=control:trackID=1
 
 | 필드 | 값 |
 |---|---|
-| 송신 | onboard (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회 |
+| 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회 |
 | stream_id / count | 1 = IR (EO 추가 시 2) / 스트림 수 |
 | type | `VIDEO_STREAM_TYPE_RTSP` (0) |
 | flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1). 송신부가 떠 있지 않으면 0 |
@@ -188,7 +188,7 @@ a=control:trackID=1
 | encoding | `VIDEO_STREAM_ENCODING_UNKNOWN` (0). MAVLink 에 JPEG 값이 없다. 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP(`a=rtpmap`)에서 읽는다 (1장) |
 | camera_device_id | 0 |
 
-onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `process_interfaces.md` 에 추가한다 **[미결 9]**.
+mavlink_gateway 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `process_interfaces.md` 에 추가한다 **[미결 9]**.
 
 ## 8. class_id 표
 
@@ -210,7 +210,7 @@ onboard 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `proc
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
 7. 통제기 "영상 정지" 판단 시간 (NUC 0.5 s 보다 길게). — 통제기
 8. EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
-9. onboard 가 송신부 상태를 받는 방법 (`VIDEO_STREAM_INFORMATION` flags 용). — 통신
+9. mavlink_gateway 가 송신부 상태를 받는 방법 (`VIDEO_STREAM_INFORMATION` flags 용). — 통신
 10. IR 모델 v7.3 class_id 표는 8장에 반영함. 모델 교체 때 갱신. — 탐지
 11. RPi–통제기 Wi-Fi 의 실제 처리량·손실률 측정 (영상 6~8 Mbps + 메타데이터 + MAVLink). 부족하면 품질·FPS 조정. — 통신
 12. JPEG 품질값: 비압축 프레임 대 JPEG 의 화질(PSNR·육안)을 품질 75·90·95 에서 측정해 정함. 비트 전송률(11)과 함께 판단. 측정은 비압축 프레임 토픽 구현 뒤 탐지 쪽이 Pi 에서 수행. — 통신·탐지

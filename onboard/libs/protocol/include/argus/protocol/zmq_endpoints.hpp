@@ -9,9 +9,9 @@
 
 namespace argus::protocol {
 
-// PUB: fc/attitude, fc/state, fc/mode_event (onboard 가 bind)
+// PUB: fc/attitude, fc/state, fc/mode_event (mavlink_gateway 가 bind)
 inline constexpr std::string_view kDefaultFcStateEndpoint = "tcp://127.0.0.1:6370";
-// REP: control/mode_request (onboard 가 bind)
+// REP: control/mode_request (mavlink_gateway 가 bind)
 inline constexpr std::string_view kDefaultControlModeRequestEndpoint = "tcp://127.0.0.1:6371";
 // PUB: control/setpoint, follow/status (추종 제어가 bind)
 inline constexpr std::string_view kDefaultControlStateEndpoint = "tcp://127.0.0.1:6372";

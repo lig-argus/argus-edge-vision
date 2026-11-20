@@ -13,13 +13,13 @@ sequenceDiagram
     actor op as 운용자
     participant view as VideoView (gcs)
     participant cmd as CommandSender (gcs)
-    participant disp as MavlinkCommandReceiver (onboard)
-    participant ts as TrackStartHandler (onboard)
-    participant fcc as ZmqFollowControlClient (onboard)
-    participant fss as ZmqFollowStatusSubscriber (onboard)
+    participant disp as MavlinkCommandReceiver (mavlink_gateway)
+    participant ts as TrackStartHandler (mavlink_gateway)
+    participant fcc as ZmqFollowControlClient (mavlink_gateway)
+    participant fss as ZmqFollowStatusSubscriber (mavlink_gateway)
     participant srv as ZmqFollowControlServer (추종 제어)
     participant ctl as FollowController (추종 제어)
-    participant mode as MavlinkFlightModeControl (onboard)
+    participant mode as MavlinkFlightModeControl (mavlink_gateway)
     participant fc as FC
 
     op->>view: 박스 클릭
@@ -48,9 +48,9 @@ sequenceDiagram
 ```
 
 - 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)는 REP 응답(`follow/result`)에서 받는다. 사전 검사(형식·세션·기한)에서 거부된 요청은 `command_results` 에 남지 않을 수 있기 때문이다 (#32).
-- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED. TRACK_STOP 으로 취소한 명령은 onboard 가 CANCELLED 를 보내며, 그 뒤 추종 제어가 그 명령에 보고하는 outcome(FAILED)은 ACK 로 보내지 않는다.
+- 이후 진행은 `follow/status.command_results` 에서 같은 command_id 를 찾는다. `outcome` 과 ACK 의 대응: IN_PROGRESS → IN_PROGRESS, SUCCEEDED → ACCEPTED, REJECTED → DENIED [미결 E9], FAILED → FAILED. TRACK_STOP 으로 취소한 명령은 mavlink_gateway 가 CANCELLED 를 보내며, 그 뒤 추종 제어가 그 명령에 보고하는 outcome(FAILED)은 ACK 로 보내지 않는다.
 - 통제기가 ACK 를 1 s 안에 받지 못해 같은 명령 번호(p7)로 다시 보내면(`icd.md` 4.1), `MavlinkCommandReceiver` 가 handler 를 부르지 않고 답한다: 진행 중이면 IN_PROGRESS, 완료 뒤면 보관한 최종 ACK (보낸 쪽과 MAV_CMD 마다 다음 명령까지 보관). 진행 중에 같은 명령이나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이 오면 진행 중 명령을 CANCELLED 로 끝내고 처리. 진행 중인 명령의 IN_PROGRESS 는 1 s 마다 다시 보낸다. 추종 제어로 다시 요청하지 않으므로 pi 5.2 의 같은 command_id 규칙은 두 번째 방어선이다.
-- onboard 검사에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK` + `STATUSTEXT` 로 답한다. 조건 ①④ 는 DENIED, ③⑤ 는 TEMPORARILY_REJECTED (`icd.md` 4.2).
+- mavlink_gateway 검사에서 거부되면 추종 제어로 보내지 않고 바로 `COMMAND_ACK` + `STATUSTEXT` 로 답한다. 조건 ①④ 는 DENIED, ③⑤ 는 TEMPORARILY_REJECTED (`icd.md` 4.2).
 - Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 PX4 가 Offboard 에 들어간다 (`icd.md` 2장). 그 흐름은 2절.
 
 ## 2. 추종 1주기
@@ -61,8 +61,8 @@ sequenceDiagram
     participant trk as UcmcTracker (추적기)
     participant vss as VehicleStateSubscriber (추적기)
     participant ctl as FollowController (추종 제어)
-    participant fct as FcTelemetryPublisher (onboard)
-    participant spr as ZmqVelocitySetpointReceiver·MavlinkVelocitySetpointSink (onboard)
+    participant fct as FcTelemetryPublisher (mavlink_gateway)
+    participant spr as ZmqVelocitySetpointReceiver·MavlinkVelocitySetpointSink (mavlink_gateway)
     participant fc as FC
 
     loop fc/attitude·fc/state 메시지마다 (30 Hz 이상)
@@ -81,7 +81,7 @@ sequenceDiagram
     end
 ```
 
-- 추적기와 추종 제어는 FC 에 직접 보내지 않는다. FC 로 가는 것은 모두 onboard 를 거친다 (`process_interfaces.md` 2.1).
+- 추적기와 추종 제어는 FC 에 직접 보내지 않는다. FC 로 가는 것은 모두 mavlink_gateway 를 거친다 (`process_interfaces.md` 2.1).
 - `ZmqVelocitySetpointReceiver` 는 받은 최신 setpoint 를 20 Hz 로 `MavlinkVelocitySetpointSink` 에 넘기고, sink 는 `FcCommandGate` 가 허용하면 보낸다. `valid_until` 이 지나면 4절과 같이 속도 0 과 Hold 요청.
 
 ## 3. 영상 프레임 1장 송신·수신
@@ -122,10 +122,10 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant fc as FC
-    participant fct as FcTelemetryPublisher (onboard)
-    participant spr as MavlinkVelocitySetpointSink (onboard)
+    participant fct as FcTelemetryPublisher (mavlink_gateway)
+    participant spr as MavlinkVelocitySetpointSink (mavlink_gateway)
     participant ctl as FollowController (추종 제어)
-    participant asr as ArgusStatusReporter (onboard)
+    participant asr as ArgusStatusReporter (mavlink_gateway)
     participant gcs as TelemetryModel·ArgusStatusModel (gcs)
 
     Note over fc,fct: FC telemetry 가 오지 않음
@@ -140,15 +140,15 @@ sequenceDiagram
 ```
 
 - 링크가 다시 연결되어도 추종을 자동으로 재개하지 않는다. FAULT 에서는 운용자의 명시적 TRACK_STOP 을 받고 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤에만 HOLD_WAIT 로 돌아간다 (`icd.md` 6장, `state_machine.md`).
-- onboard 는 추종 제어의 보고와 관계없이 FC 상태를 스스로 확인해 위험한 송신을 막는다 (`icd.md` 6.6).
-- 경로가 FC → mavlink-router → onboard 이므로 mavlink-router 가 멈춰도 같은 흐름이 된다. 이때는 통제기 링크도 함께 끊긴다.
+- mavlink_gateway 는 추종 제어의 보고와 관계없이 FC 상태를 스스로 확인해 위험한 송신을 막는다 (`icd.md` 6.6).
+- 경로가 FC → mavlink-router → mavlink_gateway 이므로 mavlink-router 가 멈춰도 같은 흐름이 된다. 이때는 통제기 링크도 함께 끊긴다.
 
 ## 검토 필요 사항
 
 1. 해소 (0.3): 1절의 Offboard 진입 실패(요청 실패, ACK 실패, 실제 모드 확인 시간 초과)는 outcome=FAILED → ACK FAILED, `mission_state` FAULT (`icd.md` 4.2).
 2. 해소 (0.3): TRACK_START 는 FC 가 실제 Hold 이거나 유효한 Position 인계를 거쳤을 때만 수락 (`icd.md` 4.2 ⑥).
 3. 2절: `ctl` 이 `fc/attitude` 를 프레임 시각에 맞춰 쓰는지, 최신 메시지를 쓰는지는 추적·추종 담당의 내부 설계.
-4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 onboard 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(2 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
+4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 mavlink_gateway 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(2 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
 
 ## 변경 이력
 

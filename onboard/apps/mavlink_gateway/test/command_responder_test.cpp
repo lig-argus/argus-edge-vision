@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "argus/mavlink.h"
-#include "argus/onboard/mavlink_command_handler.hpp"
+#include "argus/mavlink_gateway/mavlink_command_handler.hpp"
 
-namespace argus::onboard {
+namespace argus::mavlink_gateway {
 namespace {
 
 class CommandResponderTest : public ::testing::Test {
@@ -133,4 +133,4 @@ TEST_F(CommandResponderTest, ResponderSharedByCallbacksFailsWhenLastCallbackIsDr
 }
 
 }  // namespace
-}  // namespace argus::onboard
+}  // namespace argus::mavlink_gateway

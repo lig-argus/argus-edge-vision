@@ -29,32 +29,32 @@ inline constexpr int kVisionNpuInputJpegQueueDepth = kDefaultQueueDepth;
 // 탐지 → 추적기, 영상 송신부
 inline constexpr std::string_view kPerceptionObservations = "perception/observations";
 inline constexpr int kPerceptionObservationsQueueDepth = kDefaultQueueDepth;
-// 추적기 → 추종 제어, onboard, 영상 송신부
+// 추적기 → 추종 제어, mavlink_gateway, 영상 송신부
 inline constexpr std::string_view kTrackingTracks = "tracking/tracks";
 inline constexpr int kTrackingTracksQueueDepth = kDefaultQueueDepth;
-// 추적기 → onboard
+// 추적기 → mavlink_gateway
 inline constexpr std::string_view kTrackingStatus = "tracking/status";
 inline constexpr int kTrackingStatusQueueDepth = kDefaultQueueDepth;
-// onboard → 추적기, 추종 제어
+// mavlink_gateway → 추적기, 추종 제어
 inline constexpr std::string_view kFcAttitude = "fc/attitude";
 inline constexpr int kFcAttitudeQueueDepth = kDefaultQueueDepth;
-// onboard → 추적기, 추종 제어
+// mavlink_gateway → 추적기, 추종 제어
 inline constexpr std::string_view kFcState = "fc/state";
 inline constexpr int kFcStateQueueDepth = kDefaultQueueDepth;
-// onboard → 추종 제어
+// mavlink_gateway → 추종 제어
 inline constexpr std::string_view kFcModeEvent = "fc/mode_event";
 inline constexpr int kFcModeEventQueueDepth = kDefaultQueueDepth;
-// 추종 제어 → onboard
+// 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kControlSetpoint = "control/setpoint";
 inline constexpr int kControlSetpointQueueDepth = kDefaultQueueDepth;
-// 추종 제어 → onboard
+// 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kFollowStatus = "follow/status";
 inline constexpr int kFollowStatusQueueDepth = kDefaultQueueDepth;
 
 // 요청-응답 (요청 → 응답)
-// 추종 제어 → onboard
+// 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kControlModeRequest = "control/mode_request";
-// onboard → 추종 제어
+// mavlink_gateway → 추종 제어
 inline constexpr std::string_view kFollowCommand = "follow/command";
 
 }  // namespace argus::protocol

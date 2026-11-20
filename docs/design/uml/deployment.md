@@ -18,14 +18,14 @@ flowchart LR
         direction TB
         router[mavlink-router<br/>+ 설정 파일]
         vtx[영상 송신부 실행 파일<br/>GStreamer 1.24 + gst-rtsp-server]
-        onboard[onboard 실행 파일<br/>+ 설정 파일]
+        mavlink_gateway[mavlink_gateway 실행 파일<br/>+ 설정 파일]
         follow[추종 제어 실행 파일]
         tracker[UCMC 추적기 실행 파일]
         vision[탐지 프로세스<br/>C++ 실행 파일 + Python 3.12 venv<br/>hailort 4.23.0]
         relay[argus_preview_udp_relay<br/>RTSP 전환 전 미리보기]
         model[(모델 파일 .hef<br/>+ 클래스 라벨 파일)]
         npu[(Hailo-8 NPU<br/>/dev/hailo0)]
-        router ~~~ vtx ~~~ onboard ~~~ follow ~~~ tracker ~~~ vision ~~~ relay
+        router ~~~ vtx ~~~ mavlink_gateway ~~~ follow ~~~ tracker ~~~ vision ~~~ relay
     end
     subgraph gcs_node [통제기 PC — OS 미결 1]
         gcs[gcs 실행 파일<br/>Qt + GStreamer 런타임]
@@ -47,7 +47,7 @@ flowchart LR
 |---|---|---|---|---|
 | FC 보드 | — | PX4 v1.16 펌웨어, 파라미터 | 통신 (설정) | 펌웨어 업데이트는 하지 않는다. 파라미터 변경은 배포 문서에 기록 |
 | Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 `onboard/config/mavlink-router/` (UART ↔ UDP 14540, 14550, 14551. 비행 중 QGC 입력 차단, 정비용 덮어쓰기 파일) | 통신 | `icd.md` 1.2, `onboard/config/mavlink-router/README.md` |
-| Raspberry Pi | Ubuntu 24.04 | onboard 실행 파일, 설정 파일 (`source` ↔ `ARGUS_SENSOR` 대응, Scan 기본값, 두절 시간) | 통신 | `process_interfaces.md` 3장, `icd.md` 4.2 |
+| Raspberry Pi | Ubuntu 24.04 | mavlink_gateway 실행 파일, 설정 파일 (`source` ↔ `ARGUS_SENSOR` 대응, Scan 기본값, 두절 시간) | 통신 | `process_interfaces.md` 3장, `icd.md` 4.2 |
 | Raspberry Pi | Ubuntu 24.04 | 추종 제어 실행 파일 | 추적·추종 | |
 | Raspberry Pi | Ubuntu 24.04 | UCMC 추적기 실행 파일 | 추적·추종 | |
 | Raspberry Pi | Ubuntu 24.04, Python 3.12 venv(OpenCV, pyzmq, HailoRT Python), hailort 4.23.0 + hailort-pcie-driver 4.23.0, i3 SDK(수동 설치) | 탐지 프로세스(C++ 실행 파일 + Python 코드), 모델 파일 `yolox_s_leaky_v7.3.hef`, 클래스 라벨 파일 | 탐지 | `video.md` 8장, `class_vision.md`. 모델 파일과 i3 SDK 는 저장소에 두지 않는다 (`models/` 는 목록만) |

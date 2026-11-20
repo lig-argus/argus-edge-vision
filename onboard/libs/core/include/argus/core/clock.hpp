@@ -1,5 +1,5 @@
 // 시각을 읽는 인터페이스
-// 규약: docs/design/uml/class_onboard.md 1절
+// 규약: docs/design/uml/class_mavlink_gateway.md 1절
 // 구현: SteadyClock (core), 테스트용 FakeClock (core_testing)
 // 사용: 두절 판정(2 s, 3 s), 유효 기한(valid_until_monotonic_ns) 검사 등 시간을 다루는 모든 onboard
 // 코드

@@ -1,8 +1,8 @@
-// onboard 가 FC, 통제기와 MAVLink 메시지를 주고받는 연결 인터페이스
+// mavlink_gateway 가 FC, 통제기와 MAVLink 메시지를 주고받는 연결 인터페이스
 // 규약: docs/spec/icd.md 1장 (mavlink-router 의 UDP 127.0.0.1:14540),
-// docs/design/uml/class_onboard.md 1절 구현: (다음 PR) UdpMavlinkConnection, 테스트용
-// FakeMavlinkConnection (onboard test/) 사용: FcTelemetryPublisher, TimeSync,
-// MavlinkCommandReceiver, GcsLinkMonitor 등 onboard 의 MAVLink 처리 클래스
+// docs/design/uml/class_mavlink_gateway.md 1절 구현: (다음 PR) UdpMavlinkConnection, 테스트용
+// FakeMavlinkConnection (mavlink_gateway test/) 사용: FcTelemetryPublisher, TimeSync,
+// MavlinkCommandReceiver, GcsLinkMonitor 등 mavlink_gateway 의 MAVLink 처리 클래스
 #ifndef ARGUS_ONBOARD_MAVLINK_CONNECTION_HPP_
 #define ARGUS_ONBOARD_MAVLINK_CONNECTION_HPP_
 
@@ -12,7 +12,7 @@
 #include "argus/core/subscription.hpp"
 #include "argus/mavlink.h"
 
-namespace argus::onboard {
+namespace argus::mavlink_gateway {
 
 // FC 와 통제기의 메시지가 한 UDP 포트로 섞여 온다. 보낸 쪽은 메시지의 sysid, compid 로 구분한다
 // (FC = sysid 1, 통제기 = sysid 250, docs/spec/icd.md 1.1).
@@ -37,6 +37,6 @@ public:
     [[nodiscard]] virtual core::Subscription subscribe(std::uint32_t msgid, Handler handler) = 0;
 };
 
-}  // namespace argus::onboard
+}  // namespace argus::mavlink_gateway
 
 #endif  // ARGUS_ONBOARD_MAVLINK_CONNECTION_HPP_

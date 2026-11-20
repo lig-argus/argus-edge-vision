@@ -1,6 +1,6 @@
 # mavlink-router 설정
 
-RPi 에서 FC 의 UART 를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, onboard(UDP 14540), 통제기(UDP 14550), QGC(UDP 14551)로 중계한다 (`docs/spec/icd.md` 1.2).
+RPi 에서 FC 의 UART 를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, mavlink_gateway(UDP 14540), 통제기(UDP 14550), QGC(UDP 14551)로 중계한다 (`docs/spec/icd.md` 1.2).
 
 | 파일 | 용도 |
 |---|---|
@@ -56,9 +56,9 @@ sudo journalctl -u mavlink-router -n 30
 ss -ulnp | grep mavlink-routerd
 ```
 
-- `ss` 에 14550, 14551 이 표시되어야 한다 (14540 은 onboard 가 여는 포트라 라우터 쪽에는 표시되지 않는다).
+- `ss` 에 14550, 14551 이 표시되어야 한다 (14540 은 mavlink_gateway 가 여는 포트라 라우터 쪽에는 표시되지 않는다).
 - 통제기를 RPi Wi-Fi 에 붙이고 14550 으로 HEARTBEAT 를 보내면 FC telemetry 가 통제기에 도착한다. 통제기가 먼저 보내야 라우터가 통제기 주소를 인식한다.
-- onboard 를 실행하면 14540 으로 FC 메시지가 수신된다.
+- mavlink_gateway 를 실행하면 14540 으로 FC 메시지가 수신된다.
 - QGC 입력 차단: 비행 설정(`main.conf` 만)에서 QGC 로 파라미터 하나를 바꾸면 FC 에 반영되지 않고, 정비 설정(`config.d/qgc-maintenance.conf` 추가)에서는 반영되어야 한다. 기체에서 확인한다.
 
 ## QGC 로 파라미터, 보정하기 (정비)

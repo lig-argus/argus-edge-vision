@@ -17,7 +17,7 @@ flowchart LR
     vision[탐지 프로세스]
     tracker[UCMC 추적기]
     follow[추종 제어]
-    gcs_link[onboard 통제기 통신]
+    gcs_link[mavlink_gateway 통제기 통신]
     vtx[영상 송신부]
     relay[argus_preview_udp_relay]
 
@@ -47,11 +47,11 @@ flowchart LR
 
 - `vision/npu_input/jpeg` 은 이 그림의 영상 송신부가 구독하지 않는다 (점선 없음). 지금 실기체에서는 영상 송신기 `argus_main_gcs_video` 가 이 토픽과 `tracking/tracks` 를 받아 통제기에 보내며, 영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용이다 (`process_interfaces.md` 5.1).
 
-### 1.2 FC 상태와 제어 (onboard FC 통신 ↔ 추적기·추종 제어)
+### 1.2 FC 상태와 제어 (mavlink_gateway FC 통신 ↔ 추적기·추종 제어)
 
 ```mermaid
 flowchart LR
-    fc_link[onboard FC 통신]
+    fc_link[mavlink_gateway FC 통신]
     tracker[UCMC 추적기]
     follow[추종 제어]
 
@@ -76,11 +76,11 @@ flowchart LR
     i_setpoint -.-> fc_link
 ```
 
-### 1.3 추종 명령과 추종 상태 (onboard 통제기 통신 ↔ 추종 제어)
+### 1.3 추종 명령과 추종 상태 (mavlink_gateway 통제기 통신 ↔ 추종 제어)
 
 ```mermaid
 flowchart LR
-    gcs_link[onboard 통제기 통신]
+    gcs_link[mavlink_gateway 통제기 통신]
     follow[추종 제어]
     vtx[영상 송신부]
 
@@ -101,14 +101,14 @@ flowchart LR
 | `perception/observations` | 탐지 | 추적기, 영상 송신부 | |
 | `vision/overlay/jpeg` | 탐지 | `argus_preview_udp_relay` | 박스 그린 JPEG, 최대 15 FPS. RTSP 전환 전까지 `argus_preview_udp_relay` 가 구독해 UDP 로 지상 미리보기에 보낸다 |
 | `vision/npu_input/jpeg` | 탐지 | (지금 실기체는 `argus_main_gcs_video`) | Hailo 입력 영상 JPEG. 지금 실기체 HEF 는 640×480 1채널이라 원본과 같은 크기의 흑백이고, 640×640 HEF 를 쓰면 레터박스라 박스 좌표계가 원본 픽셀과 다르다 |
-| `tracking/tracks` | 추적기 | 추종 제어, onboard 통제기 통신, 영상 송신부 | |
-| `tracking/status` | 추적기 | onboard 통제기 통신 | `ARGUS_SENSOR_STATUS` 보고에 사용 |
-| `fc/attitude`, `fc/state` | onboard FC 통신 | 추적기, 추종 제어 | 30 Hz 이상 |
-| `fc/mode_event` | onboard FC 통신 | 추종 제어 | 엔드포인트 **[미결 1]** (`process_interfaces.md` 7장) |
-| `control/setpoint` | 추종 제어 | onboard FC 통신 | 20 Hz, 유효 시간 포함 |
-| `follow/status` | 추종 제어 | onboard 통제기 통신, (영상 송신부) | 영상 송신부 구독은 선택 표적 강조가 필요할 때만 (`process_interfaces.md` 5.3) |
-| `follow/command` (REQ/REP) | 추종 제어 | onboard 통제기 통신 | track_start·stop·search |
-| `control/mode_request` (REQ/REP) | onboard FC 통신 | 추종 제어 | OFFBOARD·HOLD, Hold 중 heading |
+| `tracking/tracks` | 추적기 | 추종 제어, mavlink_gateway 통제기 통신, 영상 송신부 | |
+| `tracking/status` | 추적기 | mavlink_gateway 통제기 통신 | `ARGUS_SENSOR_STATUS` 보고에 사용 |
+| `fc/attitude`, `fc/state` | mavlink_gateway FC 통신 | 추적기, 추종 제어 | 30 Hz 이상 |
+| `fc/mode_event` | mavlink_gateway FC 통신 | 추종 제어 | 엔드포인트 **[미결 1]** (`process_interfaces.md` 7장) |
+| `control/setpoint` | 추종 제어 | mavlink_gateway FC 통신 | 20 Hz, 유효 시간 포함 |
+| `follow/status` | 추종 제어 | mavlink_gateway 통제기 통신, (영상 송신부) | 영상 송신부 구독은 선택 표적 강조가 필요할 때만 (`process_interfaces.md` 5.3) |
+| `follow/command` (REQ/REP) | 추종 제어 | mavlink_gateway 통제기 통신 | track_start·stop·search |
+| `control/mode_request` (REQ/REP) | mavlink_gateway FC 통신 | 추종 제어 | OFFBOARD·HOLD, Hold 중 heading |
 
 ## 2. RPi 밖 (MAVLink, RTSP)
 
@@ -116,7 +116,7 @@ flowchart LR
 flowchart LR
     FC[FC PX4]
     router[mavlink-router]
-    subgraph onboard [onboard]
+    subgraph mavlink_gateway [mavlink_gateway]
         fc_link[FC 통신]
         gcs_link[통제기 통신]
     end
@@ -150,7 +150,7 @@ flowchart LR
 | 인터페이스 | provided | required | 내용 |
 |---|---|---|---|
 | UART TELEM2 | FC | mavlink-router | 모든 MAVLink. RPi 쪽은 라우터만 연다 (`icd.md` 1.2) |
-| UDP 14540 | mavlink-router | onboard FC 통신 (telemetry 수신, setpoint·모드 송신), onboard 통제기 통신 (`ARGUS_*` 송신, `COMMAND_LONG` 수신) | onboard 가 compid 191·195 로 나눠 쓴다 (`icd.md` 1.1) |
+| UDP 14540 | mavlink-router | mavlink_gateway FC 통신 (telemetry 수신, setpoint·모드 송신), mavlink_gateway 통제기 통신 (`ARGUS_*` 송신, `COMMAND_LONG` 수신) | mavlink_gateway 가 compid 191·195 로 나눠 쓴다 (`icd.md` 1.1) |
 | UDP 14550 | mavlink-router | 통제기 | telemetry·`ARGUS_STATUS`·`ARGUS_SENSOR_STATUS`·`COMMAND_ACK` 수신, `HEARTBEAT`·`COMMAND_LONG`·비행 명령 송신 |
 | UDP 14551 | mavlink-router | QGC | telemetry 만. QGC 명령은 라우터가 FC 로 보내지 않는다 |
 | RTSP | 영상 송신부 | 통제기 | RTP/JPEG 영상 트랙 + ONVIF XML 메타데이터 트랙 (`docs/spec/video.md`) |

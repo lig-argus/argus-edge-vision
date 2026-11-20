@@ -12,9 +12,9 @@
 #include "argus/core/subscription.hpp"
 #include "argus/core_testing/fake_poller.hpp"
 #include "argus/mavlink.h"
-#include "argus/onboard/mavlink_connection.hpp"
+#include "argus/mavlink_gateway/mavlink_connection.hpp"
 
-namespace argus::onboard {
+namespace argus::mavlink_gateway {
 
 class FakeMavlinkConnection : public IMavlinkConnection {
 public:
@@ -74,6 +74,6 @@ private:
     bool send_result_ = true;
 };
 
-}  // namespace argus::onboard
+}  // namespace argus::mavlink_gateway
 
 #endif  // ARGUS_ONBOARD_TEST_FAKE_MAVLINK_CONNECTION_HPP_

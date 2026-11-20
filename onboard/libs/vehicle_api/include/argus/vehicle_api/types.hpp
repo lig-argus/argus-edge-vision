@@ -10,8 +10,8 @@
 
 namespace argus::vehicle_api {
 
-// 요청마다 고유한 명령 ID (process_interfaces.md 5.2.1). 요청자는 onboard 하나이고 uint64 만 쓴다.
-// seq, fc_epoch 등 다른 uint64 값과 바꿔 넣지 못하도록 별도 타입으로 둔다.
+// 요청마다 고유한 명령 ID (process_interfaces.md 5.2.1). 요청자는 mavlink_gateway 하나이고 uint64
+// 만 쓴다. seq, fc_epoch 등 다른 uint64 값과 바꿔 넣지 못하도록 별도 타입으로 둔다.
 struct CommandId {
     std::uint64_t value = 0;
 
@@ -22,7 +22,7 @@ struct CommandId {
 // 프로세스 사이 REQ/REP 요청 하나를 가리키는 값 (process_interfaces.md 3장 공통 필드).
 // command_id 가 어느 세션, 어느 FC 연결의 것인지 session_id, seq, fc_epoch 가 한정한다.
 // 받는 쪽은 결과에 이 값을 그대로 남기고, 응답을 요청에 맞출 때 비교한다.
-// 통제기의 MAVLink 명령(onboard 의 CommandRequest)의 식별자가 아니다
+// 통제기의 MAVLink 명령(mavlink_gateway 의 CommandRequest)의 식별자가 아니다
 struct RequestId {
     CommandId command_id;
     std::string session_id;
@@ -43,7 +43,7 @@ enum class Sensor : std::uint8_t {
     Eo = 2,
 };
 
-// PX4 비행 모드 (docs/spec/icd.md 부록 A). HEARTBEAT.custom_mode 해석은 onboard 가 한다
+// PX4 비행 모드 (docs/spec/icd.md 부록 A). HEARTBEAT.custom_mode 해석은 mavlink_gateway 가 한다
 enum class FlightMode : std::uint8_t {
     Unknown,
     Manual,
@@ -67,7 +67,7 @@ struct Attitude {
     double pitch_rate_rad_s = 0.0;
     double yaw_rate_rad_s = 0.0;
     std::uint32_t fc_time_boot_ms = 0;
-    // onboard 가 FC 메시지를 처음 받은 시각. 다시 발행할 때 덮어쓰지 않는다
+    // mavlink_gateway 가 FC 메시지를 처음 받은 시각. 다시 발행할 때 덮어쓰지 않는다
     std::int64_t received_monotonic_ns = 0;
     // TIMESYNC 로 FC 시각을 RPi monotonic clock 으로 바꾼 값. TIMESYNC 가 무효이면 nullopt
     std::optional<std::int64_t> fc_time_monotonic_ns;
@@ -83,7 +83,7 @@ struct LocalPosition {
     double vel_north_m_s = 0.0;
     double vel_east_m_s = 0.0;
     double vel_down_m_s = 0.0;
-    std::int64_t received_monotonic_ns = 0;  // onboard 가 이 메시지를 처음 받은 시각
+    std::int64_t received_monotonic_ns = 0;  // mavlink_gateway 가 이 메시지를 처음 받은 시각
     std::uint64_t fc_epoch = 0;
 };
 
@@ -91,7 +91,7 @@ struct LocalPosition {
 // 지면이나 물체까지의 값이다. 기체가 기울면 수직 높이와 다르다
 struct DownwardDistance {
     double distance_m = 0.0;
-    std::int64_t received_monotonic_ns = 0;  // onboard 가 이 메시지를 처음 받은 시각
+    std::int64_t received_monotonic_ns = 0;  // mavlink_gateway 가 이 메시지를 처음 받은 시각
     std::uint64_t fc_epoch = 0;
 };
 
@@ -100,7 +100,7 @@ struct GlobalPosition {
     double lat_deg = 0.0;
     double lon_deg = 0.0;
     double alt_m = 0.0;
-    std::int64_t received_monotonic_ns = 0;  // onboard 가 이 메시지를 처음 받은 시각
+    std::int64_t received_monotonic_ns = 0;  // mavlink_gateway 가 이 메시지를 처음 받은 시각
     std::uint64_t fc_epoch = 0;
 };
 
@@ -109,7 +109,7 @@ struct FlightStatus {
     FlightMode mode = FlightMode::Unknown;
     bool armed = false;
     bool in_air = false;
-    std::int64_t received_monotonic_ns = 0;  // onboard 가 이 메시지를 처음 받은 시각
+    std::int64_t received_monotonic_ns = 0;  // mavlink_gateway 가 이 메시지를 처음 받은 시각
     std::uint64_t fc_epoch = 0;
 };
 
@@ -147,7 +147,7 @@ struct VelocitySetpoint {
     double right_m_s = 0.0;
     double down_m_s = 0.0;
     double yaw_rate_rad_s = 0.0;
-    // 이 시각이 지나면 onboard 는 이 값을 쓰지 않고 속도 0 을 보낸 뒤 Hold 를 요청한다
+    // 이 시각이 지나면 mavlink_gateway 는 이 값을 쓰지 않고 속도 0 을 보낸 뒤 Hold 를 요청한다
     std::int64_t valid_until_monotonic_ns = 0;
 };
 
@@ -188,7 +188,7 @@ struct ScanRequest {
 enum class StopReason : std::uint8_t {
     Operator,  // 운용자의 TRACK_STOP
     LinkLoss,  // 통제기 링크 두절
-    Onboard,   // onboard 판단 (독립 감시 등)
+    Onboard,   // mavlink_gateway 판단 (독립 감시 등)
 };
 
 // 추종 명령의 결과 (process_interfaces.md 5.2.1 outcome)

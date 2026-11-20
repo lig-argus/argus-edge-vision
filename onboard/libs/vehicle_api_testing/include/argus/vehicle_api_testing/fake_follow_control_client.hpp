@@ -1,6 +1,6 @@
 // 테스트용 IFollowControlClient. 보낸 명령을 기록하고, 테스트가 넣은 결과를 FakePoller 를 거쳐
 // process_events() 안에서 handler 에 전달한다. 결과를 넣지 않으면 timeout 에 nullopt.
-// onboard 의 TrackStartHandler 등 명령 handler 테스트가 추종 제어 대신 쓴다
+// mavlink_gateway 의 TrackStartHandler 등 명령 handler 테스트가 추종 제어 대신 쓴다
 #ifndef ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_CLIENT_HPP_
 #define ARGUS_VEHICLE_API_TESTING_FAKE_FOLLOW_CONTROL_CLIENT_HPP_
 

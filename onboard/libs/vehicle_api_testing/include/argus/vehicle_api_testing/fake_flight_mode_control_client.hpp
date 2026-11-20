@@ -1,6 +1,6 @@
 // 테스트용 IFlightModeControlClient. 보낸 요청을 기록하고, 테스트가 넣은 응답을 FakePoller 를 거쳐
 // process_events() 안에서 handler 에 전달한다. 응답을 넣지 않으면 timeout 에 nullopt.
-// 추종 제어(FollowController) 테스트가 onboard 대신 쓴다
+// 추종 제어(FollowController) 테스트가 mavlink_gateway 대신 쓴다
 #ifndef ARGUS_VEHICLE_API_TESTING_FAKE_FLIGHT_MODE_CONTROL_CLIENT_HPP_
 #define ARGUS_VEHICLE_API_TESTING_FAKE_FLIGHT_MODE_CONTROL_CLIENT_HPP_
 

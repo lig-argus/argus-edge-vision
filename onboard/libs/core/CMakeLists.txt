@@ -1,5 +1,5 @@
 # 프로세스 공통 기반: IClock, SteadyClock, IPoller, Subscription, HandlerList, EventLoop
-# (docs/design/uml/class_onboard.md 1절). 통신 종류(ZeroMQ, MAVLink)를 모른다.
+# (docs/design/uml/class_mavlink_gateway.md 1절). 통신 종류(ZeroMQ, MAVLink)를 모른다.
 # 헤더는 include/argus/core/ 에 두고 #include "argus/core/<파일>.hpp" 로 부른다. namespace 는 argus::core
 add_library(argus_core STATIC src/event_loop.cpp)
 add_library(argus::core ALIAS argus_core)

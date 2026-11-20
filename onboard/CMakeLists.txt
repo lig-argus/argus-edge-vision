@@ -1,4 +1,4 @@
-# Raspberry Pi 에서 도는 프로세스(onboard, 영상 송신부, 추종 제어, 추적기)와 그 공용 라이브러리.
+# Raspberry Pi 에서 도는 프로세스(mavlink_gateway, 영상 송신부, 추종 제어, 추적기)와 그 공용 라이브러리.
 # 통제기(gcs/)와 별도인 CMake 프로젝트이다. 탐지 프로세스(vision/)는 Python 이고, 여기서는 그 C++ 전처리
 # 라이브러리만 빌드한다.
 # 구조와 모듈 규칙: README.md "onboard 구조와 빌드", CONTRIBUTING.md 0.4
@@ -47,7 +47,7 @@ add_subdirectory(libs/vehicle_api_testing)
 add_subdirectory(libs/vehicle_api_zmq)
 
 # 실행 파일 (프로세스 하나에 폴더 하나)
-add_subdirectory(apps/onboard)
+add_subdirectory(apps/mavlink_gateway)
 add_subdirectory(apps/video_sender)
 add_subdirectory(apps/follow_controller)
 add_subdirectory(apps/tracker)
