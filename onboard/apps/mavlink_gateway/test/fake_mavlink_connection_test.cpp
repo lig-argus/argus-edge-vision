@@ -75,7 +75,7 @@ TEST_F(FakeMavlinkConnectionTest, EveryHandlerOfSameMsgidReceives) {
 }
 
 TEST_F(FakeMavlinkConnectionTest, ReleasedSubscriptionStopsDelivery) {
-    int received = 0;
+    std::int32_t received = 0;
     core::Subscription subscription = connection_.subscribe(
         MAVLINK_MSG_ID_HEARTBEAT, [&](const mavlink_message_t&) { ++received; });
 
