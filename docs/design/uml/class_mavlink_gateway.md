@@ -1,11 +1,11 @@
-# Class Diagram — onboard
+# Class Diagram — mavlink_gateway
 
 | 항목 | 내용 |
 |---|---|
 | 참조 문서 | `docs/spec/icd.md` 1·2·3·4·5·6장, `docs/spec/process_interfaces.md` 3·5·6장 |
 | 표기 | Mermaid `classDiagram`. `<<interface>>` 는 순수 가상 클래스. `<\|..` 구현, `*--` 소유, `..>` 사용. 멤버는 책임을 보이는 것만 적고 전체 목록이 아니다 |
-| 범위 | onboard 프로세스 하나. 추종 제어 쪽 어댑터는 `class_follow.md`, 영상 송신부는 `class_video.md` |
-| 코드 | `onboard/libs/core`(시계, 루프, Subscription), `onboard/libs/bus`(통신 인터페이스), `onboard/libs/protocol`(토픽·요청-응답 이름, queue_depth, ZeroMQ 기본 엔드포인트), `onboard/libs/vehicle_api`(프로세스 사이 인터페이스), `onboard/apps/onboard`(이 문서의 2·3절) |
+| 범위 | mavlink_gateway 프로세스 하나. 추종 제어 쪽 어댑터는 `class_follow.md`, 영상 송신부는 `class_video.md` |
+| 코드 | `onboard/libs/core`(시계, 루프, Subscription), `onboard/libs/bus`(통신 인터페이스), `onboard/libs/protocol`(토픽·요청-응답 이름, queue_depth, ZeroMQ 기본 엔드포인트), `onboard/libs/vehicle_api`(프로세스 사이 인터페이스), `onboard/apps/mavlink_gateway`(이 문서의 2·3절) |
 
 ## 1. 공통 인터페이스 (MAVLink, bus, 시계, 실행 루프)
 
@@ -92,9 +92,9 @@ classDiagram
     ZmqPoller ..> UdpMavlinkConnection : UDP 소켓도 함께 기다림
 ```
 
-- `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryPublisher`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 onboard 만 쓰므로 `apps/onboard/test/` 에 있다.
+- `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryPublisher`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 mavlink_gateway 만 쓰므로 `apps/mavlink_gateway/test/` 에 있다.
 - `IBus` 는 프로세스가 붙는 메시지 통로이며 토픽 발행자, 구독자, 요청하는 쪽, 응답하는 쪽을 만든다 (ROS 2 rmw 의 node, DDS 의 DomainParticipant 에 해당). main 에서 하나를 만들어 주입하고, 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 `IBus` 와 넷은 바뀌지 않는다. 구현별 설정(주소, QoS 프로파일)은 구현 클래스의 생성자 인자다. bus 는 바이트(`BusMessage{topic, body, binary}`)만 나르고, 직렬화 ↔ 구조체 변환은 어댑터가 한다. 메시지 정의(`.proto`)와 생성 코드는 `protocol` 모듈에 있다. `publish` 는 기다리지 않으며 보내지 못했을 때만 false 를 반환한다. true 가 모든 구독자의 수신을 뜻하지는 않는다. `request` 는 응답을 기다리지 않고 바로 반환하며 응답은 `on_reply` 로 받는다. 모든 구현이 따라야 하는 contract 는 `bus/bus.hpp` 파일 상단 주석.
-- 모든 handler(토픽 구독, 요청-응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. onboard 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
+- 모든 handler(토픽 구독, 요청-응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. mavlink_gateway 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
 - `Subscription` 은 모든 등록 함수(`subscribe`, `serve`, `request`, `add_periodic`)가 반환하는 RAII handle 이다. 객체가 사라지면 등록이 해제된다.
 - `IClock` 은 두절·유효 시간 판정(2 s, 3 s, `valid_until_monotonic_ns`)을 테스트에서 기다리지 않고 검사하기 위한 것이다. 테스트용 `FakeClock`, `FakePoller` 는 `core_testing`, `FakeBus` 는 `bus_testing` 에 있다.
 - 토픽·RPC 이름과 기본 포트는 문자열을 직접 쓰지 않고 `protocol` 모듈의 상수를 쓴다.
@@ -186,12 +186,12 @@ classDiagram
 | `MavlinkVelocitySetpointSink` | `IVelocitySetpointSink` 구현. `IFcCommandGate::allow` 가 허용하면 SET_POSITION_TARGET_LOCAL_NED 로 인코드해 송신. 거부면 보내지 않는다 (거부 뒤 안전 동작은 받는 쪽 규약, pi 6장) | icd 2장 |
 | `ZmqFlightModeControlServer` | `control/mode_request` REQ 를 받아 `IFlightModeControl` 을 부르고 `FlightModeReply` 를 REP 로 보냄 | pi 5.2 |
 | `MavlinkFlightModeControl` | `IFlightModeControl` 구현. allow 가 허용하면 DO_SET_MODE·DO_REPOSITION 송신, 응답은 수락 여부. COMMAND_ACK 와 HEARTBEAT 의 실제 모드를 확인해 `fc/mode_event`(실제 모드, 요청 command_id, Offboard 이탈 원인) 발행 | pi 5.2, icd 4.2·4.3 |
-| `IFcCommandGate`, `FcCommandGate` | FC 로 나가는 명령이 반드시 거치는 한 곳. `FcCommand`(종류, 세션, `valid_until_monotonic_ns`, 모두 `vehicle_api` 값)를 받아 송신권(`FcCommandAuthority`), FC 상태·RC 개입(`OnboardWatchdog`), 유효 시간 순서로 확인하고 `Verdict`(허용, 거부 원인)를 돌려준다. MAVLink 를 모른다. 테스트용 `FakeFcCommandGate` 는 `apps/onboard/test/` | icd 5장, 6.6, pi 6장 |
+| `IFcCommandGate`, `FcCommandGate` | FC 로 나가는 명령이 반드시 거치는 한 곳. `FcCommand`(종류, 세션, `valid_until_monotonic_ns`, 모두 `vehicle_api` 값)를 받아 송신권(`FcCommandAuthority`), FC 상태·RC 개입(`OnboardWatchdog`), 유효 시간 순서로 확인하고 `Verdict`(허용, 거부 원인)를 돌려준다. MAVLink 를 모른다. 테스트용 `FakeFcCommandGate` 는 `apps/mavlink_gateway/test/` | icd 5장, 6.6, pi 6장 |
 | `FcCommandAuthority` | FC 제어 명령 송신권. 통제기 제어권(sysid 250)과 별개. 다른 소유자가 있으면 시작 요청을 거부하고, 세션 변경·RC 개입·폐기 뒤에는 이전 권한으로 보내지 못하게 함 | icd 5장, pi 6장 |
 | `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입을 스스로 확인. RC 개입 우선, 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않음. Scan 회전 중 감시 시간 안에 새 heading 요청이 없으면 회전을 멈춤 | icd 6.6, 6.4 ⓒ, pi 6장 |
 | `HealthState` | `ARGUS_STATUS.health` 비트의 현재 값 | icd 3.1 |
 
-- `IVelocitySetpointSink`, `IFlightModeControl` 은 `vehicle_api` 의 인터페이스다(`class_follow.md`). 추종 제어 쪽에서는 같은 인터페이스를 ZeroMQ 로 보내는 어댑터가 구현하고, onboard 에서는 MAVLink 로 보내는 클래스가 구현한다.
+- `IVelocitySetpointSink`, `IFlightModeControl` 은 `vehicle_api` 의 인터페이스다(`class_follow.md`). 추종 제어 쪽에서는 같은 인터페이스를 ZeroMQ 로 보내는 어댑터가 구현하고, mavlink_gateway 에서는 MAVLink 로 보내는 클래스가 구현한다.
 - gate 의 근거: Autoware `vehicle_cmd_gate`(차량으로 나가는 명령이 거치는 한 노드), Apollo `guardian`(통과 또는 차단). 판정은 내부 값으로 하고 전송 형식은 바깥 클래스에서만 다루는 것은 두 사례와 PX4(`mavlink_receiver` 가 받는 즉시 uORB 값으로)가 같다.
 
 ## 3. 통제기 통신 (compid 195)
@@ -291,10 +291,10 @@ classDiagram
 | `ControlAuthority` | 제어권 sysid(250) 판정, `control_sysid` 값 | icd 5장 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | icd 4.2 ④ |
 | `ZmqFollowControlClient` | `IFollowControlClient` 구현. `follow/command` 요청에 `RequestHeader`(`RequestId` 와 유효 기한)를 넣어 `IRequester::request` 로 보내고, REP 의 `follow/result` 를 `FollowResult` 로 바꿔 handler 에 전달. 응답 시간 초과는 nullopt | pi 5.2.1, 6장 |
-| `IFollowStatusSubscriber`, `ZmqFollowStatusSubscriber` | `follow/status` 를 한 번 구독해 최신 값을 두고(`latest()`), 바뀔 때 등록된 handler(`ArgusStatusReporter`, 명령 handler)에 전달(`subscribe()` → `Subscription`). `IVehicleTelemetry` 와 같은 모양(한 번 받아 나눔: MAVSDK `Telemetry`). 테스트용 `FakeFollowStatusSubscriber` 는 `apps/onboard/test/` 에 두고 테스트가 `FollowStatus` 값을 바로 넣는다 | pi 5.1.2 |
+| `IFollowStatusSubscriber`, `ZmqFollowStatusSubscriber` | `follow/status` 를 한 번 구독해 최신 값을 두고(`latest()`), 바뀔 때 등록된 handler(`ArgusStatusReporter`, 명령 handler)에 전달(`subscribe()` → `Subscription`). `IVehicleTelemetry` 와 같은 모양(한 번 받아 나눔: MAVSDK `Telemetry`). 테스트용 `FakeFollowStatusSubscriber` 는 `apps/mavlink_gateway/test/` 에 두고 테스트가 `FollowStatus` 값을 바로 넣는다 | pi 5.1.2 |
 | `ArgusStatusReporter` | `follow/status` 의 `mission_state`·`target_state`·`selected`·스캔 진행을 ARGUS_STATUS 로 1 Hz + 변경 시 1회. `follow/status` 3 s 두절 → FAULT 보고와 Hold 요청 | icd 3.1, 6.4 |
 | `ArgusSensorStatusReporter` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시 | icd 3.1 |
-| `SensorSourceMap` | `source` 문자열 ↔ `ARGUS_SENSOR` 대응표 (onboard 설정) | pi 3장 |
+| `SensorSourceMap` | `source` 문자열 ↔ `ARGUS_SENSOR` 대응표 (mavlink_gateway 설정) | pi 3장 |
 | `GcsLinkMonitor` | 통제기 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`, 추종·Scan 중이면 TRACK_STOP 과 같은 절차 | icd 6.1 |
 
 - 받는 쪽 이름: 받아서 다른 곳으로 넘기면 `…Receiver`(`ZmqVelocitySetpointReceiver`), 최신 값을 들고 나눠 주면 `…Subscriber`(`ZmqFollowStatusSubscriber`, `ZmqVehicleTelemetrySubscriber`), 응답하면 `…Server`.
@@ -314,7 +314,7 @@ classDiagram
 
 1. 해소 (0.5): `ZmqFollowControlClient` 의 응답 시간 초과는 `IFollowControlClient` 호출마다 `timeout` 인자로 준다. 값은 실행 파일 PR 에서 설정으로.
 2. `LatestTracks` 의 "최신" 기준 시간 (아키텍처 문서 2.3 값).
-3. 해소 (0.5): 모듈은 `core`·`bus`·`protocol`·`vehicle_api`·`vehicle_api_testing`·`apps/onboard` 로 나눴다(위 "코드" 행). `vehicle_api_zmq` 와 실행 파일은 다음 PR.
+3. 해소 (0.5): 모듈은 `core`·`bus`·`protocol`·`vehicle_api`·`vehicle_api_testing`·`apps/mavlink_gateway` 로 나눴다(위 "코드" 행). `vehicle_api_zmq` 와 실행 파일은 다음 PR.
 4. `FcCommandGate` 의 검사가 넷 이상이 되면 검사 클래스 목록(`IFcCommandCheck` 배열, PX4 `commander/HealthAndArmingChecks` 방식)으로 바꾼다. 속도·yaw rate 절대 한계(Autoware final guard)는 규약에 생기면 gate 에 둔다.
 5. `MavlinkCommandReceiver` 의 IN_PROGRESS 재송신 최소 간격(progress 가 자주 바뀔 때)과 `CommandResponder` 가 Receiver 보다 오래 살 때의 처리(생성 순서 또는 weak 참조)는 구현 PR 에서 정한다.
 

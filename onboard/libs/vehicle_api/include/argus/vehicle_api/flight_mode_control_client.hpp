@@ -16,7 +16,8 @@
 namespace argus::vehicle_api {
 
 // 호출하는 쪽이 한 스레드 루프 안에 있어 응답을 기다리며 멈출 수 없으므로, 요청을 보내고 바로
-// 반환하며 응답은 handler 로 받는다. 받는 쪽(onboard)이 구현하는 IFlightModeControl 과 짝이다.
+// 반환하며 응답은 handler 로 받는다. 받는 쪽(mavlink_gateway)이 구현하는 IFlightModeControl 과
+// 짝이다.
 // - handler 는 core::IPoller::process_events() 안에서 정확히 한 번 불린다.
 //   응답이 timeout 안에 오지 않으면 nullopt 로 불린다.
 // - 반환된 Subscription 이 먼저 사라지면 handler 는 불리지 않는다. 보낸 요청은 취소되지 않는다.

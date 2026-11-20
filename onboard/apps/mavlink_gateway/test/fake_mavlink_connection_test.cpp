@@ -11,9 +11,9 @@
 #include "argus/core_testing/fake_poller.hpp"
 #include "argus/mavlink.h"
 // 인터페이스 헤더가 ZeroMQ, UDP 없이 컴파일되는지 함께 확인한다
-#include "argus/onboard/mavlink_command_handler.hpp"
+#include "argus/mavlink_gateway/mavlink_command_handler.hpp"
 
-namespace argus::onboard {
+namespace argus::mavlink_gateway {
 namespace {
 
 constexpr std::uint8_t kFcSysid = 1;
@@ -97,4 +97,4 @@ TEST_F(FakeMavlinkConnectionTest, RecordsSentMessagesAndResult) {
 }
 
 }  // namespace
-}  // namespace argus::onboard
+}  // namespace argus::mavlink_gateway

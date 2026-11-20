@@ -1,5 +1,5 @@
 // 실행 파일 main() 의 공통 루프: 소켓 이벤트 처리, 주기 작업, 정지
-// 규약: docs/design/uml/class_onboard.md 1절
+// 규약: docs/design/uml/class_mavlink_gateway.md 1절
 #ifndef ARGUS_CORE_EVENT_LOOP_HPP_
 #define ARGUS_CORE_EVENT_LOOP_HPP_
 

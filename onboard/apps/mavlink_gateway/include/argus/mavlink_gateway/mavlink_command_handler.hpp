@@ -13,7 +13,7 @@
 
 #include "argus/mavlink.h"
 
-namespace argus::onboard {
+namespace argus::mavlink_gateway {
 
 // 받은 명령과 보낸 쪽
 struct CommandRequest {
@@ -122,6 +122,6 @@ public:
     virtual void handle(const CommandRequest& request, CommandResponder responder) = 0;
 };
 
-}  // namespace argus::onboard
+}  // namespace argus::mavlink_gateway
 
 #endif  // ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_

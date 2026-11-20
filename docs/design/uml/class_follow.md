@@ -95,15 +95,15 @@ classDiagram
 | 클래스 | 구현 담당 | 책임 | 출처 |
 |---|---|---|---|
 | `IVehicleTelemetry` | 인터페이스: 통신 | 기체 상태 스냅샷(값마다 수신 시각과 fc_epoch), 프레임 시각에 맞춘 자세, local 위치, 하향 거리 조회(조회 시점 기준 200 ms 이내인 값 중 프레임 시각에 가장 가까운 것, 그 차가 50 ms 이내. 보간하지 않는다. 최근 값의 보관과 조회 시점은 구현 `ZmqVehicleTelemetrySubscriber` 가 맡는다), 비행 모드 이벤트 구독(`Subscription` 반환, handler 는 `process_events()` 안에서) | pi 4장, 5.1, `class_tracker.md` |
-| `IVelocitySetpointSink` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환. onboard 쪽 구현은 `MavlinkVelocitySetpointSink`(`class_onboard.md` 2절) | pi 4장 |
-| `IFlightModeControlClient` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading 요청. 호출은 바로 반환하고 응답(`FlightModeReply`: command_id, 수락 여부, 원인)은 `on_reply` 로, 시간 초과는 nullopt. 실제 전환은 `IVehicleTelemetry` 의 모드 이벤트로. onboard 쪽 짝은 `IFlightModeControl`(동기, `MavlinkFlightModeControl` 구현) | pi 4장, 5.2 |
-| `IFollowControl` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 바로 반환. 표적 존재·상태·FC 조건 검사는 구현이 한다. onboard 쪽 짝은 `IFollowControlClient`(비동기, `ZmqFollowControlClient` 구현) | pi 4장, icd 4.1 |
+| `IVelocitySetpointSink` | 인터페이스: 통신 | FRD 속도·yaw 속도·유효 시간. 매 주기 호출, 즉시 반환. mavlink_gateway 쪽 구현은 `MavlinkVelocitySetpointSink`(`class_mavlink_gateway.md` 2절) | pi 4장 |
+| `IFlightModeControlClient` | 인터페이스: 통신 | Offboard 진입, Hold, Hold 중 heading 요청. 호출은 바로 반환하고 응답(`FlightModeReply`: command_id, 수락 여부, 원인)은 `on_reply` 로, 시간 초과는 nullopt. 실제 전환은 `IVehicleTelemetry` 의 모드 이벤트로. mavlink_gateway 쪽 짝은 `IFlightModeControl`(동기, `MavlinkFlightModeControl` 구현) | pi 4장, 5.2 |
+| `IFollowControl` | 인터페이스: 통신, 구현: 추적·추종 | 추종 시작·종료·Scan. 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 바로 반환. 표적 존재·상태·FC 조건 검사는 구현이 한다. mavlink_gateway 쪽 짝은 `IFollowControlClient`(비동기, `ZmqFollowControlClient` 구현) | pi 4장, icd 4.1 |
 | `Zmq*` 어댑터 | 통신 | 위 인터페이스를 `process_interfaces.md` 5장 토픽·REQ/REP 로 구현. 받기만 하면 `…Subscriber`, 응답하면 `…Server` | pi 2장 |
 | (CMake 타깃) | 통신 | 인터페이스 넷은 `argus::vehicle_api`(`core` 의 `Subscription` 에만 의존), `Zmq*` 어댑터는 `argus::vehicle_api_zmq`(`vehicle_api`·`bus` 링크)로 나눈다. `FollowController` 와 그 단위 테스트는 `vehicle_api`·`vehicle_api_testing` 만 링크해 ZeroMQ·protobuf 에 의존하지 않는다 (#35 리뷰) | — |
 | `ZmqFollowControlServer` | 통신 | `follow/command` REP 를 받아 `IFollowControl` 호출, `FollowResult` 를 `follow/result` 로 응답 | pi 5.2 |
 | `FollowStatusPublisher` | 통신 | `follow/status` 1 Hz + 변경 시, `command_results` 포함 | pi 5.1.2 |
 | `FollowController` | 추적·추종 | 임무·표적 상태(`state_machine.md`), setpoint 계산. 내부 구조는 담당자가 `class_follow.md` 에 추가 | pi 2장 |
-| `Fake*` | 통신 | 테스트용. SITL·기체 없이 `FollowController` 를 gtest 로 검사. `argus::vehicle_api_testing` 에 두고 제품 실행 파일은 링크하지 않는다. Client Fake(`FakeFlightModeControlClient`, onboard 용 `FakeFollowControlClient`)는 `FakePoller` 를 받아 테스트가 넣은 응답을 `process_events()` 안에서 전달한다 | pi 4장 |
+| `Fake*` | 통신 | 테스트용. SITL·기체 없이 `FollowController` 를 gtest 로 검사. `argus::vehicle_api_testing` 에 두고 제품 실행 파일은 링크하지 않는다. Client Fake(`FakeFlightModeControlClient`, mavlink_gateway 용 `FakeFollowControlClient`)는 `FakePoller` 를 받아 테스트가 넣은 응답을 `process_events()` 안에서 전달한다 | pi 4장 |
 
 ## SOLID 대응
 
@@ -112,9 +112,9 @@ classDiagram
 | S | 어댑터 하나 = 토픽(요청) 하나 | `ZmqVehicleTelemetrySubscriber` 는 구독만, `ZmqVelocitySetpointSink` 는 발행만 |
 | O | `IFollowControl` | 새 행동(예: Scan 변형)은 메서드 추가로, FC 통신 코드는 바꾸지 않음 (pi 4장) |
 | L | `Zmq*` ↔ `Fake*` | 같은 contract(즉시 반환, 유효 시간, 응답 코드, handler 는 `process_events()` 안에서) |
-| — | 스레드 | 추종 제어 프로세스에 적용되는 규칙은 "handler 는 통신 객체를 소유한 스레드의 `process_events()` 안에서만" 이다 (CONTRIBUTING 0.4). 스레드 수와 감시 스레드는 추종 제어가 정한다. 프로세스 전체를 스레드 하나로 두는 규칙은 onboard 프로세스에만 적용한다 |
+| — | 스레드 | 추종 제어 프로세스에 적용되는 규칙은 "handler 는 통신 객체를 소유한 스레드의 `process_events()` 안에서만" 이다 (CONTRIBUTING 0.4). 스레드 수와 감시 스레드는 추종 제어가 정한다. 프로세스 전체를 스레드 하나로 두는 규칙은 mavlink_gateway 프로세스에만 적용한다 |
 | I | 인터페이스 넷으로 분리, 구현용·호출용 분리 | 추적기는 `IVehicleTelemetry` 만, 추종 제어는 넷 모두 (pi 4장 "인터페이스 분리"). RPC 는 구현하는 쪽(동기)과 호출하는 쪽(비동기)이 다른 인터페이스를 봄 |
-| D | `FollowController`, CMake 타깃 | 인터페이스에만 의존하고, 빌드에서도 `vehicle_api`(인터페이스)만 링크한다. 프로세스 배치를 바꿔도(onboard 안으로 합쳐도) 추종 제어 코드는 그대로 (pi 2.1 "의존 역전") |
+| D | `FollowController`, CMake 타깃 | 인터페이스에만 의존하고, 빌드에서도 `vehicle_api`(인터페이스)만 링크한다. 프로세스 배치를 바꿔도(mavlink_gateway 안으로 합쳐도) 추종 제어 코드는 그대로 (pi 2.1 "의존 역전") |
 
 ## 검토 필요 사항
 

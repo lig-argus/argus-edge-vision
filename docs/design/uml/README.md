@@ -14,7 +14,7 @@
 | `deployment.md` | Deployment Diagram — 장비, 실행 환경(OS·런타임), 설치되는 artifact(실행 파일·설정·모델), 통신 경로 | `docs/spec/icd.md` 1장, `docs/spec/video.md` 1·8장 | 있음 |
 | `component.md` | Component Diagram — 프로세스와 통제기를 컴포넌트로, ZeroMQ 토픽·REQ/REP·MAVLink·RTSP 를 provided·required interface 로 | `docs/spec/process_interfaces.md` 2·5장, `docs/spec/icd.md` 1장 | 있음 |
 | `state_machine.md` | State Machine Diagram — `ARGUS_MISSION_STATE`, `ARGUS_TARGET_STATE` 의 상태와 transition | `docs/spec/icd.md` 3·4·6장, `common/mavlink/message_definitions/argus.xml` | 있음 |
-| `class_onboard.md` | Class Diagram — onboard (공통 인터페이스 `IMavlinkConnection`·ZeroMQ·`IClock`·`EventLoop`, FC 통신, 통제기 통신) | `docs/spec/icd.md`, `docs/spec/process_interfaces.md` 3·5·6장 | 있음 |
+| `class_mavlink_gateway.md` | Class Diagram — mavlink_gateway (공통 인터페이스 `IMavlinkConnection`·ZeroMQ·`IClock`·`EventLoop`, FC 통신, 통제기 통신) | `docs/spec/icd.md`, `docs/spec/process_interfaces.md` 3·5·6장 | 있음 |
 | `class_follow.md` | Class Diagram — 추종 제어의 외부 인터페이스 (`IVehicleTelemetry`·`IVelocitySetpointSink`·`IFlightModeControlClient`·`IFollowControl` 과 ZeroMQ 어댑터) | `docs/spec/process_interfaces.md` 4장 | 있음 (내부는 추적·추종 담당) |
 | `class_tracker.md` | Class Diagram — UCMC 추적기의 외부 인터페이스 (구독·발행) | `docs/spec/process_interfaces.md` 5.1 | 있음 (내부는 추적·추종 담당) |
 | `class_vision.md` | Class Diagram — 탐지 프로세스의 외부 인터페이스 (C++ 과 Python 이 맡는 처리, 발행 토픽 4개)와 Python 쪽 내부 인터페이스(`IPreprocessor`, `IDetector`, `IPreviewSink`)와 구현 | `docs/spec/process_interfaces.md` 5.1, `docs/spec/video.md` 8장 | 있음 |

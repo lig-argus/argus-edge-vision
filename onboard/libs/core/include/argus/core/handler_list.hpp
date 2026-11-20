@@ -1,6 +1,6 @@
 // handler 를 등록해 두고 한 번에 호출하는 목록. subscribe(handler) 로 Subscription 을 반환하는
 // 클래스(FrameCollector 등)가 멤버로 사용한다
-// 규약: docs/design/uml/class_onboard.md 1절 (Subscription)
+// 규약: docs/design/uml/class_mavlink_gateway.md 1절 (Subscription)
 //
 // 규칙
 // - notify() 는 등록된 handler 를 등록 순서대로 호출한다
