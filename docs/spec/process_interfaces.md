@@ -82,7 +82,7 @@ flowchart LR
   - 오래된 요청의 `fc_epoch` 만 최신 값으로 바꿔 다시 보내지 않는다. 바뀐 `fc_epoch` 의 `fc/attitude`·`fc/state` 메시지를 받아 조건을 다시 확인한 뒤 새 요청(새 `command_id`)으로 보낸다.
 - 모드 요청은 **수락**(REP)과 **실제 전환 완료**(이벤트 토픽)를 구분한다.
 - 버전: 필드 추가는 그대로 한다. 받는 쪽은 모르는 필드를 무시하고 없는 필드는 기본값으로 읽는다 (protobuf 가 보장한다). 필드 번호는 바꾸지 않고, 지운 필드의 번호는 `.proto` 에 `reserved` 로 남겨 다시 쓰지 않는다. 필드의 의미나 단위를 바꿔야 하면 새 필드를 추가하고 옛 필드를 `reserved` 로 지운다. 메시지 전체를 호환되지 않게 바꿔야 하면 새 메시지와 새 토픽 이름으로 한다. 값이 없을 수 있는 필드는 `optional` 로 선언하고 받는 쪽은 `has_` 로 확인한다.
-- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽(mavlink_gateway)이 받을 때 rad·m·s 로 바꾼다. `follow/status` 의 `scan_config` 는 SI 필드(`yaw_rate_rad_s`, `sweep_rad`, `timeout_s`)를 쓴다 (5.1.2).
+- 단위: 각도 rad, 각속도 rad/s, 거리 m, 속도 m/s. 좌표는 NED, 기체 기준은 FRD. `.proto` 로 정의한 메시지는 이 단위를 사용하고 필드 이름 끝에 단위를 붙인다 (`yaw_rad`, `alignment_s`). 기존 메시지에 남아 있는 deg·cm·ms 값(`tracking/tracks` 의 `ground_pose` 등)은 받는 쪽(mavlink_gateway)이 받을 때 rad·m·s 로 바꾼다. `follow/status` 의 `scan_config` 는 SI 필드(`yaw_rate_rad_s`, `sweep_rad`, `timeout_s`)를 쓴다 (5.1.2).
 - 영상 해상도: IR 카메라 영상은 640×480 (image_width 640, image_height 480). 박스 좌표는 이 원본 픽셀 기준이다.
 - 정수 범위: `track_id`·`generation` 은 1~16,777,215 (2^24−1). MAVLink 명령 매개변수(float)로 손실 없이 전달하기 위한 범위다. `frame_id`·`fc_epoch` 는 uint64.
 - 시계: 프로세스 사이 시각은 RPi `CLOCK_MONOTONIC`. UTC 는 영상 메타데이터(`docs/spec/video.md`)에서만 쓴다.
@@ -114,8 +114,8 @@ flowchart LR
 | `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus_msg/vision_frame_gray8.proto` (헤더 필드는 5.1.5). 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][protobuf 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(JPEG 등) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
 | `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus_msg/vision_overlay_jpeg.proto`. 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
 | `vision/npu_input/jpeg` | 탐지 → 실기체 영상 송신기 `argus_main_gcs_video` (영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용) | 최대 30 FPS | `argus_msg/vision_npu_input_jpeg.proto`. Hailo 에 넣은 입력 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 지금 실기체 HEF 는 입력 640×480 1채널이라 원본과 같은 크기의 흑백 JPEG 이고 lb_scale 1, 패딩 0 이다. 640×640 3채널 HEF 를 쓰면 레터박스 영상이 되어 박스 좌표계가 원본 픽셀과 다르다 |
-| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존, 5.1.4). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
-| `tracking/tracks` | 추적기 → 추종 제어, mavlink_gateway, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1) |
+| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존, 5.1.4). protobuf 정의는 `argus_msg/perception_observations.proto` (5.1.4). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
+| `tracking/tracks` | 추적기 → 추종 제어, mavlink_gateway, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1). protobuf 정의는 `argus_msg/tracking_tracks.proto` (5.1.1) |
 | `tracking/status` | 추적기 → mavlink_gateway | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
 | `fc/attitude` | mavlink_gateway → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
 | `fc/state` | mavlink_gateway → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air. 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
@@ -147,6 +147,13 @@ flowchart LR
 
 - 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
+- protobuf 정의: `onboard/libs/protocol/proto/argus_msg/tracking_tracks.proto` 의 `TrackingTracks`. 위 표의 v5 와 다른 점은 다음과 같다.
+  - `schema`, `clock_domain`, `timestamp_source`, `coordinate_frame`, `exposure_monotonic_ns`, `exposure_time_valid` 는 메시지에 포함하지 않는다 (3장 공통 필드).
+  - `session_id` 는 항상 값이 있는 `string` 이고, `seq`(발행마다 1 증가)를 둔다.
+  - `ground_pose` 는 배열이 아니라 `GroundPose`(north_m, east_m, down_m, roll_rad, pitch_rad, yaw_rad)이며 각도는 rad 다.
+  - `tracks[].ground` 는 `GroundEstimate`(north_m, east_m, var_north_m2, cov_north_east_m2, var_east_m2, alignment_s)이며 시각 차는 s 다. `tracks[].ground_anchor` 는 `GroundAnchor`(anchor_y_ratio, height_m)다.
+  - `tracks[]` 의 class_id, label, confidence 는 `Classification`, 박스 좌표는 `PixelBox`(float)로 정의한다. `tracks[].state` 는 enum `TrackState` 다.
+  - `track_id`, `generation` 은 `uint32` 다.
 
 #### 5.1.2 `follow/status` v1 필드 (2026-10-16 기준)
 
@@ -207,6 +214,12 @@ flowchart LR
 - 지금 추적기의 역직렬화는 필드가 정확히 23개이고 `detections[]` 원소가 8개 필드일 때만 받고, 모르는 필드가 있으면 메시지를 버린다. 그래서 필드를 더하거나 빼면 schema 버전을 올리고 추적기 역직렬화를 같이 바꾼다. 이 제약은 protobuf 로 옮기면 없어진다 (3장).
 - 호환용 필드(seq, captured_*, t_infer_us, t_publish_us)는 다음 버전에서 뺄 수 있다.
 - 탐지 프로세스의 세션(`session_id`)은 C++ 탐지 프로세스가 시작할 때 만들어 Python 작업자와 미리보기 헤더에 이미 쓰고 있지만, 이 메시지에는 아직 없다 **[미결 14]**.
+- protobuf 정의: `onboard/libs/protocol/proto/argus_msg/perception_observations.proto` 의 `PerceptionObservations`. 위 표의 v2 와 다른 점은 다음과 같다.
+  - `session_id` 를 둔다 **[미결 14]**. `seq` 는 발행마다 1 증가하는 값이다.
+  - `schema`, `coordinate_frame`, `observation_kind`, `clock_domain`, `timestamp_source`, `exposure_time_valid` 는 메시지에 포함하지 않는다 (3장 공통 필드. 노출 시각의 유무는 `exposure_monotonic_ns` 의 유무로 확인한다).
+  - 호환용 필드(`captured_*`, `t_infer_us`, `t_publish_us`)와 `detections[].track_id` 는 메시지에 포함하지 않는다.
+  - `source_receive_monotonic_ns`, `exposure_monotonic_ns` 는 `optional` 이다.
+  - `detections[]` 는 `argus_msg/detection.proto` 의 `Detection` 이다.
 
 #### 5.1.5 `vision/frame/gray8` 헤더 필드 (2026-11-13 기준, 실기체 발행 전)
 
