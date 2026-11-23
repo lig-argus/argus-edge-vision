@@ -41,7 +41,7 @@ ARGUS 기술문서는 MIL-STD-498 기반 방위사업청 작성가이드의 순�
 
 ## 2. 참조문서
 
-- 프로젝트 계획서 (멘토: 미사일시스템탐색기연구소 영상탐색기개발단 3팀 김대현 수석연구원)
+- 프로젝트 계획서
 - 방위사업청, 「무기체계 소프트웨어 개발 및 관리 매뉴얼」 별책 「무기체계 소프트웨어 기술문서 작성가이드」, 2020
 - MIL-STD-498, Software Development and Documentation
 - `docs/design/ssdd.md` (SSDD), `docs/requirements/srs.md` (SRS)

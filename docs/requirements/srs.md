@@ -29,7 +29,7 @@ CSCI는 SSDD 4.1절의 체계 구성요소 할당에 따라 식별하였다. 요
 
 ## 2. 참조문서
 
-- 프로젝트 계획서 (멘토: 미사일시스템탐색기연구소 영상탐색기개발단 3팀 김대현 수석연구원)
+- 프로젝트 계획서
 - 방위사업청, 「무기체계 소프트웨어 개발 및 관리 매뉴얼」 별책 「무기체계 소프트웨어 기술문서 작성가이드」, 2020
 - `docs/requirements/sss.md`, `docs/design/ssdd.md` (상위 문서), `docs/design/sdd.md`, `docs/spec/icd.md`, `docs/spec/process_interfaces.md`, `docs/spec/video.md`, `docs/verification/std.md`, `docs/verification/str.md`
 - PX4 Autopilot, MAVLink, HailoRT, GStreamer 공식 문서
