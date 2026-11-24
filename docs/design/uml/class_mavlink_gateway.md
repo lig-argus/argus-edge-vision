@@ -102,7 +102,7 @@ classDiagram
 - 모든 handler(토픽 구독, 요청-응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. mavlink_gateway 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
 - `ZmqBus`, `ZmqPoller` 는 `onboard/libs/bus_zmq` 에 있다 (ZeroMQ 로 통신하는 실행 파일만 링크). `ZmqBus` 는 이름(토픽 또는 요청-응답 이름)마다 엔드포인트 하나를 주소표로 받아, 발행자와 응답하는 쪽은 bind 하고 구독자와 요청하는 쪽은 connect 한다. 한 엔드포인트의 발행자들은 PUB 소켓 하나를 함께 쓴다. `ZmqPoller` 는 ZeroMQ 소켓(`add_socket`)과 file descriptor(`add_fd`)를 함께 기다리고, 정한 시각에 한 번 부르는 타이머(`add_timer_at`)로 요청의 timeout 을 판정한다. 규칙은 `bus_zmq/zmq_bus.hpp`, `zmq_poller.hpp` 파일 상단 주석.
 - `Subscription` 은 모든 등록 함수(`subscribe`, `serve`, `request`, `add_periodic`)가 반환하는 RAII handle 이다. 객체가 사라지면 등록이 해제된다.
-- `IClock` 은 두절·유효 시간 판정(2 s, 3 s, `valid_until_monotonic_ns`)을 테스트에서 기다리지 않고 검사하기 위한 것이다. 테스트용 `FakeClock`, `FakePoller` 는 `core_testing`, `FakeBus` 는 `bus_testing` 에 있다.
+- `IClock` 은 두절·유효 시간 판정(0.5 s, 3 s, `valid_until_monotonic_ns`)을 테스트에서 기다리지 않고 검사하기 위한 것이다. 테스트용 `FakeClock`, `FakePoller` 는 `core_testing`, `FakeBus` 는 `bus_testing` 에 있다.
 - 토픽·RPC 이름과 기본 포트는 문자열을 직접 쓰지 않고 `protocol` 모듈의 상수를 쓴다.
 
 ## 2. FC 통신 (compid 191·195)
@@ -184,7 +184,7 @@ classDiagram
 
     FcTelemetryPublisher ..> IMavlinkConnection : subscribe
     FcTelemetryPublisher ..> ITopicPublisher : fc/attitude, fc/state
-    FcTelemetryPublisher ..> IClock : 2 s 두절
+    FcTelemetryPublisher ..> IClock : 0.5 s 두절
     FcTelemetryPublisher --> HealthState : FC_CONNECTED
     TimeSync ..> IMavlinkConnection : TIMESYNC compid 191
     BusVelocitySetpointSubscriber ..> ITopicSubscriber : control/setpoint
@@ -207,13 +207,13 @@ classDiagram
 
 | 클래스 | 책임 | 출처 |
 |---|---|---|
-| `FcTelemetryPublisher` | FC 메시지를 받아 수신 시각(`received_monotonic_ns`)을 붙여 `fc/attitude`·`fc/state` 로 발행. HEARTBEAT 포함 telemetry 가 2 s 없으면 `FC_CONNECTED = 0` | icd 2장, 6.2, pi 5.1 |
+| `FcTelemetryPublisher` | FC 메시지를 받아 수신 시각(`received_monotonic_ns`)을 붙여 `fc/attitude`·`fc/state` 로 발행. ATTITUDE 가 0.5 s 없으면 `FC_CONNECTED = 0` | icd 2장, 6.2, pi 5.1 |
 | `TimeSync` | compid 191 로 TIMESYNC 요청·응답 대조, `fc_time_monotonic_ns` 변환값 제공 | icd 1.1, 2장 |
 | `IFcStateSource` | FC 의 최신 상태(연결 여부, `fc_epoch`, 자세와 위치와 비행 상태)를 읽는 인터페이스. `fc_epoch` 가 바뀌면 이전 `fc_epoch` 의 값은 삭제되어 새로 받기 전까지 값이 없다. FC 로 명령을 보내는 클래스들은 telemetry 수신 클래스를 직접 참조하지 않고 이 인터페이스만 참조한다. 구현은 `main` 이 telemetry 수신 클래스와 연결한다. 테스트용 `FakeFcStateSource` 는 `apps/mavlink_gateway/test/` | icd 6.2, pi 3장 |
 | `BusVelocitySetpointSubscriber` | `control/setpoint` 를 구독해 `VelocitySetpoint` 로 바꿔 등록된 handler 에 전달 (`vehicle_api_bus` 모듈). `main` 이 `FcControl` 의 `IVelocitySetpointSink::send` 를 등록한다 | pi 5.1 |
 | `BusFlightModeControlServer` | `control/mode_request` 요청을 받아 `IFlightModeControl` 을 부르고 `FlightModeReply` 로 응답 (`vehicle_api_bus` 모듈) | pi 5.2 |
 | `FcCommandState` | mavlink_gateway 가 FC 로 보내는 명령의 상태. 여섯 중 하나이며 상태마다 그 상태의 값만 가진다: `Idle`(FC 를 제어하지 않음), `Entering`(Offboard 진입 명령을 보내고 FC 의 전환을 기다림. 송신권을 가진 세션, command_id, 진입 기한, FC 의 응답 여부), `Following`(FC 가 Offboard 이고 송신권을 가진 세션이 제어), `CancellingEntry`(진입을 취소했으나 FC 가 Offboard 로 바뀌었을 수 있어 속도 0 을 보내며 확인을 기다림. 취소한 진입의 기한), `Hovering`(FC 가 Offboard 이고 mavlink_gateway 가 제자리 유지. 목표 위치와 yaw), `Locked`(FC 가 요청 없이 Offboard 를 벗어남. 해제 전까지 송신하지 않음). FC 제어 명령 송신권은 `Entering` 과 `Following` 의 세션이고, 외부의 모드 변경 기록은 `Locked` 이다 | icd 4.2, 5장, 6.6 |
-| `fc_command_policy` (함수) | 판단 세 가지를 각각 한 곳에서 한다. ① `fc_mode_belief`: mavlink_gateway 가 판단한 FC 의 모드 넷(Offboard, Offboard 아님, 아직 모름, 받지 못함). 비행 상태는 1 Hz 로 오므로 "아직 모름" 은 정상이고, "받지 못함" 은 FC 연결 두절이거나 비행 상태를 받은 지 2 s 초과다. ② 전환: 요청 없이 일어나는 전환(`advance`: `fc_epoch` 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리 유지 목표의 결정)과 요청별 전환(`on_offboard_request`, `on_hold_request`, `on_onboard_stop`, `on_entry_command_answered`, `on_entry_command_send_failed`, `on_lock_release`). 결과는 다음 상태, 실행할 일(`FcCommandEffects`), 거부 원인(`FcCommandDenial`)이다. ③ `select_setpoint`: 주기마다 보낼 setpoint 하나(없음, 추종 제어의 값, 속도 0, 제자리 유지의 목표). 모든 함수는 입력(`FcObservation`: 시각, `fc_epoch`, FC 연결 여부, 비행 상태, 최신 위치, 유효한 setpoint 를 받은 시각, 연속 송신 시간)만으로 결과를 정하며 MAVLink 와 시계를 쓰지 않는다 | icd 4.2, 5장, 6.2, 6.4, 6.6, pi 6장 |
+| `fc_command_policy` (함수) | 판단 세 가지를 각각 한 곳에서 한다. ① `fc_mode_belief`: mavlink_gateway 가 판단한 FC 의 모드 넷(Offboard, Offboard 아님, 아직 모름, 받지 못함). 비행 상태는 1 Hz 로 오므로 "아직 모름" 은 정상이고, "받지 못함" 은 FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과다. ② 전환: 요청 없이 일어나는 전환(`advance`: `fc_epoch` 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리 유지 목표의 결정)과 요청별 전환(`on_offboard_request`, `on_hold_request`, `on_onboard_stop`, `on_entry_command_answered`, `on_entry_command_send_failed`, `on_lock_release`). 결과는 다음 상태, 실행할 일(`FcCommandEffects`), 거부 원인(`FcCommandDenial`)이다. ③ `select_setpoint`: 주기마다 보낼 setpoint 하나(없음, 추종 제어의 값, 속도 0, 제자리 유지의 목표). 모든 함수는 입력(`FcObservation`: 시각, `fc_epoch`, FC 연결 여부, 비행 상태, 최신 위치, 유효한 setpoint 를 받은 시각, 연속 송신 시간)만으로 결과를 정하며 MAVLink 와 시계를 쓰지 않는다 | icd 4.2, 5장, 6.2, 6.4, 6.6, pi 6장 |
 | `FcControl` | `IFlightModeControl`, `IVelocitySetpointSink`, `IStopRequester`, `IFcCommandLockRelease` 구현. `FcCommandState` 하나를 보관하고, 요청과 주기 작업(20 Hz)마다 입력을 모아 `fc_command_policy` 를 부른 뒤 결과를 실행한다: Offboard 진입 명령(DO_SET_MODE)과 setpoint(SET_POSITION_TARGET_LOCAL_NED)의 인코드와 송신, FC 의 응답(COMMAND_ACK) 수신, `subscribe_mode_events` 로 FC 의 모드 변경 전달. 입력은 주기 작업과 요청 처리의 시작에서 새로 읽는다 (요청을 지난 주기의 FC 모드로 판단하지 않음). 주기마다 setpoint 를 하나만 보내며, `Entering`, `Following`, `CancellingEntry`, `Hovering` 에서는 반드시 하나를 보낸다. `offboard_hover()` 는 `Hovering` 에서 위치 setpoint 를 보낸 주기에만 true 다 (`fc/state` 의 `offboard_hover`) | icd 4.2, 4.3, 부록 A, pi 3장, 5.1, 5.2 |
 | `IStopRequester` | mavlink_gateway 가 스스로 정지를 요청하는 인터페이스 (통제기의 TRACK_STOP, 통제기 두절, 추종 제어 상태 보고 두절). 세션과 `fc_epoch` 값이 없고 송신권을 확인하지 않는다. bus 로는 호출할 수 없다 | icd 6.1, 6.4 |
 | `IFcCommandLockRelease` | `Locked` 를 해제하는 인터페이스. 운용자의 명시적 TRACK_STOP 을 처리하는 통제기 명령 handler 가 호출한다. FC 의 비행 상태가 최신일 때만 해제한다 | icd 4.2, 6장 |
@@ -348,7 +348,7 @@ classDiagram
 
 1. 해소 (0.5): `ZmqFollowControlClient` 의 응답 시간 초과는 `IFollowControlClient` 호출마다 `timeout` 인자로 준다. 값은 실행 파일 PR 에서 설정으로.
 2. `LatestTracks` 의 "최신" 기준 시간 (아키텍처 문서 2.3 값).
-3. 해소 (0.5): 모듈은 `core`·`bus`·`protocol`·`vehicle_api`·`vehicle_api_testing`·`apps/mavlink_gateway` 로 나눴다(위 "코드" 행). `vehicle_api_zmq` 와 실행 파일은 다음 PR.
+3. 해소 (0.5): 모듈은 `core`·`bus`·`protocol`·`vehicle_api`·`vehicle_api_testing`·`apps/mavlink_gateway` 로 나눴다(위 "코드" 행). bus 어댑터(`vehicle_api_bus`)와 실행 파일은 다음 PR.
 4. `FcCommandState` 의 상태가 열 개를 넘으면(Position 모드에서 조종을 넘겨받는 절차, 착륙을 mavlink_gateway 가 맡는 경우) 전환 함수 하나로 두지 않고 상태별 클래스나 계층 상태로 나눈다. 속도·yaw rate 절대 한계는 규약에 생기면 `select_setpoint` 다음 단계에 둔다.
 5. `MavlinkCommandReceiver` 의 IN_PROGRESS 재송신 최소 간격(progress 가 자주 바뀔 때)과 `CommandResponder` 가 Receiver 보다 오래 살 때의 처리(생성 순서 또는 weak 참조)는 구현 PR 에서 정한다.
 

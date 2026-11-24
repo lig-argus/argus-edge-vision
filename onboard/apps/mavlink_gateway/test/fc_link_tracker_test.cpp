@@ -27,6 +27,14 @@ protected:
     FcLinkTracker tracker_{clock_, health_};
     std::vector<std::uint64_t> epochs_;
     core::Subscription subscription_;
+
+    // time_boot_ms 는 매번 증가시켜 재부팅으로 판단되지 않게 한다
+    std::int64_t attitude() {
+        return tracker_.on_fc_message(FcTimedMessage::Attitude, ++time_boot_ms_);
+    }
+
+private:
+    std::uint32_t time_boot_ms_ = 0;
 };
 
 TEST_F(FcLinkTrackerTest, StartsDisconnectedWithEpochZero) {
@@ -38,8 +46,8 @@ TEST_F(FcLinkTrackerTest, StartsDisconnectedWithEpochZero) {
     EXPECT_TRUE(epochs_.empty());
 }
 
-TEST_F(FcLinkTrackerTest, FirstMessageConnectsAndStartsEpochOne) {
-    EXPECT_EQ(tracker_.on_fc_message(), kStartNs);
+TEST_F(FcLinkTrackerTest, FirstAttitudeConnectsAndStartsEpochOne) {
+    EXPECT_EQ(attitude(), kStartNs);
 
     EXPECT_TRUE(tracker_.connected());
     EXPECT_EQ(tracker_.fc_epoch(), 1U);
@@ -47,23 +55,42 @@ TEST_F(FcLinkTrackerTest, FirstMessageConnectsAndStartsEpochOne) {
     EXPECT_EQ(epochs_, std::vector<std::uint64_t>{1});
 }
 
-TEST_F(FcLinkTrackerTest, ReturnsReceiveTimeOfEachMessage) {
+TEST_F(FcLinkTrackerTest, MessagesOtherThanAttitudeDoNotConnect) {
+    EXPECT_EQ(tracker_.on_fc_message(), kStartNs);
+    tracker_.on_fc_message(FcTimedMessage::LocalPosition, 100);
+
+    EXPECT_FALSE(tracker_.connected());
+    EXPECT_EQ(tracker_.fc_epoch(), 0U);
+    EXPECT_TRUE(epochs_.empty());
+}
+
+TEST_F(FcLinkTrackerTest, MessagesOtherThanAttitudeDoNotKeepLinkConnected) {
+    attitude();
+    clock_.advance_ns(kFcLinkTimeoutNs);
     tracker_.on_fc_message();
+    tracker_.on_fc_message(FcTimedMessage::LocalPosition, 100);
+    clock_.advance_ns(1);
+
+    EXPECT_FALSE(tracker_.connected());
+}
+
+TEST_F(FcLinkTrackerTest, ReturnsReceiveTimeOfEachMessage) {
+    attitude();
     clock_.advance_ns(123);
     EXPECT_EQ(tracker_.on_fc_message(FcTimedMessage::Attitude, 1), kStartNs + 123);
 }
 
 TEST_F(FcLinkTrackerTest, EpochStaysWhileMessagesArriveWithinTimeout) {
-    tracker_.on_fc_message();
+    attitude();
     clock_.advance_ns(kFcLinkTimeoutNs);
-    tracker_.on_fc_message();
+    attitude();
 
     EXPECT_EQ(tracker_.fc_epoch(), 1U);
     EXPECT_EQ(epochs_.size(), 1U);
 }
 
 TEST_F(FcLinkTrackerTest, CheckTimeoutDetectsLossOnlyAfterTimeout) {
-    tracker_.on_fc_message();
+    attitude();
 
     clock_.advance_ns(kFcLinkTimeoutNs);
     tracker_.check_timeout();
@@ -77,7 +104,7 @@ TEST_F(FcLinkTrackerTest, CheckTimeoutDetectsLossOnlyAfterTimeout) {
 }
 
 TEST_F(FcLinkTrackerTest, ConnectedReflectsTimeoutBeforeCheckTimeoutIsCalled) {
-    tracker_.on_fc_message();
+    attitude();
     clock_.advance_ns(kFcLinkTimeoutNs + 1);
 
     EXPECT_FALSE(tracker_.connected());
@@ -88,11 +115,11 @@ TEST_F(FcLinkTrackerTest, ConnectedReflectsTimeoutBeforeCheckTimeoutIsCalled) {
 }
 
 TEST_F(FcLinkTrackerTest, MessageAfterLossStartsNewEpoch) {
-    tracker_.on_fc_message();
+    attitude();
     clock_.advance_ns(kFcLinkTimeoutNs + 1);
     tracker_.check_timeout();
 
-    tracker_.on_fc_message();
+    attitude();
 
     EXPECT_EQ(tracker_.fc_epoch(), 2U);
     EXPECT_TRUE(tracker_.connected());
@@ -101,10 +128,10 @@ TEST_F(FcLinkTrackerTest, MessageAfterLossStartsNewEpoch) {
 }
 
 TEST_F(FcLinkTrackerTest, MessageAfterTimeoutStartsNewEpochWithoutCheckTimeout) {
-    tracker_.on_fc_message();
+    attitude();
     clock_.advance_ns(kFcLinkTimeoutNs + 1);
 
-    tracker_.on_fc_message();
+    attitude();
 
     EXPECT_EQ(tracker_.fc_epoch(), 2U);
 }
@@ -162,7 +189,7 @@ TEST_F(FcLinkTrackerTest, EpochHandlerSeesNewEpochConnectedStateAndHealth) {
         seen_health = health_.is_set(ARGUS_HEALTH_FC_CONNECTED);
     });
 
-    tracker_.on_fc_message();
+    attitude();
 
     EXPECT_EQ(seen_epoch, 1U);
     EXPECT_TRUE(seen_connected);
@@ -171,7 +198,7 @@ TEST_F(FcLinkTrackerTest, EpochHandlerSeesNewEpochConnectedStateAndHealth) {
 
 TEST_F(FcLinkTrackerTest, DoesNotCallEpochHandlerAfterSubscriptionIsReleased) {
     subscription_.reset();
-    tracker_.on_fc_message();
+    attitude();
     EXPECT_TRUE(epochs_.empty());
 }
 

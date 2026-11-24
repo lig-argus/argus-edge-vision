@@ -129,7 +129,7 @@ sequenceDiagram
     participant gcs as TelemetryModel·ArgusStatusModel (gcs)
 
     Note over fc,fct: FC telemetry 가 오지 않음
-    fct->>fct: 2 s 경과 → FC_CONNECTED = 0
+    fct->>fct: ATTITUDE 0.5 s 없음 → FC_CONNECTED = 0
     fct--)ctl: fc/attitude·fc/state 중단
     spr->>spr: FC 의 비행 상태를 받지 못함 → 추종 제어의 setpoint 대신 제자리 유지 setpoint
     Note over fc: COM_OF_LOSS_T 1 s 뒤 Offboard 이탈, COM_OBL_RC_ACT 동작 (Hold, 미결 D4)
@@ -148,7 +148,7 @@ sequenceDiagram
 1. 해소 (0.3): 1절의 Offboard 진입 실패(요청 실패, ACK 실패, 실제 모드 확인 시간 초과)는 outcome=FAILED → ACK FAILED, `mission_state` FAULT (`icd.md` 4.2).
 2. 해소 (0.3): TRACK_START 는 FC 가 실제 Hold 이거나 유효한 Position 인계를 거쳤을 때만 수락 (`icd.md` 4.2 ⑥).
 3. 2절: `ctl` 이 `fc/attitude` 를 프레임 시각에 맞춰 쓰는지, 최신 메시지를 쓰는지는 추적·추종 담당의 내부 설계.
-4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 mavlink_gateway 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(2 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
+4. 4절: FC telemetry 두절 때 `mission_state` 를 FAULT 로 바꾸는 주체. ICD 6.2 는 mavlink_gateway 의 health 와 setpoint 중단만 정하고, `mission_state` 는 추종 제어가 정한다(`state_machine.md`). 그림은 추종 제어가 `fc/*` 중단을 보고 FAULT 로 바꾸는 것으로 가정했다. 판단 시간(ATTITUDE 0.5 s)을 추종 제어도 같은 값으로 쓰는지 확인 필요.
 
 ## 변경 이력
 

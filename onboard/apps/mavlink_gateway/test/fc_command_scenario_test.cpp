@@ -484,12 +484,25 @@ TEST_F(FcCommandScenarioTest, FollowingStopsAndHoverTakesOverWhenFcLinkIsReporte
     EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask);
 }
 
-TEST_F(FcCommandScenarioTest, FollowingStopsWhenOnlyHeartbeatIsLostForTwoSeconds) {
+TEST_F(FcCommandScenarioTest, FollowingContinuesWhileHeartbeatGapIsShorterThanThreeSeconds) {
+    start_following();
+    const std::string owner = rig_.owner();
+
+    // HEARTBEAT 를 2.5초 받지 못해도 비행 상태를 쓸 수 있는 시간(3초) 안이므로 추종을 이어 간다
+    heartbeat_lost_ = true;
+    steps(50, true, 3.0);
+
+    EXPECT_FALSE(rig_.stopping());
+    EXPECT_EQ(rig_.owner(), owner);
+    EXPECT_EQ(last_setpoint().type_mask, kVelocityAndYawRateMask);
+}
+
+TEST_F(FcCommandScenarioTest, FollowingStopsWhenOnlyHeartbeatIsLostForThreeSeconds) {
     start_following();
 
-    // 자세와 위치는 도착하지만 HEARTBEAT 만 2초 넘게 도착하지 않는 경우 (icd.md 6.2)
+    // 자세와 위치는 도착하지만 HEARTBEAT 만 3초 넘게 도착하지 않는 경우 (icd.md 6.2)
     heartbeat_lost_ = true;
-    steps(45, true, 3.0);
+    steps(65, true, 3.0);
 
     EXPECT_TRUE(rig_.holding_position());
     EXPECT_TRUE(rig_.owner().empty());
