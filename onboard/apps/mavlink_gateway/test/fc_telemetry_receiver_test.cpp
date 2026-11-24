@@ -150,6 +150,7 @@ TEST_F(FcTelemetryReceiverTest, AttitudeCarriesConvertedFcTimeWhileTimeSyncIsVal
 }
 
 TEST_F(FcTelemetryReceiverTest, ConvertsLocalPosition) {
+    attitude(1000);  // 연결을 맺어 fc_epoch 1 로 만든다
     local_position(1000);
 
     ASSERT_EQ(states_.size(), 1U);
@@ -195,10 +196,10 @@ TEST_F(FcTelemetryReceiverTest, IgnoresDistanceOfSensorNotFacingDown) {
 
     EXPECT_TRUE(states_.empty());
     EXPECT_FALSE(receiver_.latest().downward_distance.has_value());
-    EXPECT_TRUE(link_.connected());  // 연결 판단에는 포함
 }
 
 TEST_F(FcTelemetryReceiverTest, FcTimeOfOtherDistanceSensorIsNotUsedForRebootDetection) {
+    attitude(50'000);  // 연결을 맺어 fc_epoch 1 로 만든다
     distance_sensor(50'000, 250, MAV_SENSOR_ROTATION_PITCH_270);
     distance_sensor(49'000, 300, MAV_SENSOR_ROTATION_NONE);  // 다른 센서의 time_boot_ms 가 더 작음
     distance_sensor(50'030, 251, MAV_SENSOR_ROTATION_PITCH_270);
@@ -254,25 +255,42 @@ TEST_F(FcTelemetryReceiverTest, IgnoresMessagesNotFromFc) {
     EXPECT_EQ(link_.fc_epoch(), 0U);
 }
 
-TEST_F(FcTelemetryReceiverTest, EveryFcMessageIsReportedToLinkTracker) {
+TEST_F(FcTelemetryReceiverTest, AttitudeKeepsLinkConnected) {
     attitude(1000);
     EXPECT_TRUE(link_.connected());
     EXPECT_EQ(link_.fc_epoch(), 1U);
 
-    // 각 메시지가 두절 시간 안에 도착하므로 연결이 유지된다
     clock_.advance_ns(kFcLinkTimeoutNs);
-    local_position(1100);
-    clock_.advance_ns(kFcLinkTimeoutNs);
-    global_position(1200);
-    clock_.advance_ns(kFcLinkTimeoutNs);
-    distance_sensor(1300, 100, MAV_SENSOR_ROTATION_PITCH_270);
-    clock_.advance_ns(kFcLinkTimeoutNs);
-    heartbeat(kOffboardCustomMode, 0);
+    attitude(1500);
     clock_.advance_ns(kFcLinkTimeoutNs);
     link_.check_timeout();
 
     EXPECT_TRUE(link_.connected());
     EXPECT_EQ(link_.fc_epoch(), 1U);
+}
+
+TEST_F(FcTelemetryReceiverTest, OtherFcMessagesDoNotKeepLinkConnected) {
+    attitude(1000);
+
+    // ATTITUDE 가 아닌 메시지는 두절 시간 안에 도착해도 연결 판단에 쓰지 않는다 (icd.md 6.2)
+    clock_.advance_ns(kFcLinkTimeoutNs / 2);
+    local_position(1100);
+    global_position(1200);
+    distance_sensor(1300, 100, MAV_SENSOR_ROTATION_PITCH_270);
+    heartbeat(kOffboardCustomMode, 0);
+    clock_.advance_ns(kFcLinkTimeoutNs / 2 + 1);
+    link_.check_timeout();
+
+    EXPECT_FALSE(link_.connected());
+    EXPECT_EQ(link_.fc_epoch(), 1U);
+}
+
+TEST_F(FcTelemetryReceiverTest, OtherFcMessagesBeforeFirstAttitudeDoNotConnect) {
+    heartbeat(kOffboardCustomMode, 0);
+    local_position(1000);
+
+    EXPECT_FALSE(link_.connected());
+    EXPECT_EQ(link_.fc_epoch(), 0U);
 }
 
 TEST_F(FcTelemetryReceiverTest, MessageAfterLinkLossCarriesNewEpochAndOldValuesAreCleared) {

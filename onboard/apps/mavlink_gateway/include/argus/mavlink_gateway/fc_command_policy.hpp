@@ -14,8 +14,9 @@
 namespace argus::mavlink_gateway {
 
 struct FcCommandPolicyConfig {
-    // 받은 후 이 시간이 지난 비행 상태는 쓰지 않는다 (icd.md 6.2)
-    std::int64_t status_max_age_ns = 2'000'000'000;
+    // 받은 후 이 시간이 지난 비행 상태(HEARTBEAT)는 쓰지 않는다 (icd.md 6.2). HEARTBEAT 는 1 Hz
+    // 이므로 연속 세 번을 받지 못한 경우
+    std::int64_t status_max_age_ns = 3'000'000'000;
 
     // Offboard 진입 명령을 송신한 후 이 시간 안에 FC 의 모드가 Offboard 로 확인되지 않으면 그
     // 요청은 실패이다

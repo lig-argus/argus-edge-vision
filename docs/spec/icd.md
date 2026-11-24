@@ -192,7 +192,7 @@ sequenceDiagram
   - Offboard 진입 명령을 보내고 FC 의 전환을 기다리는 중에 정지해야 하면, mavlink_gateway 는 그 진입 요청을 취소하고 속도 0 setpoint 를 바로 보내기 시작한다. FC 가 Offboard 로 바뀌는 시점에 setpoint 가 이미 도착하고 있게 하기 위해서다. FC 가 Offboard 로 바뀌면 제자리 유지로 바꾼다.
   - 제자리 유지의 목표는 자세와 local 위치 값이 최신(받은 뒤 0.2 초 이내)일 때만 정한다. 최신이 아니면 속도 0 setpoint 를 보내고, 값이 최신이 되면 제자리 유지로 바꾼다. 속도 0 을 보내는 동안은 정지 상태가 아니다 (`offboard_hover` = false). 이 경우의 착륙은 E10.
   - 제자리 유지와 속도 0 setpoint 는 FC 연결 두절(6.2)로 판단한 동안에도 계속 보낸다. 멈추면 PX4 가 1 초 뒤 failsafe 로 넘어가기 때문이다. 추종 제어의 속도 setpoint 는 그동안 보내지 않고, mavlink_gateway 가 바로 제자리 유지로 바꾼다.
-  - Offboard 진입 명령을 보내고 FC 의 전환을 기다리는 중에 다음 중 하나가 일어난 경우에도 mavlink_gateway 는 그 진입 요청을 취소하고 속도 0 setpoint 를 바로 보낸다: 추종 제어의 유효한 setpoint 가 없음, FC 의 HEARTBEAT 를 2 초 넘게 받지 못함, FC 가 진입 명령을 거부함(COMMAND_ACK), 확인 시간 초과, 진입 명령의 송신 실패, FC 연결이 다시 됨(`fc_epoch` 변경). FC 가 이미 Offboard 로 바뀌었거나 확인 시간 안에 바뀔 수 있기 때문이다. Offboard 인 HEARTBEAT 를 받으면 제자리 유지로 바꾼다. 이 속도 0 setpoint 는 진입 확인 시간이 지난 뒤에 받은 HEARTBEAT 로 FC 가 Offboard 가 아님을 확인한 때에 멈춘다. 확인 시간 전에 받은 HEARTBEAT 는 FC 가 아직 전환하지 않은 때의 값일 수 있으므로 이 판단에 쓰지 않으며, HEARTBEAT 를 받지 못하는 동안에는 멈추지 않는다. 이 경우는 진입이 이루어지지 않은 것이므로 아래의 "요청 없이 Offboard 를 벗어난 경우" 로 처리하지 않는다. 속도 0 을 보내는 동안의 새 진입 요청은 거부한다.
+  - Offboard 진입 명령을 보내고 FC 의 전환을 기다리는 중에 다음 중 하나가 일어난 경우에도 mavlink_gateway 는 그 진입 요청을 취소하고 속도 0 setpoint 를 바로 보낸다: 추종 제어의 유효한 setpoint 가 없음, FC 의 HEARTBEAT 를 3 초 넘게 받지 못함(6.2), FC 가 진입 명령을 거부함(COMMAND_ACK), 확인 시간 초과, 진입 명령의 송신 실패, FC 연결이 다시 됨(`fc_epoch` 변경). FC 가 이미 Offboard 로 바뀌었거나 확인 시간 안에 바뀔 수 있기 때문이다. Offboard 인 HEARTBEAT 를 받으면 제자리 유지로 바꾼다. 이 속도 0 setpoint 는 진입 확인 시간이 지난 뒤에 받은 HEARTBEAT 로 FC 가 Offboard 가 아님을 확인한 때에 멈춘다. 확인 시간 전에 받은 HEARTBEAT 는 FC 가 아직 전환하지 않은 때의 값일 수 있으므로 이 판단에 쓰지 않으며, HEARTBEAT 를 받지 못하는 동안에는 멈추지 않는다. 이 경우는 진입이 이루어지지 않은 것이므로 아래의 "요청 없이 Offboard 를 벗어난 경우" 로 처리하지 않는다. 속도 0 을 보내는 동안의 새 진입 요청은 거부한다.
   - FC 연결이 다시 된 경우(`fc_epoch` 변경, `docs/spec/process_interfaces.md` 3장) mavlink_gateway 는 FC 제어 명령 송신권과 진행 중인 Offboard 진입 요청을 폐기한다. mavlink_gateway 가 FC 를 Offboard 로 제어하던 중이었으면 제자리 유지 setpoint(위치 값이 최신이 아니면 속도 0)는 새 연결의 첫 HEARTBEAT 를 받을 때까지 계속 보낸다 (진입 명령을 보내고 전환을 기다리던 중이었으면 위 항목을 따른다). 연결이 다시 된 것만으로는 FC 가 Offboard 를 벗어났는지 알 수 없고, FC 로부터의 수신만 끊긴 동안 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있었을 수 있기 때문이다. 첫 HEARTBEAT 의 모드가 Offboard 이면 제자리 유지를 이어 가고 다음 항목의 처리를 하지 않는다. Offboard 가 아니면 그때 setpoint 를 멈추고 다음 항목과 같이 처리한다. 어느 경우에도 다시 추종하려면 새 TRACK_START 가 필요하다. 첫 HEARTBEAT 를 기다리는 시간에는 상한을 두지 않는다 (PX4 는 Offboard 가 아닌 동안 받은 setpoint 를 비행에 쓰지 않는다).
   - mavlink_gateway 가 진입시키지 않았는데 FC 가 Offboard 인 것을 HEARTBEAT 로 안 경우(mavlink_gateway 프로세스가 비행 중 다시 시작함, 외부가 FC 를 Offboard 로 바꿈) mavlink_gateway 는 제자리 유지 setpoint 를 보내기 시작한다. Offboard 인 FC 에 setpoint 가 도착하지 않으면 PX4 가 failsafe 로 넘어가기 때문이다.
   - 제자리 유지 중에 받은 Offboard 진입 요청은 진입 명령 없이 받아들인다. 수락한 뒤에 받은 setpoint 만 FC 로 보내며, 그 첫 setpoint 를 받을 때까지는 제자리 유지를 이어 간다. 진입 확인 시간(3 초) 동안 setpoint 가 오지 않으면 그 세션의 FC 제어 명령 송신권을 폐기한다.
@@ -227,14 +227,17 @@ sequenceDiagram
 | 구간 | 판단 기준 | 두절 시 동작 |
 |---|---|---|
 | 6.1 통제기 → mavlink_gateway | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 정지. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
-| 6.2 mavlink_gateway → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 추종 제어의 속도 setpoint 는 보내지 않고, 제자리 유지 setpoint 로 바꾸어 계속 보낸다 (FC 로부터의 수신만 끊긴 경우 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있을 수 있다). FC 제어 명령 송신권은 폐기한다. 다시 받았을 때의 동작은 4.2 의 정지 상태 항목 |
+| 6.2 FC → mavlink_gateway | ⓐ ATTITUDE 가 **0.5 초** 없음 ⓑ HEARTBEAT 가 **3 초** 없음 | ⓐ: FC 연결 두절. `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 추종 제어의 속도 setpoint 는 보내지 않고, 제자리 유지 setpoint 로 바꾸어 계속 보낸다 (FC 로부터의 수신만 끊긴 경우 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있을 수 있다). FC 제어 명령 송신권은 폐기한다. ⓑ: FC 의 모드를 알 수 없는 것으로 보고 ⓐ 와 같이 제자리 유지로 바꾼다. Offboard 진입을 기다리는 중이면 진입을 취소한다(4.2). 다시 받았을 때의 동작은 4.2 의 정지 상태 항목 |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
 | 6.4 추종 제어 → mavlink_gateway | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: mavlink_gateway 가 setpoint 전달을 멈추고 정지한다. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 정지한다. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 | 6.6 mavlink_gateway 독립 감시 | 추종 제어의 상태 보고와 관계없이 mavlink_gateway 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
 
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). mavlink_gateway 의 6.1 과 독립이다.
-- 두절 시간 값은 Wi-Fi 끊김 길이 측정 뒤 조정한다 [미결 D3].
+- 6.2 의 판단 기준을 둘로 나눈 이유: ATTITUDE 는 30 Hz 이상(2장)으로 오므로 1 Hz 인 HEARTBEAT 보다 FC 연결 두절을 빨리 알 수 있다. 두절 동안 mavlink_gateway 는 기체 상태를 모르는 채 추종 제어의 setpoint 를 전달하게 되므로, 그 시간을 0.5 초(PX4 의 RC 입력 두절 기준 `COM_RC_LOSS_T` 의 기본값과 같음)로 줄인다. FC 의 모드는 HEARTBEAT 로만 알 수 있으므로 ⓑ 를 따로 둔다. 3 초는 통제기 화면의 "연결 끊김" 기준과 같다.
+- 한쪽 방향만 끊긴 경우와 두 방향이 함께 끊긴 경우: 두 방향이 함께 끊기면 FC 는 setpoint 를 받지 못해 `COM_OF_LOSS_T`(1.0 s, 2장) 뒤 스스로 Offboard 를 빠져나간다. FC → mavlink_gateway 방향만 끊기면 FC 는 Offboard 인 채 setpoint 를 계속 받으므로, mavlink_gateway 가 보내는 제자리 유지 setpoint 로 기체가 멈춘다.
+- 6.2 ⓐ 로 두절이 판단되면 진행 중인 추종이 끝나고, 다시 추종하려면 운용자가 표적을 새로 골라야 한다. 따라서 정상 비행 중 ATTITUDE 수신 공백은 0.5 초보다 충분히 짧아야 한다.
+- 6.1 의 두절 시간 값은 Wi-Fi 끊김 길이 측정 뒤 조정한다 [미결 D3].
 - FAULT·MANUAL 에서의 복구: 통신이나 조건이 회복된 것만으로는 복구하지 않는다. 운용자의 명시적 TRACK_STOP 을 받고, 최신 FC 상태·기체의 정지 상태·RC 비개입을 확인한 뒤 HOLD_WAIT 로 돌아간다. 다시 추종하려면 표적을 새로 고르고 TRACK_START 를 보내야 한다.
 
 ## 7. 검토 필요 사항
@@ -251,7 +254,7 @@ sequenceDiagram
 | C | 영상 전송 | RTSP + RTP/H.264 + ONVIF XML 메타데이터 트랙으로 정함. 영상 소스는 박스 없는 비압축 프레임(`vision/frame/gray8`)이며 영상 송신부가 H.264 로 인코딩한다 (#28, #74). 남은 항목(RTSP 서버, 통제기 수신, 포트, Extension 요소 이름 등)은 `docs/spec/video.md` 9장 | 통제기·탐지 |
 | D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. 라우터의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 mavlink_gateway 가 거부한다 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
-| D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
+| D3 | 두절 시간 | 6.1 의 값(3 s)은 현장에서 Wi-Fi 끊김 길이를 측정한 뒤 확정. 6.2 ⓐ 의 0.5 s 는 탐지, 추적, 영상 송신을 모두 실행한 상태에서 ATTITUDE 최대 공백을 측정해 확인 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` 의 값. 지금 규약은 5(Hold)이지만 GPS 가 없는 환경에서는 PX4 가 Hold 를 실행할 수 없어 다음 동작(RTL, Land, Descend 순)으로 넘어간다 (PX4 v1.16 의 failsafe 처리). 값의 후보는 Position(조종기 연결과 local 위치 추정이 유효할 때 조종사에게 넘김)과 Land 이며 기체 시험으로 정한다. 정한 값이 기체 FC 에 적용됐는지도 확인 | 통제기 |
 | D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 의 USB 연결 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
 | D6 | 최종 ACK 보관 시간 | 해소 (0.7): 시간이 아니라 번호 기준으로 보관한다 (다음 명령까지, 더 오래된 번호는 폐기. 4.1 재전송 판단). 링크 지연 측정 조건이 없어졌다. 60 초 상한은 표 정리용 | 통제기 |

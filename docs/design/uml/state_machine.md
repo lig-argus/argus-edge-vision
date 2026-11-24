@@ -56,7 +56,7 @@ transition 의 event [guard] / effect:
 | SCAN_ACTIVE → HOLD_TRANSITION | TRACK_STOP 수신, 통제기 HEARTBEAT 3 s 없음 | — | TRACK_STOP 이면 진행 중이던 SCAN_START 의 ACK CANCELLED, 정지 요청 | `icd.md` 4.1, 4.2, 6.1 |
 | HOLD_TRANSITION → HOLD_WAIT | 정지 상태 확인 | — | ACK ACCEPTED | `icd.md` 4.2 Sequence Diagram |
 | FOLLOW_ACTIVE·SCAN_ACTIVE → MANUAL | Offboard 이탈 | 원인이 조종사 RC 또는 통제기 모드 변경 | — | `icd.md` 4.3, 아키텍처 문서 2.11·2.20 |
-| PREPARING·FOLLOW_ACTIVE·SCAN_ACTIVE → FAULT | FC telemetry 2 s 없음, `follow/status` 3 s 없음, setpoint 유효 시간 초과, Offboard 이탈 | Offboard 이탈은 원인이 failsafe 일 때 (PREPARING 제외) | 정지 요청 | `icd.md` 6.2, 6.4, 4.3, `process_interfaces.md` 6장 |
+| PREPARING·FOLLOW_ACTIVE·SCAN_ACTIVE → FAULT | FC 연결 두절(ATTITUDE 0.5 s 없음) 또는 HEARTBEAT 3 s 없음, `follow/status` 3 s 없음, setpoint 유효 시간 초과, Offboard 이탈 | Offboard 이탈은 원인이 failsafe 일 때 (PREPARING 제외) | 정지 요청 | `icd.md` 6.2, 6.4, 4.3, `process_interfaces.md` 6장 |
 | MANUAL·FAULT → HOLD_WAIT | 운용자의 명시적 TRACK_STOP 수신 | 최신 FC 상태, 기체의 정지 상태, RC 비개입을 모두 확인 | — (추종은 다시 시작하지 않는다. 다시 추종하려면 표적을 새로 고르고 TRACK_START) | `icd.md` 6장 |
 
 ## 2. `ARGUS_TARGET_STATE`
@@ -116,7 +116,7 @@ stateDiagram-v2
 | Hovering | 정한 위치와 yaw 를 목표로 하는 위치 setpoint. 자세와 local 위치가 최신(0.2 s 이내)인 첫 주기에 목표를 정하며, 그 전에는 속도 0 | 없음 |
 | Locked | 없음 | 없음 |
 
-- FC 의 모드는 HEARTBEAT(1 Hz)로만 알 수 있으므로 mavlink_gateway 는 넷 중 하나로 판단한다: Offboard, Offboard 아님, 아직 모름(쓸 수 있는 비행 상태가 아직 없음. 정상), 받지 못함(FC 연결 두절이거나 비행 상태를 받은 지 2 s 초과). "아직 모름" 은 어떤 전환도 일으키지 않는다.
+- FC 의 모드는 HEARTBEAT(1 Hz)로만 알 수 있으므로 mavlink_gateway 는 넷 중 하나로 판단한다: Offboard, Offboard 아님, 아직 모름(쓸 수 있는 비행 상태가 아직 없음. 정상), 받지 못함(FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과). "아직 모름" 은 어떤 전환도 일으키지 않는다.
 - setpoint 송신을 끝내는 전환은 CancellingEntry → Idle 과 Following 또는 Hovering → Locked 뿐이다. 둘 다 FC 가 Offboard 가 아님을 비행 상태로 확인한 경우다.
 - CancellingEntry 는 취소한 진입의 기한 후에 받은 비행 상태만으로 "Offboard 아님" 을 판단한다. 기한 전의 값은 FC 가 아직 전환하지 않은 때의 값일 수 있다.
 - `mission_state` 와의 관계: `fc/state` 의 `offboard_hover` 는 Hovering 에서 위치 setpoint 를 보낸 주기에만 true 다. Locked 가 되면 `fc/mode_event` 로 Offboard 이탈과 원인이 전달되고 추종 제어가 MANUAL 또는 FAULT 를 보고한다.
