@@ -70,7 +70,7 @@ private:
         std::function<void()> task;
     };
     // PeriodicTimer 가 루프보다 오래 살아도 안전하도록, 타이머 목록은 공유 객체에 두고
-    // handle 은 이 객체를 약하게(weak_ptr) 가리킨다
+    // handle 은 이 객체를 소유하지 않고 weak_ptr 로 참조한다
     struct Timers {
         std::map<std::uint64_t, Timer> by_id;
         std::uint64_t next_id = 1;

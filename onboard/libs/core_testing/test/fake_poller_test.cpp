@@ -26,7 +26,7 @@ TEST(FakePollerTest, AdvancesClockByWaitWhenNothingArrives) {
 TEST(FakePollerTest, WakesAtArrivalAndRunsEvent) {
     FakeClock clock;
     FakePoller poller(clock);
-    int handled = 0;
+    std::int32_t handled = 0;
     poller.post_at(10 * kMs, [&handled] { ++handled; });
 
     poller.process_events(milliseconds{30}, milliseconds{5});
@@ -38,7 +38,7 @@ TEST(FakePollerTest, WakesAtArrivalAndRunsEvent) {
 TEST(FakePollerTest, RunsNothingOutsideProcessEvents) {
     FakeClock clock;
     FakePoller poller(clock);
-    int handled = 0;
+    std::int32_t handled = 0;
 
     poller.post([&handled] { ++handled; });
 
@@ -50,7 +50,7 @@ TEST(FakePollerTest, RunsNothingOutsideProcessEvents) {
 TEST(FakePollerTest, KeepsLaterEventsForNextCall) {
     FakeClock clock;
     FakePoller poller(clock);
-    int handled = 0;
+    std::int32_t handled = 0;
     poller.post_at(50 * kMs, [&handled] { ++handled; });
 
     poller.process_events(milliseconds{30}, milliseconds{5});

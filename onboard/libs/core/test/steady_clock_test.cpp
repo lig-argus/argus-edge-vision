@@ -10,7 +10,7 @@ namespace {
 TEST(SteadyClockTest, NeverGoesBackward) {
     const SteadyClock clock;
     std::int64_t previous = clock.now_monotonic_ns();
-    for (int i = 0; i < 1000; ++i) {
+    for (std::int32_t i = 0; i < 1000; ++i) {
         const std::int64_t now = clock.now_monotonic_ns();
         EXPECT_GE(now, previous);
         previous = now;
