@@ -1,6 +1,6 @@
 # mavlink-router 설정
 
-RPi 에서 FC 의 UART 를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, mavlink_gateway(UDP 14540), 통제기(UDP 14550), QGC(UDP 14551)로 중계한다 (`docs/spec/icd.md` 1.2).
+RPi 에서 FC 의 USB 장치를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, mavlink_gateway(UDP 14540), 통제기(UDP 14550), QGC(UDP 14551)로 중계한다 (`docs/spec/icd.md` 1.2).
 
 | 파일 | 용도 |
 |---|---|
@@ -22,25 +22,15 @@ sudo ninja -C build install
 
 `ninja install` 이 `mavlink-routerd` 와 systemd unit `mavlink-router.service` 를 설치한다. unit 은 `/etc/mavlink-router/main.conf` 와 `/etc/mavlink-router/config.d/` 를 읽는다.
 
-UART `/dev/ttyAMA0` 를 mavlink-router 가 사용하려면 리눅스의 시리얼 로그인 셸을 비활성화하고 UART 하드웨어를 활성화해야 한다. PX4 와 ArduPilot 문서의 절차:
+FC 는 USB 케이블로 RPi 에 연결한다. FC 를 연결하면 리눅스의 CDC-ACM 드라이버가 `/dev/ttyACM0` 장치를 만든다. 별도 설정 없이 다음 명령으로 장치를 확인한다.
 
 ```bash
-sudo apt install raspi-config
-sudo raspi-config
+ls -l /dev/ttyACM0
 ```
 
-Interface Options → Serial Port 에서 "login shell over serial" 은 No, "serial port hardware" 는 Yes 를 선택한다. 이어서 `/boot/firmware/config.txt` 끝에 다음 두 줄을 추가하고 재부팅한 뒤 `ls /dev/ttyAMA0` 로 장치를 확인한다.
+장치가 없으면 FC 의 전원과 USB 케이블을 확인한다. 설정 파일과 `docs/spec/icd.md` 1.2 는 `/dev/ttyACM0` 을 사용한다.
 
-```
-enable_uart=1
-dtoverlay=disable-bt
-```
-
-`/dev/serial0` 은 같은 장치를 가리키는 별칭이다. 설정 파일과 `docs/spec/icd.md` 1.2 는 `/dev/ttyAMA0` 을 사용한다.
-
-출처: PX4 user guide "Raspberry Pi Companion with Pixhawk" (Ubuntu 에서 `raspi-config` 설치와 `config.txt` 두 줄), ArduPilot wiki "Communicating with Raspberry Pi via MAVLink" (`raspi-config` 의 두 선택, mavlink-router `Baud = 921600`).
-
-설정 파일 설치 (저장소 루트에서). `mavlink-routerd` 를 직접 실행하고 있으면 그 프로세스를 먼저 종료한다. 같은 UART 와 포트를 두 개가 열 수 없다.
+설정 파일 설치 (저장소 루트에서). `mavlink-routerd` 를 직접 실행하고 있으면 그 프로세스를 먼저 종료한다. 같은 장치와 포트를 두 개가 열 수 없다.
 
 ```bash
 sudo mkdir -p /etc/mavlink-router/config.d

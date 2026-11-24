@@ -31,7 +31,7 @@ flowchart LR
         gcs[gcs 실행 파일<br/>Qt + GStreamer 런타임]
         qgc[QGC]
     end
-    px4 <-->|UART TELEM2 921600| router
+    px4 <-->|USB| router
     router <-->|Wi-Fi UDP 14550| gcs
     router -->|Wi-Fi UDP 14551| qgc
     vtx -->|Wi-Fi RTSP| gcs
@@ -46,7 +46,7 @@ flowchart LR
 | 장비 | 실행 환경 | artifact | 담당 | 비고 |
 |---|---|---|---|---|
 | FC 보드 | — | PX4 v1.16 펌웨어, 파라미터 | 통신 (설정) | 펌웨어 업데이트는 하지 않는다. 파라미터 변경은 배포 문서에 기록 |
-| Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 `onboard/config/mavlink-router/` (UART ↔ UDP 14540, 14550, 14551. 비행 중 QGC 입력 차단, 정비용 덮어쓰기 파일) | 통신 | `icd.md` 1.2, `onboard/config/mavlink-router/README.md` |
+| Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 `onboard/config/mavlink-router/` (USB ↔ UDP 14540, 14550, 14551. 비행 중 QGC 입력 차단, 정비용 덮어쓰기 파일) | 통신 | `icd.md` 1.2, `onboard/config/mavlink-router/README.md` |
 | Raspberry Pi | Ubuntu 24.04 | mavlink_gateway 실행 파일, 설정 파일 (`source` ↔ `ARGUS_SENSOR` 대응, Scan 기본값, 두절 시간) | 통신 | `process_interfaces.md` 3장, `icd.md` 4.2 |
 | Raspberry Pi | Ubuntu 24.04 | 추종 제어 실행 파일 | 추적·추종 | |
 | Raspberry Pi | Ubuntu 24.04 | UCMC 추적기 실행 파일 | 추적·추종 | |
@@ -60,7 +60,7 @@ flowchart LR
 
 | 경로 | 매체 | 프로토콜 | 출처 |
 |---|---|---|---|
-| FC ↔ RPi | UART (TELEM2), 921600 bps | MAVLink 2 | `icd.md` 1.2 |
+| FC ↔ RPi | USB (CDC-ACM, `/dev/ttyACM0`) | MAVLink 2 | `icd.md` 1.2 |
 | IR 카메라 → RPi | USB 2.0 (i3system, USB ID 0547:0080 HYUNY) | i3 SDK 가 usbfs 로 직접 읽음 (커널 드라이버 없음) | #33 리뷰 (탐지 담당) |
 | RPi 안 | PCIe Gen3 x1 (8 GT/s), `/dev/hailo0` | HailoRT 4.23.0 | #33 리뷰 (탐지 담당) |
 | RPi ↔ 통제기 PC | Wi-Fi | UDP 14550 (MAVLink), UDP 14551 (QGC), RTSP + RTP/UDP, UDP 미리보기 JPEG(`argus_preview_udp_relay`, RTSP 전환 전까지) | `icd.md` 1.2, `video.md` 1장 |
@@ -71,7 +71,7 @@ flowchart LR
 2. 해소 (0.2): IR 카메라는 USB 2.0, Hailo-8 은 PCIe Gen3 x1 (탐지 담당 확인).
 3. 설정 파일의 이름과 위치(`/etc/argus/…` 등)는 `onboard/` 구조가 정해진 뒤 적는다.
 4. `argus_preview_udp_relay` 를 RTSP 전환 뒤 없앨지, 그 전까지 `onboard/` 로 옮길지, 담당과 UDP 포트.
-5. 해소 (0.2): 운용(비행) 연결은 `icd.md` 1.2 대로 UART TELEM2 921600(`/dev/ttyAMA0`). drone Pi 의 USB(cdc_acm) 연결은 벤치 테스트 구성이다. PX4 는 USB 에 MAVLink Config 모드를 써서 ATTITUDE 기본 주기가 50 Hz(TELEM2 Onboard 모드는 100 Hz)이므로, 벤치 테스트 구성에서 잰 FC 주기는 운용 값으로 쓰지 않는다. PX4 는 USB 를 연결한 채 비행하는 것을 권하지 않는다.
+5. 해소: 운용(비행) 연결은 `icd.md` 1.2 대로 USB(CDC-ACM, `/dev/ttyACM0`). 기체 비행 테스트에서 이 구성으로 동작을 확인했다.
 
 ## 변경 이력
 
