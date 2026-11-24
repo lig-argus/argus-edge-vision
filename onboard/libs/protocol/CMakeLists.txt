@@ -15,6 +15,8 @@ protobuf_generate(TARGET argus_protocol LANGUAGE cpp
                   PROTOS proto/argus_msg/control_setpoint.proto
                          proto/argus_msg/detection.proto
                          proto/argus_msg/perception_ipc.proto
+                         proto/argus_msg/perception_observations.proto
+                         proto/argus_msg/tracking_tracks.proto
                          proto/argus_msg/vision_frame_gray8.proto
                          proto/argus_msg/vision_npu_input_jpeg.proto
                          proto/argus_msg/vision_overlay_jpeg.proto

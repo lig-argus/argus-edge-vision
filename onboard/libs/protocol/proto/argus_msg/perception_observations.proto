@@ -1,0 +1,32 @@
+// perception/observations: 탐지 → 추적기, 영상 송신부. 최대 30 FPS
+// (docs/spec/process_interfaces.md 5.1, 5.1.4)
+// 추론한 프레임마다 발행한다. 객체가 없으면 detections 가 비어 있다. 큐에서 폐기한 프레임은 발행하지
+// 않으므로 frame_id 는 연속이 아닐 수 있다.
+// C++ 값 타입 perception_api::Observations 에 대응한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/detection.proto";
+
+message PerceptionObservations {
+  string source = 1;      // 카메라 식별 문자열. vision/frame/gray8, tracking/tracks 와 같은 값
+  string session_id = 2;  // vision/frame/gray8 의 session_id 와 같은 값
+  uint64 frame_id = 3;    // vision/frame/gray8 의 frame_id 와 같은 값
+  uint64 seq = 4;         // 발행마다 1 증가 (3장 공통 필드)
+  // 원본 영상 크기. 모델 입력 크기가 아니다
+  uint32 image_width = 5;
+  uint32 image_height = 6;
+  string model = 7;         // 추론한 모델(HEF) 이름
+  double inference_ms = 8;  // NPU 추론 시간 (진단용)
+  int64 received_unix_ns = 9;  // RPi 가 프레임을 받은 시각 (wall clock)
+  // RPi 가 프레임을 받은 시각 (CLOCK_MONOTONIC, ns). 노출 시각이 아니다. 추적기의 표본 시각
+  int64 received_monotonic_ns = 10;
+  // 카메라 수신 helper 가 프레임 읽기를 마친 시각. 없을 수 있다
+  optional int64 source_receive_monotonic_ns = 11;
+  // 센서 노출 시각. 카메라가 제공하지 않으면 없음
+  optional int64 exposure_monotonic_ns = 12;
+  int64 published_monotonic_ns = 13;   // 발행 시각
+  repeated Detection detections = 14;  // 원본 영상 픽셀 좌표
+}

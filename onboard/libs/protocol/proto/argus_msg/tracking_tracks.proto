@@ -1,0 +1,85 @@
+// tracking/tracks: 추적기 → 추종 제어, mavlink_gateway, 영상 송신부. 탐지 결과 프레임마다
+// (docs/spec/process_interfaces.md 5.1, 5.1.1)
+// 트랙이 없으면 tracks 가 비어 있다. 단위는 3장의 규칙(각도 rad, 거리 m, 시간 s)을 따른다.
+// C++ 값 타입 perception_api::Tracks, Track, Classification, PixelBox, GroundPose, GroundEstimate,
+// GroundAnchor 에 대응한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+// 트랙 상태 (5.1.1 tracks[].state)
+enum TrackState {
+  TRACK_STATE_UNSPECIFIED = 0;
+  TRACK_STATE_CONFIRMED = 1;
+  TRACK_STATE_PREDICTED = 2;
+}
+
+message TrackingTracks {
+  // 분류 결과. class_id 와 label 의 대응은 모델마다 다르다 (docs/spec/video.md 8장)
+  message Classification {
+    int32 class_id = 1;
+    string label = 2;
+    float confidence = 3;  // 0~1
+  }
+
+  // 원본 영상 픽셀 좌표의 박스 (원점 왼쪽 위, y 아래 방향). (x1, y1) 왼쪽 위, (x2, y2) 오른쪽 아래
+  message PixelBox {
+    float x1 = 1;
+    float y1 = 2;
+    float x2 = 3;
+    float y2 = 4;
+  }
+
+  // 프레임 시각의 기체 위치와 자세. NED
+  message GroundPose {
+    double north_m = 1;
+    double east_m = 2;
+    double down_m = 3;
+    double roll_rad = 4;
+    double pitch_rad = 5;
+    double yaw_rad = 6;
+  }
+
+  // 트랙의 지면 투영
+  message GroundEstimate {
+    double north_m = 1;
+    double east_m = 2;
+    double var_north_m2 = 3;
+    double cov_north_east_m2 = 4;
+    double var_east_m2 = 5;
+    double alignment_s = 6;  // 투영에 사용한 FC 자세와 프레임의 시각 차
+  }
+
+  // 지면 투영에 사용한 박스 기준점
+  message GroundAnchor {
+    // 기준점의 세로 위치. 박스 높이를 1 로 보고 위쪽 끝에서 측정한 값 (0 위쪽 끝, 1 아래쪽 끝)
+    double anchor_y_ratio = 1;
+    double height_m = 2;  // 기준점의 지면 위 높이
+  }
+
+  message Track {
+    uint32 track_id = 1;  // 1~16,777,215. 추적기 재시작 시 1 부터 (generation 으로 구분)
+    Classification classification = 2;
+    PixelBox box = 3;
+    TrackState state = 4;
+    bool real_detection = 5;  // 이 프레임에 실제 탐지가 있었는지 (예측만이면 false)
+    int64 last_real_detection_monotonic_ns = 6;
+    optional GroundEstimate ground = 7;  // FC 자세가 없으면 없음
+    optional GroundAnchor ground_anchor = 8;
+  }
+
+  string source = 1;  // 카메라 식별 문자열 (3장 공통 필드)
+  // perception/observations 의 session_id 를 추적기가 복사한 값
+  string session_id = 2;
+  uint64 frame_id = 3;  // perception/observations 의 frame_id 와 같은 값
+  uint64 seq = 4;       // 발행마다 1 증가 (3장 공통 필드)
+  uint64 fc_epoch = 5;  // FC 연결의 epoch (3장)
+  uint32 generation = 6;  // 1~16,777,215. 추적기 재시작과 초기화마다 1 증가
+  int64 sample_monotonic_ns = 7;  // 프레임의 RPi 수신 시각 (CLOCK_MONOTONIC)
+  int64 motion_sample_ns = 8;
+  uint32 image_width = 9;
+  uint32 image_height = 10;
+  optional GroundPose ground_pose = 11;
+  repeated Track tracks = 12;
+}
