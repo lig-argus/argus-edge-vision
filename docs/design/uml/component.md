@@ -125,15 +125,15 @@ flowchart LR
     gcs[통제기 gcs]
     qgc[QGC]
 
-    i_uart([UART TELEM2 MAVLink])
+    i_usb([USB MAVLink])
     i_14540([UDP 14540 MAVLink])
     i_14550([UDP 14550 MAVLink])
     i_14551([UDP 14551 MAVLink telemetry])
     i_rtsp([RTSP 영상 트랙 + 메타데이터 트랙])
     i_preview([UDP 미리보기 JPEG])
 
-    FC --> i_uart
-    i_uart -.-> router
+    FC --> i_usb
+    i_usb -.-> router
     router --> i_14540
     router --> i_14550
     router --> i_14551
@@ -149,7 +149,7 @@ flowchart LR
 
 | 인터페이스 | provided | required | 내용 |
 |---|---|---|---|
-| UART TELEM2 | FC | mavlink-router | 모든 MAVLink. RPi 쪽은 라우터만 연다 (`icd.md` 1.2) |
+| USB | FC | mavlink-router | 모든 MAVLink. RPi 쪽은 라우터만 연다 (`icd.md` 1.2) |
 | UDP 14540 | mavlink-router | mavlink_gateway FC 통신 (telemetry 수신, setpoint·모드 송신), mavlink_gateway 통제기 통신 (`ARGUS_*` 송신, `COMMAND_LONG` 수신) | mavlink_gateway 가 compid 191·195 로 나눠 쓴다 (`icd.md` 1.1) |
 | UDP 14550 | mavlink-router | 통제기 | telemetry·`ARGUS_STATUS`·`ARGUS_SENSOR_STATUS`·`COMMAND_ACK` 수신, `HEARTBEAT`·`COMMAND_LONG`·비행 명령 송신 |
 | UDP 14551 | mavlink-router | QGC | telemetry 만. QGC 명령은 라우터가 FC 로 보내지 않는다 |

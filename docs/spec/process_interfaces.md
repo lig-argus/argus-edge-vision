@@ -50,7 +50,7 @@ flowchart LR
 | 추종 제어 | 추종·Scan 판단, 속도 setpoint 계산, 임무·표적 상태 관리 | 추적·추종 |
 | mavlink_gateway | FC 통신(MAVLink, 단일 소유), 통제기 통신, FC 명령 검사 | 통신 |
 | 영상 송신부 | RTSP 영상·메타데이터 송신 (5.3) | 통신 |
-| mavlink-router | FC UART 와 로컬·통제기 UDP 중계 | 통신 (설정) |
+| mavlink-router | FC USB 와 로컬·통제기 UDP 중계 | 통신 (설정) |
 
 - **FC 링크는 mavlink_gateway 하나만 사용한다.** 다른 프로세스는 FC 데이터를 mavlink_gateway 의 토픽으로 받고, FC 로 보낼 것(setpoint, 모드, heading)은 mavlink_gateway 에 요청한다. 사례: PX4 의 `mavlink` 모듈, MAVROS·px4_ros_com, Aerostack2 `platform` 노드.
 - 추종 제어 코드는 4장의 C++ 인터페이스에만 의존하고, 통신 담당이 그 인터페이스의 ZeroMQ 어댑터를 제공한다. 프로세스 배치를 바꿔도(mavlink_gateway 안으로 합쳐도) 추종 제어 코드는 바뀌지 않는다 (의존 역전).
@@ -289,7 +289,7 @@ flowchart LR
    - 탐지·추적·추종을 함께 켜고 gray8 끔/켬을 5회씩 120 초 비교: 탐지·추적 30 FPS, gray8·overlay·npu_input 버림 0, `perception/observations` 지연 p50 0.85 → 0.95 ms, 카메라 수신 → `tracking/tracks` 도착 p50 25.0 → 26.3 ms, CPU 코어 하나 기준 +24 %p(Pi 전체의 약 6 %).
    - 조건: 카메라 대신 RAW14 녹화 재생, FC 대신 가상 기체(MAVLink 연결 없음), 영상 송신부 없음. 추적기는 gray8 을 구독하지 않아 gray8 은 프록시에서 걸러졌다. 영상 송신부를 구현하면 gray8 을 실제로 받는 구독자가 생기므로 같은 방법으로 다시 측정한다.
 4. Hold 상태 절대 heading 요청을 mavlink_gateway 가 FC 에 어떻게 보낼지. `MAV_CMD_DO_REPOSITION` yaw 를 우선 검토하되 PX4 v1.16 Hold 에서 유지·회전·정지 동작을 확인. Offboard 방식이면 진입·유지·종료 절차를 함께 정한다. `docs/spec/icd.md` E3. — 통신, 추적/추종
-5. `fc/attitude`·`fc/state` 30 Hz 가 PX4 TELEM2 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 `fc/attitude`·`fc/state` 메시지의 시각 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신, 추적/추종
+5. `fc/attitude`·`fc/state` 30 Hz 가 PX4 의 USB 연결 스트림 설정으로 나오는지, 프레임 시각과 가장 가까운 `fc/attitude`·`fc/state` 메시지의 시각 차가 50 ms 이내로 유지되는지 기체에서 측정. 자세 약 100 Hz·local 위치 약 30 Hz 는 확인됨, 하향 거리·전역 위치는 미수신. `docs/spec/icd.md` D5. — 통신, 추적/추종
 6. PREDICTED 트랙 발행 확장 여부 (통제기 화면에 예측 위치를 보일 필요가 생길 때). — 통제기, 추적/추종
 7. `fc/attitude`·`fc/state` 필드 이름 확정. 단위(rad·m·m/s)와 항목(자세, local NED 위치, 하향 거리, 값마다의 원수신 시각과 유효성)은 합의됨. 이름은 `onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp` 의 `Attitude`, `LocalPosition`, `DownwardDistance`, `GlobalPosition`, `FlightStatus` 를 따른다 (#39). — 통신, 추적/추종
 8. 해소 (0.8): 추종 제어의 거부 이유 "another writer owns FC" 는 mavlink_gateway 가 관리하는 FC 제어 명령 송신권을 다른 소유자가 가진 경우다 (6장). — 추적/추종, 통신
