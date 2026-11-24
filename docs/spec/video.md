@@ -1,10 +1,10 @@
-# 영상 전송 규약 (RTSP + RTP/JPEG + 메타데이터 트랙)
+# 영상 전송 규약 (RTSP + RTP/H.264 + 메타데이터 트랙)
 
 | 항목 | 내용 |
 |---|---|
 | 문서 버전 | 0.4 (팀 검토 전 초안) |
 | 범위 | RPi 영상 송신부 → 통제기: 영상과 프레임별 추적 결과(바운딩 박스) 전송 |
-| 따르는 표준 | RTSP (RFC 2326), RTP·RTCP (RFC 3550), RTP/JPEG (RFC 2435), ONVIF Streaming·Analytics 명세의 메타데이터 스트림 형식. ONVIF Profile·SOAP 서비스는 구현하지 않는다 |
+| 따르는 표준 | RTSP (RFC 2326), RTP·RTCP (RFC 3550), RTP/H.264 (RFC 6184), RTP/JPEG (RFC 2435, 선택 코덱), ONVIF Streaming·Analytics 명세의 메타데이터 스트림 형식. ONVIF Profile·SOAP 서비스는 구현하지 않는다 |
 | 관련 문서 | `docs/spec/icd.md` (MAVLink: 추종 명령, 스트림 알림), `docs/spec/process_interfaces.md` (RPi 안 토픽, 송신부의 메시지 결합 규칙) |
 | 상태 표기 | 값 뒤의 **[미결 n]** 은 9장의 검토 항목 번호 |
 
@@ -28,7 +28,7 @@
 ```
 RPi 영상 송신부 (RTSP 서버)                          통제기 (RTSP 클라이언트)
   rtsp://<RPi>:8554/argus/ir  ──DESCRIBE/SETUP/PLAY──▶
-    ├─ 트랙 1: 영상        RTP/JPEG  (m=video)       ──RTP/UDP──▶  디코딩, 표시
+    ├─ 트랙 1: 영상        RTP/H.264 (m=video)       ──RTP/UDP──▶  디코딩, 표시
     ├─ 트랙 2: 메타데이터  ONVIF XML (m=application) ──RTP/UDP──▶  박스 그리기, 클릭 판정
     └─ RTCP Sender Report (트랙마다)                 ──RTCP────▶  RTP 타임스탬프 ↔ UTC 변환
 ```
@@ -41,37 +41,52 @@ RPi 영상 송신부 (RTSP 서버)                          통제기 (RTSP 클�
 
 SDP(Session Description Protocol, RFC 8866)는 세션에 어떤 트랙이 있고 어떻게 받는지 적은 텍스트다. 통제기가 RTSP `DESCRIBE` 를 보내면 서버가 SDP 로 답하고, 통제기는 이것을 읽어 어떤 트랙을 `SETUP` 할지 정한다. RTSP 서버가 파이프라인 구성에서 자동으로 만든다.
 
-SDP 예 (DESCRIBE 응답, 주소·페이로드 타입 107 은 예시):
+SDP 예 (DESCRIBE 응답, 주소는 예시. 영상 96 은 송신부 설정값, 메타데이터 107 은 예시):
 ```
 v=0                                    SDP 버전 (항상 0)
 o=- 0 0 IN IP4 192.168.4.1             세션을 만든 쪽 (서버 주소)
 s=argus ir                             세션 이름
 t=0 0                                  시간 제한 없음 (라이브)
-m=video 0 RTP/AVP 26                   트랙 1: 종류 video, 전송 RTP, 페이로드 타입 26
-a=rtpmap:26 JPEG/90000                 26 = JPEG, 클럭 90 kHz (RFC 3551 에 정해진 번호)
+m=video 0 RTP/AVP 96                   트랙 1: 종류 video, 전송 RTP, 페이로드 타입 96
+a=rtpmap:96 H264/90000                 96 = H.264, 클럭 90 kHz (96~127 중 송신부가 정한 동적 번호라 rtpmap 필수)
 a=control:trackID=0                    이 트랙을 SETUP 할 때 쓰는 이름
 m=application 0 RTP/AVP 107            트랙 2: 종류 application (영상·음성이 아닌 데이터), 페이로드 타입 107
 a=rtpmap:107 vnd.onvif.metadata/90000  107 = ONVIF 메타데이터 XML (96~127 중 서버가 고른 동적 번호라 rtpmap 필수)
 a=control:trackID=1
 ```
 
-- 통제기는 영상 코덱이 JPEG 이라는 것을 SDP 의 `a=rtpmap:26 JPEG/90000` 줄에서 읽는다. MAVLink `VIDEO_STREAM_INFORMATION.encoding` 에는 JPEG 값이 없어 UNKNOWN(0) 을 보낸다 (7장).
+- 통제기는 영상 코덱이 H.264 라는 것을 SDP 의 `a=rtpmap:96 H264/90000` 줄에서 읽는다. MAVLink `VIDEO_STREAM_INFORMATION.encoding` 에는 `VIDEO_STREAM_ENCODING_H264`(1) 을 보낸다 (7장).
 - `m=application … vnd.onvif.metadata` 가 있어야 통제기가 메타데이터 트랙을 요청한다. 이 인코딩을 모르는 플레이어(VLC 등)는 영상 트랙만 받는다.
 
-## 2. 영상 트랙 (RTP/JPEG)
+## 2. 영상 트랙 (RTP/H.264)
 
 | 항목 | 값 |
 |---|---|
-| 페이로드 | RFC 2435 RTP/JPEG, 정적 페이로드 타입 26, 90 kHz 클럭 |
-| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임** `vision/frame/gray8` (encoding "gray8", 640×480 8 비트 흑백, 최대 30 FPS. `process_interfaces.md` 5.1). 전송 코덱 인코딩(JPEG)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
+| 페이로드 | RFC 6184 RTP/H.264, 동적 페이로드 타입 96 (송신부 설정값, 메타데이터 트랙의 번호와 달라야 함), 90 kHz 클럭. SDP 는 `a=rtpmap:96 H264/90000` |
+| 입력 | 탐지 프로세스가 발행하는 박스 없는 **비압축 프레임** `vision/frame/gray8` (encoding "gray8", 640×480 8 비트 흑백, 최대 30 FPS. `process_interfaces.md` 5.1). 전송 코덱 인코딩(H.264)은 영상 송신부가 한다. 탐지 프로세스는 전송 방식을 모르고, 코덱·품질은 송신부 설정으로 정한다 (`process_interfaces.md` 5.3) |
+| 인코더 | x264 (GStreamer `x264enc`, Ubuntu 패키지 `gstreamer1.0-plugins-ugly`). Raspberry Pi 5 에는 하드웨어 H.264 인코더가 없으므로 소프트웨어로 인코딩한다. 흑백(gray8) 입력은 인코딩 전에 4:2:0(I420)으로 변환한다 |
+| 인코더 설정 | `tune=zerolatency` (프레임 재정렬과 미리 보기 버퍼를 사용하지 않아 인코더가 프레임을 보관하지 않음), `speed-preset=ultrafast` (연산량이 가장 작은 설정) |
+| 키 프레임 간격 | 30 프레임 (30 FPS 에서 1초). 패킷 손실 후의 복구와 중간에 접속한 수신기의 재생 시작이 이 간격 안에 이루어진다. SPS 와 PPS 는 키 프레임마다 함께 송신한다 |
+| 해상도 | IR 640×480 |
+| FPS | 최대 30. 고정 주기가 아니며 탐지 쪽 큐 드롭으로 프레임이 빠질 수 있다 |
+| RTP 타임스탬프 | 프레임의 `unix_ns` 를 90 kHz 클럭으로 변환한 값. 영상 RTP 는 코덱과 관계없이 90000 Hz 로 정해져 있다 (RFC 3551. 1 틱 ≈ 11.1 µs, 30 FPS 에서 프레임당 3000 틱). 32 비트라 절대 시각이 아니며 RTCP SR 로 UTC 에 대응한다 (4장). 한 프레임의 모든 패킷이 같은 값, 마지막 패킷 marker = 1 |
+| 비트 전송률 | 송신부 설정값 (kbit/s). 지정하지 않으면 인코더의 기본값. 값은 RPi 에서 CPU 부하와 화질을 측정한 뒤 정한다 **[미결 12]**. 전송 경로는 RPi 와 통제기 사이 Wi-Fi(`docs/spec/icd.md` 1.2)이며 MAVLink 트래픽과 함께 쓴다. 실제 처리량과 손실률은 현장에서 측정한다 **[미결 11]** |
+| 손실의 영향 | 이전 프레임과의 차이를 송신하므로, 패킷이 손실되면 다음 키 프레임까지 화면 오류가 이어진다 |
+
+- 영상에는 박스를 그리지 않는다. 박스는 메타데이터 트랙으로만 보내고 통제기가 그린다 (`process_interfaces.md` 5.3).
+
+### 2.1 JPEG (선택)
+
+영상 트랙의 기본 코덱은 RTP/H.264 이다. 송신부 설정으로 RTP/JPEG 를 선택할 수 있다. 입력, FPS, RTP 타임스탬프, 메타데이터 트랙은 코덱과 무관하게 위 표와 같다.
+
+| 항목 | 값 |
+|---|---|
+| 페이로드 | RFC 2435 RTP/JPEG, 정적 페이로드 타입 26, 90 kHz 클럭. SDP 는 `a=rtpmap:26 JPEG/90000` |
 | JPEG 조건 | baseline 부호화 (영상을 한 번에 순차 부호화. 여러 번 스캔하는 progressive 는 RFC 2435 가 지원하지 않음), 4:2:0 (RFC 2435 type 1), JPEG 규격의 표준 허프만 테이블, 재시작 마커(DRI) 없음. RFC 2435 는 허프만 테이블 을 전송하지 않고 수신기가 JPEG 규격의 표준 허프만 테이블 로 복원하므로, 인코더가 영상마다 만드는 최적화 허프만 테이블 을 쓰면 복원할 수 없다. 송신부의 JPEG 인코더(libjpeg-turbo 또는 GStreamer `jpegenc`)를 이 조건으로 설정한다 (progressive 끔, 허프만 테이블 최적화 끔). 흑백(gray8) 입력은 인코딩 전에 4:2:0(I420)으로 변환한다. RFC 2435 type 0·1 은 3 성분 JPEG 만 다루므로 1 성분(흑백) JPEG 은 `rtpjpegpay` 가 전송하지 못한다 (GStreamer 1.24.2 실측: GRAY8 은 "Wrong SOF length" 경고로 0 프레임 수신, I420 은 전부 수신). 색차 성분이 일정값이라 크기 증가는 거의 없다 |
 | 해상도 | IR 640×480. RFC 2435 는 8 px 단위, 최대 2040 px. 2040 px 를 넘는 EO 영상은 ONVIF JPEG RTP 헤더 확장(첫 패킷 0xFFD8, 이후 0xFFFF 식별자로 SOF·DQT·DHT 전달)으로 보낸다 **[미결 8]** |
 | 품질 | 송신부 설정값. 초기값 75, 화질 측정 뒤 조정 **[미결 12]**. 양자화 테이블은 RFC 2435 의 Q 필드로 전달한다: Q 1~99 는 테이블 보내지 않고 수신기가 RFC 2435 부록 A 의 표준 양자화 테이블을 Q 값으로 배율 조정해 만든다. Q 128~255 는 인코더가 쓴 양자화 테이블을 첫 패킷의 Quantization Table 헤더에 담아 보낸다. 어느 쪽을 쓸지는 패킷화 구현(rtpjpegpay 등)이 정하므로, 통제기는 두 방식을 모두 지원해야 한다 |
-| FPS | 최대 30. 고정 주기가 아니며 탐지 쪽 큐 드롭으로 프레임이 빠질 수 있다 |
-| RTP 타임스탬프 | 프레임의 `unix_ns` 를 90 kHz 클럭으로 변환한 값. 영상 RTP 는 코덱과 관계없이 90000 Hz 로 정해져 있다 (RFC 3551. 1 틱 ≈ 11.1 µs, 30 FPS 에서 프레임당 3000 틱). 32 비트라 절대 시각이 아니며 RTCP SR 로 UTC 에 대응한다 (4장). 한 프레임의 모든 패킷이 같은 값, 마지막 패킷 marker = 1 |
-| 비트 전송률 | 640×480 품질 75 는 프레임당 약 25~35 KB → 30 FPS 에서 약 6~8 Mbps (메타데이터 약 0.3 Mbps 별도). 7장 `bitrate` 에 이 값을 넣는다. 전송 경로는 RPi 와 통제기 사이 Wi-Fi(`docs/spec/icd.md` 1.2)이며 MAVLink 트래픽과 함께 쓴다. 실제 처리량과 손실률은 현장에서 측정한다 **[미결 11]** |
-
-- 영상에는 박스를 그리지 않는다. 박스는 메타데이터 트랙으로만 보내고 통제기가 그린다 (`process_interfaces.md` 5.3).
+| 비트 전송률 | 640×480 품질 75 는 프레임당 약 25~35 KB → 30 FPS 에서 약 6~8 Mbps (메타데이터 약 0.3 Mbps 별도). 전송 경로는 RPi 와 통제기 사이 Wi-Fi(`docs/spec/icd.md` 1.2)이며 MAVLink 트래픽과 함께 쓴다. 실제 처리량과 손실률은 현장에서 측정한다 **[미결 11]** |
+| H.264 와 다른 점 | 프레임마다 독립적으로 부호화하므로 패킷이 손실되면 그 프레임만 영향을 받는다. 비트 전송률은 H.264 보다 크다 |
 
 ## 3. 메타데이터 트랙 (ONVIF XML)
 
@@ -79,7 +94,7 @@ a=control:trackID=1
 
 - SDP: `m=application`, 인코딩 이름 `vnd.onvif.metadata`, 클럭 90 kHz, 동적 페이로드 타입(예 107). 압축(`vnd.onvif.metadata.gzip`)은 쓰지 않는다.
 - 페이로드: UTF-8 XML. 영상 프레임 하나마다 `tt:MetadataStream` 문서 하나. 문서가 MTU 를 넘으면 여러 패킷으로 나누고, 문서 끝 패킷에 marker = 1.
-- RTP 타임스탬프: 패킷 생성 시각(ONVIF 권고). 영상 프레임과의 동기화에는 쓰지 않고, 동기화는 문서 안 `UtcTime` 으로 한다 (4장).
+- RTP 타임스탬프: 그 문서의 프레임의 `unix_ns` 를 90 kHz 클럭으로 변환한 값의 하위 32 비트. 한 문서의 모든 패킷이 같은 값이다. ONVIF 는 패킷 생성 시각을 권고하되 이 값에 의미를 두지 않으므로, 프레임만으로 값이 정해지는 `unix_ns` 기준을 사용한다. 영상 프레임과의 동기화에는 사용하지 않고, 동기화는 문서 안 `UtcTime` 으로 한다 (4장).
 - 통제기는 marker 가 1 인 패킷까지 모아 XML 하나로 파싱한다. 패킷 손실로 문서가 깨지면 그 프레임의 메타데이터는 버린다.
 
 ### 3.2 XML 구조와 추적 결과 필드의 변환
@@ -121,7 +136,7 @@ a=control:trackID=1
 
 | `tracking/tracks` 필드 (`process_interfaces.md` 5.1.1) | 들어가는 XML 요소·속성 | 비고 |
 |---|---|---|
-| JPEG `unix_ns` (같은 frame_id 의 영상 프레임) | `tt:Frame@UtcTime` | ISO 8601, ms 단위, `Z`. 4장 |
+| 영상 프레임의 `unix_ns` (같은 frame_id) | `tt:Frame@UtcTime` | ISO 8601, ms 단위, `Z`. 4장 |
 | source | `tt:Frame@Source` | 카메라 식별 문자열. 통제기는 mavlink_gateway 설정의 변환표(source 문자열 → `ARGUS_SENSOR`)로 바꾼다 |
 | frame_id, image_width, image_height | `tt:Frame/tt:Extension/argus:*` | ONVIF 스키마에 같은 뜻의 요소가 없어 확장 요소(`tt:Extension`)에 둔다. 요소 이름은 **[미결 4]** |
 | tracks[].track_id | `tt:Object@ObjectId` | 1~16,777,215 |
@@ -150,7 +165,7 @@ a=control:trackID=1
 
 ## 4. 동기화 (영상 프레임 ↔ 메타데이터)
 
-- 송신부는 같은 `(source, frame_id)` 의 JPEG 과 추적 결과를 묶는다. 영상 RTP 타임스탬프와 메타데이터 `UtcTime` 은 **둘 다 그 프레임의 `unix_ns` 를 변환한 값**이다 (RTP 타임스탬프 = unix_ns × 90000 / 10^9 + 시작값, UtcTime = unix_ns 를 ISO 8601 로).
+- 송신부는 같은 `(source, frame_id)` 의 영상 프레임과 추적 결과를 묶는다. 영상 RTP 타임스탬프와 메타데이터 `UtcTime` 은 **둘 다 그 프레임의 `unix_ns` 를 변환한 값**이다 (RTP 타임스탬프 = unix_ns × 90000 / 10^9 + 시작값, UtcTime = unix_ns 를 ISO 8601 로).
 - 영상 트랙의 RTCP Sender Report 는 같은 순간의 RTP 타임스탬프 값과 NTP 시각 값을 함께 알린다. 송신부는 이 NTP 시각도 `unix_ns` 와 같은 RPi 시계(CLOCK_REALTIME)로 만든다.
 - 통제기: 영상 프레임의 RTP 타임스탬프 → (RTCP SR) → UTC 시각 → 같은 `UtcTime` 의 메타데이터. 오차 허용은 ±반 프레임(30 FPS 에서 약 ±16 ms).
 - `unix_ns` 는 RPi 시계의 호스트 수신 시각이며 노출 시각이 아니다. RPi 시계가 실제 UTC 와 달라도 영상·메타데이터 동기화에는 영향이 없다(둘 다 같은 시계). 녹화한 영상·메타데이터를 나중에 재생하면서 FC 로그 등 다른 장비의 기록과 시각을 맞출 때만 문제가 되며, 그때 RPi 시계 동기(NTP) 를 검토한다 **[미결 6]**.
@@ -158,16 +173,19 @@ a=control:trackID=1
 ## 5. 송신부 동작
 
 - 구독·메시지 결합·재시작 처리는 `process_interfaces.md` 5.3 을 따른다.
-- 프레임마다: 비압축 흑백 프레임 → I420 변환 → JPEG 인코딩(640×480 약 1~2 ms) → RTP/JPEG 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
+- 프레임마다: 비압축 흑백 프레임 → I420 변환 → H.264 인코딩 → RTP/H.264 패킷화, 같은 프레임의 추적 결과 → XML → 메타데이터 패킷. 영상 패킷을 먼저 보낸다.
 - 영상 프레임이 없는 추적 결과는 보내지 않는다. 추적 결과가 없는 프레임은 영상 + 빈 `tt:Frame` 을 보낸다.
 - IR 카메라 NUC(셔터 보정) 동안 약 0.5 s 프레임이 없다. 송신부는 아무것도 보내지 않으며 RTSP 세션은 유지한다.
-- RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신).
-- 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay name=pay0 pt=26`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 바꾸면 `jpegenc ! rtpjpegpay` 를 `x264enc ! rtph264pay` 처럼 요소만 바꾼다.
+- RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신). 클라이언트가 없는 동안 받은 프레임은 폐기한다. 클라이언트가 모두 끊으면 송신 파이프라인을 삭제하고 다시 접속하면 새로 생성한다.
+- 영상과 메타데이터 버퍼의 PTS 는 같은 값으로 지정한다. 값은 프레임을 RPi 가 수신한 시각(`received_monotonic_ns`)에 해당하는 파이프라인의 running time 이다. RTCP Sender Report 가 running time 을 wall clock 에 대응시키므로, 통제기가 계산한 영상 프레임의 UTC 시각이 그 프레임의 `unix_ns` 와 같아진다 (4장).
+- 송신하지 못한 프레임은 폐기하고 횟수를 원인별(클라이언트 없음, 재생 상태 아님, 프레임 크기 오류, 송신 실패)로 센다. mavlink_gateway 가 송신부 상태를 받는 방법(미결 9)의 입력으로 사용한다.
+- 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 ! rtph264pay aggregate-mode=zero-latency config-interval=-1 name=pay0 pt=96`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 JPEG 로 선택하면 영상 트랙의 x264enc 와 rtph264pay 가 `jpegenc ! rtpjpegpay name=pay0 pt=26` 으로 바뀐다 (2.1). 메타데이터 트랙과 그 밖의 송신부 코드는 코덱과 무관하다.
 
 ## 6. 통제기 동작
 
-- 구현: GStreamer `rtspsrc` 가 두 트랙을 받는다. 영상은 `rtpjpegdepay ! jpegdec ! appsink` (코덱이 바뀌면 `rtph264depay ! avdec_h264` 등으로 요소 교체. `decodebin` 으로 SDP 를 보고 자동 선택도 가능), 메타데이터는 `rtponvifmetadatadepay` 가 있으면 그것으로, 없으면 `appsink` 에서 RTP 헤더를 떼고 marker 까지 이어 붙여 XML 문서를 만든다 **[미결 1]**. `rtspsrc` 의 지터 버퍼(`latency`)와 RTCP 처리를 그대로 쓰고, UDP 가 막히면 TCP 로 자동 전환한다(`protocols`).
+- 구현: GStreamer `rtspsrc` 가 두 트랙을 받는다. 영상은 `rtph264depay ! avdec_h264 ! appsink` (코덱이 JPEG 이면 `rtpjpegdepay ! jpegdec` 로 요소 교체. `decodebin` 으로 SDP 를 보고 자동 선택도 가능), 메타데이터는 `rtponvifmetadatadepay` 가 있으면 그것으로, 없으면 `appsink` 에서 RTP 헤더를 떼고 marker 까지 이어 붙여 XML 문서를 만든다 **[미결 1]**. `rtspsrc` 의 지터 버퍼(`latency`)와 RTCP 처리를 그대로 쓰고, UDP 가 막히면 TCP 로 자동 전환한다(`protocols`).
 - 영상 프레임을 디코딩해 표시하고, 4장 방법으로 동기화한 메타데이터의 박스를 그 위에 그린다. 메타데이터가 아직 안 온 프레임은 박스 없이 표시하고, 늦게 온 메타데이터는 버린다.
+- 수신을 시작한 후 최초의 RTCP Sender Report 를 받기 전에는 영상 프레임의 UTC 시각을 계산할 수 없다 (측정값 약 2~3 s). 이 구간에는 메타데이터를 프레임에 대응시키지 않고 영상만 박스 없이 표시한다.
 - 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_TRACK_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
 - 선택된 표적(`ARGUS_STATUS.target_id`·`target_generation`)과 `ObjectId`·`argus:Generation` 이 같은 박스는 다른 색으로 강조한다.
 - 영상 정지 표시: 새 영상 프레임이 일정 시간(NUC 공백 0.5 s 보다 길게, 예 1 s) 없으면 "영상 정지" 를 표시한다. 시간은 **[미결 7]**. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
@@ -179,13 +197,13 @@ a=control:trackID=1
 | 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회 |
 | stream_id / count | 1 = IR (EO 추가 시 2) / 스트림 수 |
 | type | `VIDEO_STREAM_TYPE_RTSP` (0) |
-| flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1). 송신부가 떠 있지 않으면 0 |
+| flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 고정. mavlink_gateway 는 영상 송신부의 실행 여부를 확인하지 않는다. 통제기는 영상 송신 여부를 RTSP 접속 결과로 판단한다 |
 | framerate / resolution_h / resolution_v | 30 / 640 / 480 |
-| bitrate | 약 7,000,000 (추정값) |
+| bitrate | 송신부의 비트 전송률 설정값 (bit/s). 설정값이 없으면 0 |
 | rotation / hfov | 0 / 카메라 화각 측정 뒤 (`icd.md` A1). 모르면 0 |
 | name | `IR` |
 | uri | `rtsp://<RPi 주소>:8554/argus/ir` |
-| encoding | `VIDEO_STREAM_ENCODING_UNKNOWN` (0). MAVLink 에 JPEG 값이 없다. 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP(`a=rtpmap`)에서 읽는다 (1장) |
+| encoding | `VIDEO_STREAM_ENCODING_H264` (1). 코덱이 JPEG 인 경우 `VIDEO_STREAM_ENCODING_UNKNOWN` (0) (MAVLink 에 JPEG 값이 없음). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP(`a=rtpmap`)에서 읽는다 (1장) |
 | camera_device_id | 0 |
 
 mavlink_gateway 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `process_interfaces.md` 에 추가한다 **[미결 9]**.
@@ -209,11 +227,11 @@ mavlink_gateway 가 송신부의 상태(실행 여부, 주소)를 아는 방법�
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
 7. 통제기 "영상 정지" 판단 시간 (NUC 0.5 s 보다 길게). — 통제기
-8. EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
-9. mavlink_gateway 가 송신부 상태를 받는 방법 (`VIDEO_STREAM_INFORMATION` flags 용). — 통신
+8. JPEG 를 선택하고 EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
+9. `VIDEO_STREAM_INFORMATION` 의 `flags` 는 고정값으로 확정 (7장). mavlink_gateway 가 영상 송신부의 상태를 받는 연결은 두지 않는다. 남은 것: 7장의 값 중 영상 송신부의 설정과 같아야 하는 값(framerate, resolution_h, resolution_v, uri 의 포트와 경로)을 두 프로세스가 함께 읽는 설정 파일의 위치와 형식. — 통신
 10. IR 모델 v7.3 class_id 표는 8장에 반영함. 모델 교체 때 갱신. — 탐지
-11. RPi–통제기 Wi-Fi 의 실제 처리량·손실률 측정 (영상 6~8 Mbps + 메타데이터 + MAVLink). 부족하면 품질·FPS 조정. — 통신
-12. JPEG 품질값: 비압축 프레임 대 JPEG 의 화질(PSNR·육안)을 품질 75·90·95 에서 측정해 정함. 비트 전송률(11)과 함께 판단. 측정은 비압축 프레임 토픽 구현 뒤 탐지 쪽이 Pi 에서 수행. — 통신·탐지
+11. RPi–통제기 Wi-Fi 의 실제 처리량과 손실률 측정 (영상 + 메타데이터 + MAVLink). 부족하면 비트 전송률과 FPS 조정. — 통신
+12. H.264 비트 전송률: RPi 5 에서 x264 인코딩의 CPU 사용률과 프레임당 인코딩 시간, 비트 전송률별 화질(PSNR, 육안)을 측정해 정함. Wi-Fi 처리량(11)과 함께 판단. JPEG 를 선택하는 경우 품질값(75, 90, 95)도 같은 방법으로 정함. — 통신·탐지
 
 ## 변경 이력
 

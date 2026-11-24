@@ -49,7 +49,7 @@ classDiagram
 
 - 발행 토픽은 4개다: `perception/observations`(`PerceptionWorker`), `vision/frame/gray8`·`vision/overlay/jpeg`·`vision/npu_input/jpeg`(`PythonVisionAdapter`). `vision/frame/gray8` 은 설정으로 켜고 끄며 기본은 꺼짐.
 - 미리보기 소켓이 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 gray8 프레임이 있지는 않다.
-- 탐지 프로세스는 전송 코덱을 모른다. RTSP 영상 트랙의 JPEG 인코딩은 영상 송신부가 한다 (pi 5.3, 단일 책임). 미리보기 JPEG 는 RTSP 에 쓰지 않는다.
+- 탐지 프로세스는 전송 코덱을 모른다. RTSP 영상 트랙의 H.264 인코딩은 영상 송신부가 한다 (pi 5.3, 단일 책임). 미리보기 JPEG 는 RTSP 에 쓰지 않는다.
 - 실행 환경: C++ 실행 파일 + Python 3.12 venv(OpenCV, pyzmq, HailoRT Python). Hailo-8 은 PCIe Gen3 x1, `/dev/hailo0`, hailort 4.23.0 (`deployment.md`).
 
 ## 2. Python 쪽 내부 인터페이스

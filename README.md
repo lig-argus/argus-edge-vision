@@ -56,8 +56,10 @@ onboard/
 
 | OS | 설치 |
 |---|---|
-| Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev` |
-| macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest` + 아래 protobuf 3.21.12 소스 빌드 |
+| Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly` |
+| macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest pkg-config gstreamer` + 아래 protobuf 3.21.12 소스 빌드 |
+
+GStreamer 는 영상 송신부(`onboard/apps/video_sender`)의 RTSP 송신에 사용한다 (1.24 이상, `docs/spec/video.md` 1장). `plugins-base` 와 `plugins-good` 은 실행 시 사용하는 요소(`videoconvert`, `jpegenc`, `rtpjpegpay`, `rtph264pay`, `rtppassthroughpay`)가 있는 패키지이고, `plugins-ugly` 는 H.264 인코더 `x264enc` 가 있는 패키지이다.
 
 protobuf 는 모든 환경에서 Ubuntu 24.04 apt 와 같은 3.21.12 를 사용한다. 메시지 정의(`onboard/libs/protocol/proto/argus_msg/*.proto`)에서 C++ 코드는 CMake 가 빌드 때 생성하고, Python 코드는 `tools/generate_proto.sh` 로 생성해 커밋한다 (CI 가 같은 protoc 로 다시 생성해 비교한다). brew 의 protobuf 는 더 새 버전(36 이상)이라 생성 코드가 달라지므로, macOS 에서는 3.21.12 를 한 번 소스 빌드해 설치한다.
 

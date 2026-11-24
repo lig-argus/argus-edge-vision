@@ -4,6 +4,8 @@
 # 구조와 모듈 규칙: README.md "onboard 구조와 빌드", CONTRIBUTING.md 0.4
 #
 # 의존성 (Ubuntu 24.04 apt): libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
+#   영상 송신부의 GStreamer: pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev
+#   gstreamer1.0-plugins-base gstreamer1.0-plugins-good (전체 명령은 README.md)
 # 빌드:  cmake -S onboard -B build/onboard -G Ninja && cmake --build build/onboard
 #        (macOS 는 README 의 protobuf 3.21.12 설치 뒤 -DCMAKE_PREFIX_PATH=$HOME/.local/protobuf-21)
 # 테스트: ctest --test-dir build/onboard --output-on-failure
@@ -23,6 +25,11 @@ find_package(cppzmq REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(GTest REQUIRED)
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG OFF)
+
+# GStreamer 1.24 이상 (영상 송신부의 RTSP 송신, docs/spec/video.md 1장). rtppassthroughpay 가 1.24 에서 추가되었다
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ARGUS_GSTREAMER REQUIRED IMPORTED_TARGET
+                  gstreamer-1.0>=1.24 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-rtsp-server-1.0)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common/mavlink ${CMAKE_CURRENT_BINARY_DIR}/mavlink)
 

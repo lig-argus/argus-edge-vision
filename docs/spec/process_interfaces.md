@@ -274,12 +274,12 @@ flowchart LR
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
 
-- 구독: `vision/frame/gray8`(박스 없는 비압축 프레임, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 같은 frame_id 의 프레임이 없는 탐지 결과가 있을 수 있으므로(5.1) 짝이 없는 탐지·추적 결과는 버린다. 선택된 표적 표시가 필요하면 `follow/status` 도 구독한다.
+- 구독: `vision/frame/gray8`(박스 없는 비압축 프레임, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, frame_id)` 로 묶는다. 같은 frame_id 의 프레임이 없는 탐지 결과가 있을 수 있으므로(5.1) 짝이 없는 탐지·추적 결과는 버린다. `follow/status` 는 구독하지 않는다. 선택된 표적의 표시는 통제기가 `ARGUS_STATUS` 의 `target_id`, `target_generation` 으로 한다 (`docs/spec/video.md` 6장).
 - 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 탐지 결과 둘 중 하나만 같은 frame_id 의 영상이 있어 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
-- 전송 코덱 인코딩(JPEG, 필요하면 H.264 등)은 영상 송신부가 한다. 탐지 프로세스는 프레임과 박스만 내고 전송 방식을 모른다(단일 책임). 그래서 코덱 추가·품질 변경은 송신부의 설정과 인코더 구현 추가로 끝나고 탐지 코드는 바뀌지 않으며(개방-폐쇄), 비압축 프레임이 있어 압축 손실 측정과 수신기 테스트도 할 수 있다. 비용: 640×480 8 비트 흑백 307 KB/프레임, 30 FPS 약 9 MB/s (RPi 안 ZeroMQ 로 충분). 송신부 JPEG 인코딩은 프레임당 1~2 ms.
+- 전송 코덱 인코딩(기본 H.264, 선택 JPEG)은 영상 송신부가 한다. 탐지 프로세스는 프레임과 박스만 내고 전송 방식을 모른다(단일 책임). 그래서 코덱 추가·품질 변경은 송신부의 설정과 인코더 구현 추가로 끝나고 탐지 코드는 바뀌지 않으며(개방-폐쇄), 비압축 프레임이 있어 압축 손실 측정과 수신기 테스트도 할 수 있다. 비용: 640×480 8 비트 흑백 307 KB/프레임, 30 FPS 약 9 MB/s (RPi 안 ZeroMQ 로 충분). 송신부 인코딩 비용: JPEG 는 프레임당 1~2 ms, H.264 는 측정 전 (`docs/spec/video.md` 9장 12).
 - 메시지 결합: 세 토픽의 메시지를 같은 `(source, session_id, frame_id)` 끼리 한 프레임으로 묶는다. `session_id` 가 없는 메시지(`perception/observations` v2 와 그것으로 만든 `tracking/tracks`)는 `(source, frame_id)` 로 묶되 `session_id` 가 있는 메시지와 섞지 않는다. 보관 개수와 대기 시간을 제한하고, 도착 순서는 보장되지 않으므로 기다리되 시간 안에 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 보관 중인 메시지를 비운다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다.
-- 전송: RTSP 세션 하나에 영상 트랙(RTP/JPEG)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
-- 시각: 영상 프레임과 메타데이터 모두 JPEG 의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
+- 전송: RTSP 세션 하나에 영상 트랙(RTP/H.264)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
+- 시각: 영상 프레임과 메타데이터 모두 프레임의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
 - 메타데이터의 박스: 운용자가 클릭해 고를 수 있어야 하므로 `tracking/tracks` 의 트랙 기준으로 보낸다. 영상에 그려진 탐지 박스와 위치가 다를 수 있다. 추적 결과가 없는 프레임은 박스 없이 보낸다.
 - 운용자 선택: 통제기는 클릭한 트랙의 sensor, generation, class_id, track_id 를 `TRACK_START` 매개변수로 보낸다 (`docs/spec/icd.md` 4.2, #21).
 
