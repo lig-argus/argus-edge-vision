@@ -20,9 +20,13 @@ argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_respo
 
 # main.cpp 를 제외한 mavlink_gateway 의 소스. 실행 파일과 테스트가 링크한다
 add_library(argus_mavlink_gateway_core STATIC
+    src/fc_command_policy.cpp
+    src/fc_control.cpp
     src/fc_link_tracker.cpp
     src/fc_telemetry_receiver.cpp
+    src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
+    src/setpoint_encoding.cpp
     src/time_sync.cpp
     src/udp_mavlink_connection.cpp)
 add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
@@ -43,4 +47,13 @@ argus_add_test(mavlink_gateway_time_sync_test SOURCES test/time_sync_test.cpp
 argus_add_test(mavlink_gateway_fc_link_tracker_test SOURCES test/fc_link_tracker_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)
 argus_add_test(mavlink_gateway_fc_telemetry_receiver_test SOURCES test/fc_telemetry_receiver_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_fc_command_policy_test SOURCES test/fc_command_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_setpoint_inbox_test SOURCES test/setpoint_inbox_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_fc_control_test SOURCES test/fc_control_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+# FC 명령 송신을 실제 구현으로 연결한 시나리오 테스트
+argus_add_test(mavlink_gateway_fc_command_scenario_test SOURCES test/fc_command_scenario_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)

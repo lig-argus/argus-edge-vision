@@ -80,6 +80,19 @@ TEST_F(TimeSyncTest, SendsRequestFromObserverComponentToFc) {
     EXPECT_EQ(request.target_component, MAV_COMP_ID_AUTOPILOT1);
 }
 
+TEST_F(TimeSyncTest, RequestSequenceNumberIsNotAdvancedByCommandComponentMessages) {
+    ASSERT_TRUE(time_sync_.send_request());
+    const std::uint8_t first_seq = connection_.sent().back().seq;
+    // compid 195 가 사용하는 채널로 다른 메시지를 만든다
+    mavlink_message_t other{};
+    mavlink_msg_heartbeat_pack_chan(1, MAV_COMP_ID_PATHPLANNER, MAVLINK_COMM_0, &other,
+                                    MAV_TYPE_ONBOARD_CONTROLLER, MAV_AUTOPILOT_INVALID, 0, 0,
+                                    MAV_STATE_ACTIVE);
+    ASSERT_TRUE(time_sync_.send_request());
+
+    EXPECT_EQ(connection_.sent().back().seq, static_cast<std::uint8_t>(first_seq + 1));
+}
+
 TEST_F(TimeSyncTest, ReportsSendFailure) {
     connection_.set_send_result(false);
     EXPECT_FALSE(time_sync_.send_request());

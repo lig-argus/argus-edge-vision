@@ -109,7 +109,7 @@ flowchart LR
 | TIMESYNC (111) | mavlink_gateway(191) ↔ FC | mavlink_gateway 가 주기적으로 요청 | RPi 시계와 FC `time_boot_ms` 의 차이 (아키텍처 문서 1.9) |
 | COMMAND_LONG (76) | 통제기 → FC 또는 mavlink_gateway | 이벤트 | 명령 (4장). `target_component` 로 FC(1)·mavlink_gateway(195) 구분 |
 | COMMAND_ACK (77) | FC, mavlink_gateway → 통제기 | 응답 | 명령 결과 (4장) |
-| SET_POSITION_TARGET_LOCAL_NED (84) | mavlink_gateway → FC | 20 Hz | Offboard 속도 setpoint 와 yaw 회전 속도. 추종 중과 Scan 중에 보낸다 |
+| SET_POSITION_TARGET_LOCAL_NED (84) | mavlink_gateway → FC | 20 Hz | Offboard 속도 setpoint 와 yaw 회전 속도(추종, Scan), 위치 setpoint(제자리 유지). Offboard 진입 전부터 보내고, 정지한 뒤에도 제자리 유지 중에는 계속 보낸다 (4.2) |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
 | VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_H264`(1) (JPEG 를 선택한 경우 MAVLink 에 JPEG 값이 없어 `VIDEO_STREAM_ENCODING_UNKNOWN`(0). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·mavlink_gateway 는 쓰지 않는다 |
@@ -159,9 +159,9 @@ flowchart LR
 
 | 명령 | param | 조건 | 결과 |
 |---|---|---|---|
-| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값. p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ FC 가 실제로 Hold. Position 모드라는 것만으로는 허용하지 않는다. Position 모드에서 조종을 넘기는 절차는 후속 항목이다 [E5] | ①④ 불충족 → DENIED. ②③⑤⑥ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT). 진행 중(PREPARING)에 TRACK_STOP 을 받으면 CANCELLED (4.1) |
-| MAV_CMD_ARGUS_TRACK_STOP (45001) | p7 명령 번호 (4.1) | 보낸 sysid 가 제어권 통제기 | 불충족 → DENIED. TRACK_START 또는 SCAN_START 가 진행 중이어도 받는다 (4.1). IN_PROGRESS 를 먼저 보내고(HOLD_TRANSITION), 추종 또는 스캔을 끝내고 FC 가 실제로 Hold 인 것을 확인하면 ACCEPTED (HOLD_WAIT). 둘 다 아니면 바로 ACCEPTED. 먼저 IN_PROGRESS 를 보내는 이유: Hold 전환의 DO_SET_MODE ACK 와 HEARTBEAT 확인이 4.1 의 재전송 기한(1 초)에 걸릴 수 있다 [미결 E7] |
-| MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 mavlink_gateway 설정 기본값(2π, 10 deg/s 상당, 60 s). p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 FC 모드가 Hold ④ 매개변수가 범위 안 | ①④ 불충족 → DENIED. ②③ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 진행 중에 TRACK_STOP 을 받으면 CANCELLED (4.1). 운용자가 TRACK_START 로 선택해야 추종이 시작된다. IN_PROGRESS 의 `progress` 는 회전한 yaw / p1 × 100 이다 (`follow/status` 의 `scan_progress_deg`). TRACK_START·TRACK_STOP 의 IN_PROGRESS 는 `progress` 255 다. 진행 단계는 `ARGUS_STATUS.mission_state` 로 확인한다 |
+| MAV_CMD_ARGUS_TRACK_START (45000) | p1 track_id (1~16,777,215), p2 sensor (ARGUS_SENSOR), p3 class_id, p4 generation (1~16,777,215). 운용자가 영상에서 고른 박스의 값. p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기(250) ② FC armed 이고 비행 중 ③ p2 센서의 FOLLOWABLE = 1 ④ (p4, p3, p1) 이 p2 센서의 최신 추적 결과에 있음. 최신 = 탐지 결과의 프레임 시각이 명령 수신 시각 기준 **250 ms 이내**인 CONFIRMED 트랙 (아키텍처 문서 2.3). generation 이 다르면 추적기가 재시작된 것이므로 DENIED ⑤ `mission_state` 가 IDLE 또는 HOLD_WAIT ⑥ 기체가 정지 상태(아래 "정지 상태" 항목). Position 모드라는 것만으로는 허용하지 않는다. Position 모드에서 조종을 넘기는 절차는 후속 항목이다 [E5] | ①④ 불충족 → DENIED. ②③⑤⑥ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS 를 먼저 보내고(`mission_state` PREPARING) Offboard 진입이 성공하면 ACCEPTED(FOLLOW_ACTIVE). 성공은 DO_SET_MODE 의 ACK 와 HEARTBEAT 로 확인한 실제 모드가 모두 Offboard 일 때다. 요청 실패, ACK 실패, 실제 모드 확인 시간 초과는 FAILED(`mission_state` FAULT). 진행 중(PREPARING)에 TRACK_STOP 을 받으면 CANCELLED (4.1) |
+| MAV_CMD_ARGUS_TRACK_STOP (45001) | p7 명령 번호 (4.1) | 보낸 sysid 가 제어권 통제기 | 불충족 → DENIED. TRACK_START 또는 SCAN_START 가 진행 중이어도 받는다 (4.1). IN_PROGRESS 를 먼저 보내고(HOLD_TRANSITION), 추종 또는 스캔을 끝내고 기체가 정지 상태인 것을 확인하면 ACCEPTED (HOLD_WAIT). 둘 다 아니면 바로 ACCEPTED. 먼저 IN_PROGRESS 를 보내는 이유: 정지의 확인(Hold 전환의 DO_SET_MODE ACK 와 HEARTBEAT, 또는 제자리 유지의 시작)이 4.1 의 재전송 기한(1 초)에 걸릴 수 있다 [미결 E7] |
+| MAV_CMD_ARGUS_SCAN_START (45002) | p1 yaw_range_rad (0 초과 ~ 2π), p2 yaw_rate_rad_s (0 제외, 절댓값 ≤ 75 deg/s 상당. 양수 = 시계 방향), p3 timeout_s (> p1 / \|p2\|). NaN 이면 mavlink_gateway 설정 기본값(2π, 10 deg/s 상당, 60 s). p7 명령 번호 (4.1) | ① 보낸 sysid 가 제어권 통제기 ② FC armed 이고 비행 중 ③ `mission_state` 가 IDLE 또는 HOLD_WAIT 이고 기체가 정지 상태 ④ 매개변수가 범위 안 | ①④ 불충족 → DENIED. ②③ 불충족 → TEMPORARILY_REJECTED. 충족 → IN_PROGRESS(SCAN_ACTIVE). 실제 yaw 회전량이 p1 에 이르거나 p3 가 지나면 정지하고 ACCEPTED(HOLD_WAIT). 추적 후보를 찾으면 그 자리에서 정지하고 ACCEPTED. 진행 중에 TRACK_STOP 을 받으면 CANCELLED (4.1). 운용자가 TRACK_START 로 선택해야 추종이 시작된다. IN_PROGRESS 의 `progress` 는 회전한 yaw / p1 × 100 이다 (`follow/status` 의 `scan_progress_deg`). TRACK_START·TRACK_STOP 의 IN_PROGRESS 는 `progress` 255 다. 진행 단계는 `ARGUS_STATUS.mission_state` 로 확인한다 |
 
 ```mermaid
 sequenceDiagram
@@ -178,15 +178,27 @@ sequenceDiagram
     O-->>G: ARGUS_STATUS mission_state=FOLLOW_ACTIVE, target_state=CONFIRMED
     G->>O: COMMAND_LONG TRACK_STOP
     O-->>G: ARGUS_STATUS mission_state=HOLD_TRANSITION
-    O->>F: SET_POSITION_TARGET (속도 0)
-    O->>F: COMMAND_LONG DO_SET_MODE(Hold)
-    F-->>O: COMMAND_ACK ACCEPTED
+    O->>F: SET_POSITION_TARGET (정지 시점의 위치와 yaw, 제자리 유지)
     O-->>G: COMMAND_ACK ACCEPTED
     O-->>G: ARGUS_STATUS mission_state=HOLD_WAIT, target_state=NONE
 ```
 
-- 추종 중에 받은 TRACK_START 는 TEMPORARILY_REJECTED 이다 (⑤ 불충족). 표적을 바꾸려면 TRACK_STOP(Hold) 뒤 다시 선택한다 (아키텍처 문서 2.14).
-- 추종 중 표적을 잃었을 때의 mavlink_gateway 동작(예측 유지 시간, Hold 전환)은 `docs/design/system_architecture.md` 2.7·2.11 을 따른다. 통제기는 `target_state`(CONFIRMED → PREDICTED → LOST)와 `mission_state` 변화로만 본다.
+- Offboard 진입 전의 setpoint: mavlink_gateway 는 FC 모드가 Offboard 가 아닌 동안에도 추종 제어의 setpoint 를 FC 로 보낸다 (PX4 는 Offboard 가 아닌 동안 받은 setpoint 를 비행에 쓰지 않는다). Offboard 진입 요청은 setpoint 를 1 초 이상 연속으로 보내고 있고 마지막 송신이 0.2 초 이내일 때만 받아들인다. 그렇지 않으면 FC 가 전환을 거부한다. 두 값은 기체 시험에서 쓴 값이다 [미결 E11].
+- 추종 중에 받은 TRACK_START 는 TEMPORARILY_REJECTED 이다 (⑤ 불충족). 표적을 바꾸려면 TRACK_STOP(정지) 뒤 다시 선택한다 (아키텍처 문서 2.14).
+- 추종 중 표적을 잃었을 때의 mavlink_gateway 동작(예측 유지 시간, 정지)은 `docs/design/system_architecture.md` 2.7·2.11 을 따른다. 통제기는 `target_state`(CONFIRMED → PREDICTED → LOST)와 `mission_state` 변화로만 본다.
+- **정지 상태**: FC 모드가 Hold 이거나, FC 모드가 Offboard 이면서 mavlink_gateway 가 제자리 유지 setpoint 를 보내고 있는 상태다 (`fc/state` 의 `offboard_hover`, `docs/spec/process_interfaces.md` 5.1). 이 문서의 "정지" 는 기체를 이 상태로 만드는 것을 뜻한다.
+  - FC 모드가 Offboard 일 때의 정지는 **Offboard 제자리 유지**로 한다. FC 의 모드를 바꾸지 않고, mavlink_gateway 가 정지 시점의 local 위치(x, y, z)와 yaw 를 목표로 하는 `SET_POSITION_TARGET_LOCAL_NED`(`MAV_FRAME_LOCAL_NED`)를 20 Hz 로 보낸다. GPS 가 없는 환경에서는 PX4 가 Hold 진입을 거절하기 때문이다 (기체 시험, 2026-11-09 과 2026-11-12). 속도 0 이 아니라 위치를 목표로 하는 이유는 속도 0 이 위치를 고정하지 않기 때문이다.
+  - FC 모드가 Offboard 가 아닐 때는 mavlink_gateway 가 FC 로 아무것도 보내지 않는다. mavlink_gateway 가 제어하고 있지 않은 기체의 모드를 바꾸면 조종사의 조종을 방해하기 때문이다. 이때 정지 상태인지는 FC 모드가 Hold 인지로 판단한다.
+  - Offboard 진입 명령을 보내고 FC 의 전환을 기다리는 중에 정지해야 하면, mavlink_gateway 는 그 진입 요청을 취소하고 속도 0 setpoint 를 바로 보내기 시작한다. FC 가 Offboard 로 바뀌는 시점에 setpoint 가 이미 도착하고 있게 하기 위해서다. FC 가 Offboard 로 바뀌면 제자리 유지로 바꾼다.
+  - 제자리 유지의 목표는 자세와 local 위치 값이 최신(받은 뒤 0.2 초 이내)일 때만 정한다. 최신이 아니면 속도 0 setpoint 를 보내고, 값이 최신이 되면 제자리 유지로 바꾼다. 속도 0 을 보내는 동안은 정지 상태가 아니다 (`offboard_hover` = false). 이 경우의 착륙은 E10.
+  - 제자리 유지와 속도 0 setpoint 는 FC 연결 두절(6.2)로 판단한 동안에도 계속 보낸다. 멈추면 PX4 가 1 초 뒤 failsafe 로 넘어가기 때문이다. 추종 제어의 속도 setpoint 는 그동안 보내지 않고, mavlink_gateway 가 바로 제자리 유지로 바꾼다.
+  - Offboard 진입 명령을 보내고 FC 의 전환을 기다리는 중에 다음 중 하나가 일어난 경우에도 mavlink_gateway 는 그 진입 요청을 취소하고 속도 0 setpoint 를 바로 보낸다: 추종 제어의 유효한 setpoint 가 없음, FC 의 HEARTBEAT 를 2 초 넘게 받지 못함, FC 가 진입 명령을 거부함(COMMAND_ACK), 확인 시간 초과, 진입 명령의 송신 실패, FC 연결이 다시 됨(`fc_epoch` 변경). FC 가 이미 Offboard 로 바뀌었거나 확인 시간 안에 바뀔 수 있기 때문이다. Offboard 인 HEARTBEAT 를 받으면 제자리 유지로 바꾼다. 이 속도 0 setpoint 는 진입 확인 시간이 지난 뒤에 받은 HEARTBEAT 로 FC 가 Offboard 가 아님을 확인한 때에 멈춘다. 확인 시간 전에 받은 HEARTBEAT 는 FC 가 아직 전환하지 않은 때의 값일 수 있으므로 이 판단에 쓰지 않으며, HEARTBEAT 를 받지 못하는 동안에는 멈추지 않는다. 이 경우는 진입이 이루어지지 않은 것이므로 아래의 "요청 없이 Offboard 를 벗어난 경우" 로 처리하지 않는다. 속도 0 을 보내는 동안의 새 진입 요청은 거부한다.
+  - FC 연결이 다시 된 경우(`fc_epoch` 변경, `docs/spec/process_interfaces.md` 3장) mavlink_gateway 는 FC 제어 명령 송신권과 진행 중인 Offboard 진입 요청을 폐기한다. mavlink_gateway 가 FC 를 Offboard 로 제어하던 중이었으면 제자리 유지 setpoint(위치 값이 최신이 아니면 속도 0)는 새 연결의 첫 HEARTBEAT 를 받을 때까지 계속 보낸다 (진입 명령을 보내고 전환을 기다리던 중이었으면 위 항목을 따른다). 연결이 다시 된 것만으로는 FC 가 Offboard 를 벗어났는지 알 수 없고, FC 로부터의 수신만 끊긴 동안 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있었을 수 있기 때문이다. 첫 HEARTBEAT 의 모드가 Offboard 이면 제자리 유지를 이어 가고 다음 항목의 처리를 하지 않는다. Offboard 가 아니면 그때 setpoint 를 멈추고 다음 항목과 같이 처리한다. 어느 경우에도 다시 추종하려면 새 TRACK_START 가 필요하다. 첫 HEARTBEAT 를 기다리는 시간에는 상한을 두지 않는다 (PX4 는 Offboard 가 아닌 동안 받은 setpoint 를 비행에 쓰지 않는다).
+  - mavlink_gateway 가 진입시키지 않았는데 FC 가 Offboard 인 것을 HEARTBEAT 로 안 경우(mavlink_gateway 프로세스가 비행 중 다시 시작함, 외부가 FC 를 Offboard 로 바꿈) mavlink_gateway 는 제자리 유지 setpoint 를 보내기 시작한다. Offboard 인 FC 에 setpoint 가 도착하지 않으면 PX4 가 failsafe 로 넘어가기 때문이다.
+  - 제자리 유지 중에 받은 Offboard 진입 요청은 진입 명령 없이 받아들인다. 수락한 뒤에 받은 setpoint 만 FC 로 보내며, 그 첫 setpoint 를 받을 때까지는 제자리 유지를 이어 간다. 진입 확인 시간(3 초) 동안 setpoint 가 오지 않으면 그 세션의 FC 제어 명령 송신권을 폐기한다.
+  - mavlink_gateway 가 setpoint 송신을 끝내는 것은 FC 가 Offboard 가 아님을 HEARTBEAT 로 확인한 경우뿐이다. 수신이 끊기거나 연결이 다시 된 것만으로는 끝내지 않는다.
+  - FC 가 mavlink_gateway 의 요청 없이 Offboard 를 벗어나면(조종사나 통제기의 모드 전환, FC 의 failsafe) mavlink_gateway 는 setpoint 와 명령을 모두 멈추고, 운용자의 명시적 TRACK_STOP 을 받기 전까지 다시 보내지 않는다 (6장).
+  - `mission_state` 의 이름 HOLD_TRANSITION, HOLD_WAIT 는 그대로 쓴다. Hold 모드만이 아니라 정지 상태를 뜻한다.
 - Scan 의 yaw 회전은 Offboard 상태에서 `SET_POSITION_TARGET_LOCAL_NED` 의 yaw 회전 속도로 수행한다. Hold 상태에서 절대 heading 을 요청하는 방식(`MAV_CMD_DO_REPOSITION` 의 yaw)은 사용하지 않는다. GPS 가 없는 환경에서는 PX4 가 Hold 진입을 거절하기 때문이다 (기체 시험, 2026-11-12. PX4 v1.16 의 Hold 는 local 위치와 global 위치 추정을 모두 요구한다). PX4 는 위치, 속도, 가속도 값이 모두 없는 setpoint 를 폐기하므로 yaw 회전 속도는 속도 값과 함께 보낸다. 정지 절차와 감시 시간은 E3.
 
 ### 4.3 비행 명령 (FC 가 받는다, 통제기 → FC 직접)
@@ -214,16 +226,16 @@ sequenceDiagram
 
 | 구간 | 판단 기준 | 두절 시 동작 |
 |---|---|---|
-| 6.1 통제기 → mavlink_gateway | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 Hold. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
-| 6.2 mavlink_gateway → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 setpoint 송신 중단(FC 가 Offboard failsafe 로 Hold) |
+| 6.1 통제기 → mavlink_gateway | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 정지. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
+| 6.2 mavlink_gateway → FC | telemetry(HEARTBEAT 포함)가 **2 초** 없음 | `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 추종 제어의 속도 setpoint 는 보내지 않고, 제자리 유지 setpoint 로 바꾸어 계속 보낸다 (FC 로부터의 수신만 끊긴 경우 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있을 수 있다). FC 제어 명령 송신권은 폐기한다. 다시 받았을 때의 동작은 4.2 의 정지 상태 항목 |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
-| 6.4 추종 제어 → mavlink_gateway | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: mavlink_gateway 가 속도 0 을 보내고 Hold 요청. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 Hold 로 전환. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
+| 6.4 추종 제어 → mavlink_gateway | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: mavlink_gateway 가 setpoint 전달을 멈추고 정지한다. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 정지한다. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 | 6.6 mavlink_gateway 독립 감시 | 추종 제어의 상태 보고와 관계없이 mavlink_gateway 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
 
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). mavlink_gateway 의 6.1 과 독립이다.
 - 두절 시간 값은 Wi-Fi 끊김 길이 측정 뒤 조정한다 [미결 D3].
-- FAULT·MANUAL 에서의 복구: 통신이나 조건이 회복된 것만으로는 복구하지 않는다. 운용자의 명시적 TRACK_STOP 을 받고, 최신 FC 상태·FC 실제 Hold·RC 비개입을 확인한 뒤 HOLD_WAIT 로 돌아간다. 다시 추종하려면 표적을 새로 고르고 TRACK_START 를 보내야 한다.
+- FAULT·MANUAL 에서의 복구: 통신이나 조건이 회복된 것만으로는 복구하지 않는다. 운용자의 명시적 TRACK_STOP 을 받고, 최신 FC 상태·기체의 정지 상태·RC 비개입을 확인한 뒤 HOLD_WAIT 로 돌아간다. 다시 추종하려면 표적을 새로 고르고 TRACK_START 를 보내야 한다.
 
 ## 7. 검토 필요 사항
 
@@ -240,16 +252,18 @@ sequenceDiagram
 | D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. 라우터의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 mavlink_gateway 가 거부한다 | 통제기 |
 | D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
 | D3 | 두절 시간 | 6 장 값(3 s / 2 s) 현장 측정 뒤 확정 | 전체 |
-| D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` = 5(Hold) 가 기체 FC 에 적용됐는지 확인 | 통제기 |
+| D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` 의 값. 지금 규약은 5(Hold)이지만 GPS 가 없는 환경에서는 PX4 가 Hold 를 실행할 수 없어 다음 동작(RTL, Land, Descend 순)으로 넘어간다 (PX4 v1.16 의 failsafe 처리). 값의 후보는 Position(조종기 연결과 local 위치 추정이 유효할 때 조종사에게 넘김)과 Land 이며 기체 시험으로 정한다. 정한 값이 기체 FC 에 적용됐는지도 확인 | 통제기 |
 | D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 의 USB 연결 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
 | D6 | 최종 ACK 보관 시간 | 해소 (0.7): 시간이 아니라 번호 기준으로 보관한다 (다음 명령까지, 더 오래된 번호는 폐기. 4.1 재전송 판단). 링크 지연 측정 조건이 없어졌다. 60 초 상한은 표 정리용 | 통제기 |
 | E3 | Scan 의 정지 절차와 감시 시간 | Scan 의 yaw 회전 방식은 Offboard 상태의 yaw 회전 속도 setpoint 로 정했다 (4.2). 남은 항목: Scan 을 멈출 때 yaw 를 유지하는 방법, Scan 중 setpoint 가 없을 때의 감시 시간(6.4 ⓒ), yaw 회전 속도의 상한, Scan 시작 조건 ③(FC 모드가 Hold)을 GPS 가 없는 환경에 적용하는 방법. 기체 시험으로 정한다 | 통제기·제어 |
 | E4 | `target_state` PREDICTED 표시 | enum 에는 둔다. 통제기 화면에서 CONFIRMED 와 구분해 보일지(의견 차이 있음) | 통제기 |
-| E5 | Position 모드에서 조종을 넘기는 절차 (후속) | 지금 TRACK_START 는 FC 가 실제 Hold 일 때만 허용하고 ①~⑤ 와 FC 제어 명령 송신권 검사는 그대로다 (4.2, 5장). Position 모드에서 조종을 넘기는 절차는 통제기가 보낼 요청 형식이 아직 없으므로 후속 항목으로 두고, 지원할 때 준비·취소·유효 시간·RC 개입 처리를 함께 정한다 | 통제기·제어 |
+| E5 | Position 모드에서 조종을 넘기는 절차 (후속) | 지금 TRACK_START 는 기체가 정지 상태일 때만 허용하고 ①~⑤ 와 FC 제어 명령 송신권 검사는 그대로다 (4.2, 5장). Position 모드에서 조종을 넘기는 절차는 통제기가 보낼 요청 형식이 아직 없으므로 후속 항목으로 두고, 지원할 때 준비·취소·유효 시간·RC 개입 처리를 함께 정한다 | 통제기·제어 |
 | E6 | 규약에 없는 임무 상태 변화 | 해소 (0.2): Offboard 요청·ACK 실패, 실제 모드 확인 시간 초과는 FAULT (4.2). MANUAL·FAULT 의 복구는 6장 아래 항목 | — |
-| E7 | TRACK_STOP 의 IN_PROGRESS | stop 요청에 추종 제어가 outcome IN_PROGRESS 를 먼저 돌려주고 Hold 확인 뒤 SUCCEEDED 로 바꿔야 한다 (`process_interfaces.md` 7장 12). 합의 전까지 4.2 의 TRACK_STOP 결과는 제안이다 | 통제기·제어 |
+| E7 | TRACK_STOP 의 IN_PROGRESS | stop 요청에 추종 제어가 outcome IN_PROGRESS 를 먼저 돌려주고 정지 확인 뒤 SUCCEEDED 로 바꿔야 한다 (`process_interfaces.md` 7장 12). 합의 전까지 4.2 의 TRACK_STOP 결과는 제안이다 | 통제기·제어 |
 | E8 | 스캔 남은 시간 | `ARGUS_STATUS.scan_remaining_s` 의 값은 추종 제어가 `follow/status` 에 넣어 줘야 한다 (`process_interfaces.md` 7장 13). 그 전까지 mavlink_gateway 는 NaN 을 보낸다 | 통제기·제어 |
 | E9 | 추종 제어 거부의 MAV_RESULT 대응 | `sequence.md` 1절의 REJECTED → DENIED 는 임시다. 추종 제어의 거부가 값 조건(DENIED)인지 상태 조건(TEMPORARILY_REJECTED)인지 통제기가 구분하려면 `FollowOutcome` 을 둘로 나누어야 한다 (`follow/result` 스키마 변경). 추적/추종 담당 답을 받은 뒤 결정 | 제어, 통제기 |
+| E10 | 제자리 유지를 시작할 수 없을 때의 착륙 | 정지해야 하는데 자세나 local 위치 값이 최신이 아니면 mavlink_gateway 는 속도 0 setpoint 를 보낸다 (4.2). PX4 는 속도 추정이 유효하지 않으면 속도 setpoint 도 받아들이지 않고 `COM_OBL_RC_ACT` 동작으로 넘어가므로, 속도 0 은 정지를 보장하지 않는다. 기체 시험에서는 이 경우 착륙했다. 착륙 명령(`MAV_CMD_NAV_LAND`)을 mavlink_gateway 가 보낼지, 그 판단 조건과 `mission_state` 보고를 정해야 한다 | 통제기·제어 |
+| E11 | Offboard 진입 조건과 추정의 유효 여부 | ① Offboard 진입 전 setpoint 송신 시간(1 초)과 송신 간격 상한(0.2 초), 제자리 유지에 쓰는 값의 경과 시간 상한(0.2 초), Offboard 진입 확인 시간(3 초), setpoint 하나를 다시 보내는 시간의 상한(1 초)은 기체 시험과 구현의 값이며 규약 값으로 확정해야 한다. ② PX4 는 위치 추정이 유효하지 않은 동안에도 LOCAL_POSITION_NED 를 보내므로, mavlink_gateway 는 값을 최근에 받았는지만 알고 추정이 유효한지는 알 수 없다. 추정의 유효 여부와 비행 여부(`in_air`)를 알리는 FC 메시지를 2장에 추가할지 정해야 한다. HEARTBEAT 로는 비행 여부를 알 수 없어 mavlink_gateway 의 `FlightStatus.in_air`(`fc/state` 의 in_air)는 지금 항상 false 이다. PX4 의 `EXTENDED_SYS_STATE`(245) 의 `landed_state` 를 2장의 수신 메시지에 넣는 안이 있다. 4.2 의 TRACK_START, SCAN_START 조건 ②(비행 중)를 판단하려면 이 값이 필요하다. ③ `control/setpoint` 에는 세션 값이 없어, 추종 제어가 새 세션으로 다시 시작하면 이전 세션의 송신권으로 새 세션의 setpoint 가 보내진다. `control/setpoint` 에 `session_id` 를 넣을지 정해야 한다 (`process_interfaces.md` 6장). ④ 기체 테스트로 확인할 것: FC 가 Offboard 가 아닌 동안 받은 setpoint 를 비행에 쓰지 않는지, 기체 기준 속도(`MAV_FRAME_BODY_NED`)를 FC 가 yaw 만으로 회전시키는지. ⑤ Offboard 진입 실패(FC 의 거부, 확인 시간 초과)가 요청한 쪽에 전달되지 않는다. `fc/mode_event`(`FlightModeEvent`)에 실패를 나타내는 값이 없어, 요청한 쪽은 완료 이벤트가 오지 않는 것으로만 알 수 있다. 4.2 의 FAILED 응답에 필요하므로 통제기 통신을 구현할 때 처리한다 (`process_interfaces.md` 7장 1). ⑥ Offboard 진입 전에 추종 제어의 setpoint 를 미리 보내는 중에 외부(조종사, 통제기)가 FC 를 Offboard 로 바꾸면, mavlink_gateway 가 그 변경을 HEARTBEAT(1 Hz)로 알아채기 전까지 최대 1 초 동안 FC 는 송신권을 가진 세션이 없는 setpoint 를 따라 비행한다. 알아챈 뒤에는 그 setpoint 를 보내지 않고 제자리 유지로 바꾼다. 이 시간을 줄일지(FC 모드를 더 자주 받는 방법), 운용 절차로 금지할지 정해야 한다. ⑦ mavlink_gateway 는 속도 setpoint 의 값이 유한한지만 확인하고 크기는 제한하지 않는다. 상한을 mavlink_gateway 에 둘지 PX4 파라미터에만 맡길지 정해야 한다. ⑧ mavlink_gateway 는 HEARTBEAT(1 Hz)를 받은 뒤 2 초 이내인 경우에만 FC 의 비행 상태를 최신으로 본다. HEARTBEAT 를 연속으로 두 번 받지 못하면 추종 제어의 속도 setpoint 를 보내지 않고 제자리 유지로 바꾸므로 여유가 HEARTBEAT 한 번이다. 이 값(6.2 의 2 초와 같음)을 D3 의 측정 뒤 함께 조정한다. ⑨ Offboard 진입이 취소된 뒤(FC 의 거부, 확인 시간 초과 등)에는 진입 확인 시간이 지나 FC 가 Offboard 가 아님을 HEARTBEAT 로 확인할 때까지(3~4 초) mavlink_gateway 가 속도 0 을 보내며 새 진입 요청을 거부하고, 그 뒤에도 setpoint 를 다시 1 초 동안 보낸 다음에야 진입 요청을 받는다. 이 대기 시간을 줄일지 정해야 한다 | 통제기·제어 |
 
 ## 부록 A. PX4 비행 모드 해석 (`HEARTBEAT.custom_mode`)
 
@@ -277,8 +291,8 @@ PX4 는 `custom_mode` 32 비트 안에 주 모드와 부 모드를 넣는다: `m
 | IDLE | 추종·스캔 없음. 표적 선택 대기 | 선택 가능 |
 | PREPARING | TRACK_START 수락 뒤 Offboard 진입·확인 중 | 진행 중 |
 | FOLLOW_ACTIVE | 추종 중 (Offboard, setpoint 20 Hz) | 추종 중 |
-| HOLD_TRANSITION | 추종·스캔 을 끝내고 Hold 로 전환 중 | 전환 중 |
-| HOLD_WAIT | FC 가 Hold 인 것을 확인하고 대기. 자동으로 추종을 재개하지 않는다 | 선택 가능 |
+| HOLD_TRANSITION | 추종·스캔 을 끝내고 정지하는 중 | 전환 중 |
+| HOLD_WAIT | 기체가 정지 상태인 것을 확인하고 대기. 자동으로 추종을 재개하지 않는다 | 선택 가능 |
 | SCAN_ACTIVE | yaw 스캔 중 | 스캔 중 |
 | MANUAL | 조종사(RC) 또는 통제기가 모드를 바꿔 추종이 끝남. 복구 조건은 6장 | 수동 |
 | FAULT | FC 두절, 추종 제어 두절, Offboard 진입 실패 등 고장으로 멈춤. 복구 조건은 6장 | 경고 |

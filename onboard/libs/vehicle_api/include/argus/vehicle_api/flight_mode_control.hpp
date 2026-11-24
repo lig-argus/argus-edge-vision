@@ -1,6 +1,6 @@
 // 비행 모드 전환 요청을 받는 인터페이스 (구현용. 응답을 바로 반환한다)
 // 규약: docs/spec/process_interfaces.md 3장(요청 공통 필드), 4장, 5.2 control/mode_request
-// 구현: (다음 PR) mavlink_gateway 의 MavlinkFlightModeControl (FC 로 DO_SET_MODE 송신),
+// 구현: mavlink_gateway 의 FcControl (FC 로 DO_SET_MODE 송신),
 //      테스트용 FakeFlightModeControl (vehicle_api_testing)
 // 사용: mavlink_gateway 의 bus 어댑터 BusFlightModeControlServer (vehicle_api_bus)가 요청을 받아
 // 부르고

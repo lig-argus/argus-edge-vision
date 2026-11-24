@@ -27,8 +27,8 @@ bool TimeSync::send_request() {
     const std::int64_t now_ns = clock_.now_monotonic_ns();
     mavlink_message_t message{};
     // tc1 = 0 은 요청을 뜻한다. FC 는 ts1 을 응답에 그대로 넣고 tc1 에 FC 시각(ns)을 넣는다
-    mavlink_msg_timesync_pack(kVehicleSysid, kFcObserverCompid, &message, 0, now_ns, kVehicleSysid,
-                              kFcCompid);
+    mavlink_msg_timesync_pack_chan(kVehicleSysid, kFcObserverCompid, kFcObserverChannel, &message,
+                                   0, now_ns, kVehicleSysid, kFcCompid);
     if (!connection_.send(message)) {
         return false;
     }
