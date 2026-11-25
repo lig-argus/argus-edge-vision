@@ -19,6 +19,8 @@
 ### CMake 빌드 폴더 (build/<onboard|gcs|simulation>) ###
 build/
 cmake-build-*/
+# CMake 의 개인 preset 파일. CMake 문서의 권고대로 커밋하지 않는다 (공용 설정은 onboard/CMakePresets.json)
+CMakeUserPresets.json
 
 ### Python (models/, datasets/, tools/) ###
 __pycache__/

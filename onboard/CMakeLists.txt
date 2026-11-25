@@ -6,9 +6,9 @@
 # 의존성 (Ubuntu 24.04 apt): libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
 #   영상 송신부의 GStreamer: pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev
 #   gstreamer1.0-plugins-base gstreamer1.0-plugins-good (전체 명령은 README.md)
-# 빌드:  cmake -S onboard -B build/onboard -G Ninja && cmake --build build/onboard
-#        (macOS 는 README 의 protobuf 3.21.12 설치 뒤 -DCMAKE_PREFIX_PATH=$HOME/.local/protobuf-21)
-# 테스트: ctest --test-dir build/onboard --output-on-failure
+# 빌드 설정은 CMakePresets.json 의 preset 으로 정한다 (Ubuntu 는 linux, macOS 는 macos. macOS 는 README 의
+# protobuf 3.21.12 설치가 먼저 필요). onboard/ 에서:
+#   cmake --preset linux && cmake --build --preset linux && ctest --preset linux
 cmake_minimum_required(VERSION 3.16)
 project(argus_onboard LANGUAGES CXX)
 
@@ -19,10 +19,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # clang-tidy 가 읽는 compile_commands
 
 # ZeroMQ C++ 바인딩(헤더만), protobuf(런타임과 protoc), gtest
 # protobuf 는 설치 방식에 따라 설정 파일(protobuf-config.cmake, 소스 빌드)만 있거나 pkg-config(Ubuntu apt)만
-# 있다. 설정 파일을 먼저 찾고 없으면 CMake 의 FindProtobuf 모듈로 찾는다
+# 있다. 설정 파일을 먼저 찾고 없으면 CMake 의 FindProtobuf 모듈로 찾는다.
+# 버전은 RPi(Ubuntu 24.04 apt)와 같은 3.21.12 로 고정한다. 다른 버전의 protoc 는 다른 생성 코드를 만들므로,
+# 다른 버전이 먼저 잡히면(예: Homebrew 의 protobuf) 설정 단계에서 멈춘다
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 find_package(cppzmq REQUIRED)
-find_package(Protobuf REQUIRED)
+find_package(Protobuf 3.21.12 EXACT REQUIRED)
 find_package(GTest REQUIRED)
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG OFF)
 
