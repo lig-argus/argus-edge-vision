@@ -1,0 +1,24 @@
+// control/mode_request: 추종 제어 → mavlink_gateway 요청과 응답 (control_mode_request.proto 에 대응)
+// .proto 와 다른 점: oneof action(빈 메시지 둘)을 enum 으로 정의
+#include "common.idl"
+
+module argus {
+    module idl {
+        enum ModeAction {
+            MODE_ACTION_UNSPECIFIED,
+            MODE_ACTION_OFFBOARD,
+            MODE_ACTION_HOLD
+        };
+
+        struct ControlModeRequest {
+            RequestHeader header;
+            ModeAction action;
+        };
+
+        struct ControlModeReply {
+            @optional RequestId id;
+            boolean accepted;
+            string reason;  // 거부의 원인. 판정에는 사용하지 않는다
+        };
+    };
+};

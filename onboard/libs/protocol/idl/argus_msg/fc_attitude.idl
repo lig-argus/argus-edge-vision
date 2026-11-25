@@ -1,0 +1,19 @@
+// fc/attitude: mavlink_gateway → 추적기, 추종 제어 (fc_attitude.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여)
+module argus {
+    module idl {
+        struct FcAttitude {
+            double roll_rad;
+            double pitch_rad;
+            double yaw_rad;
+            double roll_rate_rad_s;
+            double pitch_rate_rad_s;
+            double yaw_rate_rad_s;
+            uint32 fc_time_boot_ms;
+            int64 received_monotonic_ns;
+            @optional int64 fc_time_monotonic_ns;
+            boolean timesync_valid;
+            uint64 fc_epoch;  // FC 연결의 epoch (3장)
+        };
+    };
+};

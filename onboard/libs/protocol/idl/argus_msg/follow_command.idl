@@ -1,0 +1,75 @@
+// follow/command: mavlink_gateway → 추종 제어 요청과 응답 follow/result (follow_command.proto 에 대응)
+// .proto 와 다른 점: oneof action 을 판별 enum(FollowActionKind)의 union 으로 정의
+// TrackStart, Stop, Search 는 .proto 의 중첩 메시지를 module 범위로 꺼낸 것이라 FollowCommand_ 를 붙인다
+// (union 멤버 이름 track_start, stop, search 와 대소문자만 다른 타입 이름은 IDL 에서 충돌한다)
+#include "common.idl"
+
+module argus {
+    module idl {
+        enum Sensor {
+            SENSOR_UNKNOWN,
+            SENSOR_IR,
+            SENSOR_EO
+        };
+
+        enum StopReason {
+            STOP_REASON_UNSPECIFIED,
+            STOP_REASON_OPERATOR,   // 운용자의 종료 명령
+            STOP_REASON_LINK_LOSS,  // 통제기 링크 두절
+            STOP_REASON_ONBOARD     // mavlink_gateway 판단 (독립 감시 등)
+        };
+
+        enum FollowOutcome {
+            FOLLOW_OUTCOME_UNSPECIFIED,
+            FOLLOW_OUTCOME_IN_PROGRESS,  // 수락하고 진행 중
+            FOLLOW_OUTCOME_SUCCEEDED,    // 완료
+            FOLLOW_OUTCOME_REJECTED,     // 수락 전 조건 및 입력 불충족으로 거부
+            FOLLOW_OUTCOME_FAILED        // 수락 뒤 실행 실패, 취소, RC 및 모드 개입
+        };
+
+        struct FollowCommand_TrackStart {
+            Sensor sensor;
+            uint32 generation;  // 1~16,777,215
+            int32 class_id;
+            uint32 track_id;  // 1~16,777,215
+            string label;
+        };
+
+        struct FollowCommand_Stop {
+            StopReason reason;
+        };
+
+        struct FollowCommand_Search {
+            double yaw_range_rad;
+            double yaw_rate_rad_s;  // 양수 = 시계 방향
+            double timeout_s;
+        };
+
+        enum FollowActionKind {
+            FOLLOW_ACTION_KIND_TRACK_START,
+            FOLLOW_ACTION_KIND_STOP,
+            FOLLOW_ACTION_KIND_SEARCH
+        };
+
+        union FollowAction switch (FollowActionKind) {
+            case FOLLOW_ACTION_KIND_TRACK_START:
+                FollowCommand_TrackStart track_start;
+            case FOLLOW_ACTION_KIND_STOP:
+                FollowCommand_Stop stop;
+            case FOLLOW_ACTION_KIND_SEARCH:
+                FollowCommand_Search search;
+        };
+
+        struct FollowCommand {
+            RequestHeader header;
+            FollowAction action;
+        };
+
+        struct FollowResult {
+            RequestId id;  // 요청의 id 유지
+            FollowOutcome outcome;
+            boolean request_accepted;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
+            string reason;             // 거부와 실패의 원인. 판정에는 사용하지 않는다
+        };
+    };
+};
