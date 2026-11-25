@@ -98,7 +98,7 @@ CSC 는 각 CSCI 의 주요 클래스(또는 클래스 묶음)이다. 클래스 
 
 | CSC ID | 클래스 | 책임 | 입력 → 출력 |
 |---|---|---|---|
-| CSC-GW-01 | `FcTelemetryPublisher`, `TimeSync` | FC 메시지 수신과 수신 시각 기록, 두절 판단, FC 시각 변환 | MAVLink → `fc/attitude`, `fc/state` |
+| CSC-GW-01 | `FcTelemetryReceiver`, `FcLinkTracker`, `TimeSync`, `BusVehicleTelemetryPublisher` | FC 메시지 수신과 수신 시각 기록, 두절 판단, FC 시각 변환 | MAVLink → `fc/attitude`, `fc/state` |
 | CSC-GW-02 | `FcCommandGate`, `FcCommandAuthority` | FC 로 나가는 명령이 반드시 거치는 한 곳. 송신권, FC 상태·RC 개입, 유효 시간 순서로 확인 | FC 명령 → 허용 / 거부 |
 | CSC-GW-03 | `ZmqVelocitySetpointReceiver`, `MavlinkVelocitySetpointSink`, `MavlinkFlightModeControl` | setpoint 를 20 Hz 로 FC 에 송신(유효 기한이 지나면 속도 0), 모드 전환 요청과 실제 모드 확인 | `control/setpoint`, `control/mode_request` → SET_POSITION_TARGET_LOCAL_NED, DO_SET_MODE |
 | CSC-GW-04 | `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입을 직접 확인 | FC 상태 → Hold, FAULT |

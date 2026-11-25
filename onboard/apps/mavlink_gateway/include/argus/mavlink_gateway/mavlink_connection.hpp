@@ -1,7 +1,7 @@
 // mavlink_gateway 가 FC, 통제기와 MAVLink 메시지를 주고받는 연결 인터페이스
 // 규약: docs/spec/icd.md 1장 (mavlink-router 의 UDP 127.0.0.1:14540),
 // docs/design/uml/class_mavlink_gateway.md 1절 구현: (다음 PR) UdpMavlinkConnection, 테스트용
-// FakeMavlinkConnection (mavlink_gateway test/) 사용: FcTelemetryPublisher, TimeSync,
+// FakeMavlinkConnection (mavlink_gateway test/) 사용: FcTelemetryReceiver, TimeSync,
 // MavlinkCommandReceiver, GcsLinkMonitor 등 mavlink_gateway 의 MAVLink 처리 클래스
 #ifndef ARGUS_ONBOARD_MAVLINK_CONNECTION_HPP_
 #define ARGUS_ONBOARD_MAVLINK_CONNECTION_HPP_
