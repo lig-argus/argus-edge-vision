@@ -94,24 +94,34 @@ const char* const kH264Depayloader = "rtph264depay";
 const char* const kH264EncoderFactory = "x264enc";
 
 // RTSP 클라이언트. 영상은 RTP 패킷에서 복원한 인코딩된 프레임을, 메타데이터는 RTP 패킷을 appsink 로
-// 받는다
+// 받는다.
+// rtspsrc 의 출력 pad 는 트랙마다 수신 중에 생기므로, 생길 때 caps 의 media 값(video,
+// application)을 보고 그 트랙의 요소에 직접 연결한다. gst_parse_launch 의 지연 연결("source. !
+// caps ! ...")에 맡기면 pad 가 생긴 시점에 트랙을 구분하지 못해 한 트랙이 연결되지 않는 경우가
+// 있고, 그러면 연결되지 않은 appsink 가 첫 버퍼를 받지 못해 파이프라인 전체가 PAUSED 에서 멈춘다
 class RtspClient {
 public:
     explicit RtspClient(std::uint16_t port, const std::string& depayloader = kJpegDepayloader,
                         const std::string& path = "/argus/ir") {
         const std::string description =
             "rtspsrc name=source protocols=tcp latency=0 location=rtsp://127.0.0.1:" +
-            std::to_string(port) + path + " source. ! application/x-rtp,media=video ! " +
-            depayloader +
-            " ! "
-            "appsink name=video sync=false "
-            "source. ! application/x-rtp,media=application ! appsink name=metadata sync=false";
+            std::to_string(port) + path + " " + depayloader +
+            " name=depayloader ! appsink name=video sync=false "
+            "appsink name=metadata sync=false";
         pipeline_ = gst_parse_launch(description.c_str(), nullptr);
         if (pipeline_ == nullptr) {
             return;
         }
+        GstElement* source = gst_bin_get_by_name(GST_BIN(pipeline_), "source");
+        depayloader_ = gst_bin_get_by_name(GST_BIN(pipeline_), "depayloader");
         video_ = gst_bin_get_by_name(GST_BIN(pipeline_), "video");
         metadata_ = gst_bin_get_by_name(GST_BIN(pipeline_), "metadata");
+        if (source == nullptr || !valid()) {
+            gst_clear_object(&source);
+            return;
+        }
+        g_signal_connect(source, "pad-added", G_CALLBACK(on_pad_added), this);
+        gst_object_unref(source);
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
     }
 
@@ -119,6 +129,7 @@ public:
         if (pipeline_ != nullptr) {
             gst_element_set_state(pipeline_, GST_STATE_NULL);
         }
+        gst_clear_object(&depayloader_);
         gst_clear_object(&video_);
         gst_clear_object(&metadata_);
         gst_clear_object(&pipeline_);
@@ -130,7 +141,10 @@ public:
     RtspClient& operator=(RtspClient&&) = delete;
 
     // 테스트에 필요한 GStreamer 요소가 설치되어 있어 클라이언트를 구성했는지
-    bool valid() const { return pipeline_ != nullptr && video_ != nullptr && metadata_ != nullptr; }
+    bool valid() const {
+        return pipeline_ != nullptr && depayloader_ != nullptr && video_ != nullptr &&
+               metadata_ != nullptr;
+    }
 
     GstSample* pull_video() {
         return gst_app_sink_try_pull_sample(GST_APP_SINK(video_), kPullTimeout);
@@ -139,8 +153,73 @@ public:
         return gst_app_sink_try_pull_sample(GST_APP_SINK(metadata_), kPullTimeout);
     }
 
+    // 파이프라인의 상태와, 지금까지 bus 에 온 오류와 경고. 수신이 시간 안에 끝나지 않았을 때 원인을
+    // 테스트 출력에 남기는 데 쓴다
+    std::string describe() {
+        if (pipeline_ == nullptr) {
+            return "파이프라인 없음";
+        }
+        GstState current = GST_STATE_VOID_PENDING;
+        GstState pending = GST_STATE_VOID_PENDING;
+        gst_element_get_state(pipeline_, &current, &pending, 0);
+        std::ostringstream text;
+        text << "클라이언트 상태 " << gst_element_state_get_name(current) << " (전환 중 "
+             << gst_element_state_get_name(pending) << ")";
+        GstBus* bus = gst_element_get_bus(pipeline_);
+        while (GstMessage* message = gst_bus_pop(bus)) {
+            GError* error = nullptr;
+            gchar* debug = nullptr;
+            if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+                gst_message_parse_error(message, &error, &debug);
+            } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_WARNING) {
+                gst_message_parse_warning(message, &error, &debug);
+            } else {
+                gst_message_unref(message);
+                continue;
+            }
+            text << "\n"
+                 << GST_MESSAGE_TYPE_NAME(message) << " " << GST_MESSAGE_SRC_NAME(message) << ": "
+                 << (error != nullptr ? error->message : "")
+                 << (debug != nullptr ? std::string{" ("} + debug + ")" : std::string{});
+            g_clear_error(&error);
+            g_free(debug);
+            gst_message_unref(message);
+        }
+        gst_object_unref(bus);
+        return text.str();
+    }
+
 private:
+    // rtspsrc 의 스트리밍 스레드에서 호출된다. 생성 뒤 바뀌지 않는 요소만 읽는다
+    static void on_pad_added(GstElement* /*source*/, GstPad* pad, gpointer data) {
+        const auto& client = *static_cast<const RtspClient*>(data);
+        GstCaps* caps = gst_pad_get_current_caps(pad);
+        if (caps == nullptr) {
+            caps = gst_pad_query_caps(pad, nullptr);
+        }
+        const gchar* media =
+            gst_caps_is_empty(caps) == FALSE
+                ? gst_structure_get_string(gst_caps_get_structure(caps, 0), "media")
+                : nullptr;
+        GstElement* target = nullptr;
+        if (g_strcmp0(media, "video") == 0) {
+            target = client.depayloader_;
+        } else if (g_strcmp0(media, "application") == 0) {
+            target = client.metadata_;
+        }
+        gst_caps_unref(caps);
+        if (target == nullptr) {
+            return;
+        }
+        GstPad* sink = gst_element_get_static_pad(target, "sink");
+        if (!gst_pad_is_linked(sink)) {
+            gst_pad_link(pad, sink);
+        }
+        gst_object_unref(sink);
+    }
+
     GstElement* pipeline_ = nullptr;
+    GstElement* depayloader_ = nullptr;  // 영상 트랙의 RTP 패킷에서 인코딩된 프레임을 복원
     GstElement* video_ = nullptr;
     GstElement* metadata_ = nullptr;
 };
@@ -211,11 +290,19 @@ public:
     }
 
     // done() 이 true 를 반환할 때까지 프레임을 push 하고 수신한 것을 모은다.
-    // kReceiveTimeout 안에 끝나지 않으면 false 를 반환한다
+    // kReceiveTimeout 안에 끝나지 않으면 서버의 송신 통계와 클라이언트의 상태를 테스트 실패로
+    // 기록하고 false 를 반환한다
     bool push_and_receive_until(RtspClient& client, const std::function<bool()>& done) {
         const auto deadline = std::chrono::steady_clock::now() + kReceiveTimeout;
         while (!done()) {
             if (std::chrono::steady_clock::now() >= deadline) {
+                const RtspServerStats stats = server_.stats();
+                ADD_FAILURE() << "수신 시간 초과. 서버 sent " << stats.sent
+                              << ", dropped_no_client " << stats.dropped_no_client
+                              << ", dropped_not_playing " << stats.dropped_not_playing
+                              << ", dropped_send_failed " << stats.dropped_send_failed
+                              << ". 수신 영상 " << video_frames << ", 문서 " << documents.size()
+                              << ". " << client.describe();
                 return false;
             }
             push_frame();
