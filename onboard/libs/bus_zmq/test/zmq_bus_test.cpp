@@ -101,7 +101,7 @@ ZmqCodecTable plain_codecs() {
 
 // 비어 있는 TCP 포트 번호. 소켓을 닫은 뒤 다른 프로세스가 먼저 잡을 수 있으나 테스트에서는 무시한다
 std::int32_t free_tcp_port() {
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    const std::int32_t fd = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

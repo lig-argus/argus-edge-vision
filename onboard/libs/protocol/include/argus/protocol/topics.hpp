@@ -7,49 +7,50 @@
 #ifndef ARGUS_PROTOCOL_TOPICS_HPP_
 #define ARGUS_PROTOCOL_TOPICS_HPP_
 
+#include <cstdint>
 #include <string_view>
 
 namespace argus::protocol {
 
 // 큐 길이 기본값. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나오므로 4
 // (규약 5.1). 실제 값은 각 실행 파일이 설정 파일에서 읽고, 없을 때만 이 값을 사용한다.
-inline constexpr int kDefaultQueueDepth = 4;
+inline constexpr std::int32_t kDefaultQueueDepth = 4;
 
 // 토픽 (발행 → 구독)
 // 탐지 → 영상 송신부
 inline constexpr std::string_view kVisionFrameGray8 = "vision/frame/gray8";
-inline constexpr int kVisionFrameGray8QueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kVisionFrameGray8QueueDepth = kDefaultQueueDepth;
 // 탐지 → 지상 미리보기
 inline constexpr std::string_view kVisionOverlayJpeg = "vision/overlay/jpeg";
-inline constexpr int kVisionOverlayJpegQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kVisionOverlayJpegQueueDepth = kDefaultQueueDepth;
 // 탐지 → 실기체 영상 송신기 argus_main_gcs_video (영상 송신부가 vision/frame/gray8 로 바뀐 뒤에는
 // 진단용, process_interfaces.md 5.1)
 inline constexpr std::string_view kVisionNpuInputJpeg = "vision/npu_input/jpeg";
-inline constexpr int kVisionNpuInputJpegQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kVisionNpuInputJpegQueueDepth = kDefaultQueueDepth;
 // 탐지 → 추적기, 영상 송신부
 inline constexpr std::string_view kPerceptionObservations = "perception/observations";
-inline constexpr int kPerceptionObservationsQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kPerceptionObservationsQueueDepth = kDefaultQueueDepth;
 // 추적기 → 추종 제어, mavlink_gateway, 영상 송신부
 inline constexpr std::string_view kTrackingTracks = "tracking/tracks";
-inline constexpr int kTrackingTracksQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kTrackingTracksQueueDepth = kDefaultQueueDepth;
 // 추적기 → mavlink_gateway
 inline constexpr std::string_view kTrackingStatus = "tracking/status";
-inline constexpr int kTrackingStatusQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kTrackingStatusQueueDepth = kDefaultQueueDepth;
 // mavlink_gateway → 추적기, 추종 제어
 inline constexpr std::string_view kFcAttitude = "fc/attitude";
-inline constexpr int kFcAttitudeQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kFcAttitudeQueueDepth = kDefaultQueueDepth;
 // mavlink_gateway → 추적기, 추종 제어
 inline constexpr std::string_view kFcState = "fc/state";
-inline constexpr int kFcStateQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kFcStateQueueDepth = kDefaultQueueDepth;
 // mavlink_gateway → 추종 제어
 inline constexpr std::string_view kFcModeEvent = "fc/mode_event";
-inline constexpr int kFcModeEventQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kFcModeEventQueueDepth = kDefaultQueueDepth;
 // 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kControlSetpoint = "control/setpoint";
-inline constexpr int kControlSetpointQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kControlSetpointQueueDepth = kDefaultQueueDepth;
 // 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kFollowStatus = "follow/status";
-inline constexpr int kFollowStatusQueueDepth = kDefaultQueueDepth;
+inline constexpr std::int32_t kFollowStatusQueueDepth = kDefaultQueueDepth;
 
 // 요청-응답 (요청 → 응답)
 // 추종 제어 → mavlink_gateway

@@ -44,7 +44,7 @@ public:
 
     // fd 에 읽을 데이터가 있으면 handler 를 부른다. fd 가 음수이거나 handler 가 비어 있으면
     // 등록하지 않고 빈 Subscription 을 반환한다.
-    [[nodiscard]] core::Subscription add_fd(int fd, Handler handler) override;
+    [[nodiscard]] core::Subscription add_fd(std::int32_t fd, Handler handler) override;
 
     // clock 의 시각이 deadline_ns 이상이 되면 process_events() 안에서 handler 를 한 번 부른다.
     // deadline_ns 는 IClock::now_monotonic_ns() 와 같은 기준이다. 이미 지난 시각이면 다음
@@ -63,7 +63,7 @@ public:
 private:
     struct Entry {
         void* socket = nullptr;  // ZeroMQ 소켓. fd 등록이면 nullptr
-        int fd = -1;             // fd 등록일 때만 사용
+        std::int32_t fd = -1;    // fd 등록일 때만 사용
         Handler handler;
     };
 

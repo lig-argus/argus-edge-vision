@@ -47,7 +47,7 @@ Bytes to_body(const Message& message) {
 template <typename Message>
 Message parsed(const Bytes& body) {
     Message message;
-    EXPECT_TRUE(message.ParseFromArray(body.data(), static_cast<int>(body.size())));
+    EXPECT_TRUE(message.ParseFromArray(body.data(), static_cast<std::int32_t>(body.size())));
     return message;
 }
 

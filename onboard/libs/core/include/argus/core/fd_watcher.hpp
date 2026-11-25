@@ -4,6 +4,7 @@
 #ifndef ARGUS_CORE_FD_WATCHER_HPP_
 #define ARGUS_CORE_FD_WATCHER_HPP_
 
+#include <cstdint>
 #include <functional>
 
 #include "argus/core/subscription.hpp"
@@ -29,7 +30,7 @@ public:
     // fd 는 등록한 클래스가 소유하며, 반환된 Subscription 을 해제한 후에 닫는다.
     // 반환된 Subscription 이 소멸하면 등록이 해제된다. Subscription 은 이 객체보다 늦게 소멸하여도
     // 된다. 등록하지 못한 경우 빈 Subscription 을 반환한다
-    [[nodiscard]] virtual Subscription add_fd(int fd, Handler on_readable) = 0;
+    [[nodiscard]] virtual Subscription add_fd(std::int32_t fd, Handler on_readable) = 0;
 };
 
 }  // namespace argus::core

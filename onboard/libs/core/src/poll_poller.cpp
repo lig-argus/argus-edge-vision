@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -21,7 +22,7 @@ void log_error(const char* text) { std::cerr << "[core] " << text << '\n'; }
 PollPoller::PollPoller(const IClock& clock)
     : clock_(clock), registry_(std::make_shared<Registry>()) {}
 
-Subscription PollPoller::add_fd(int fd, Handler on_readable) {
+Subscription PollPoller::add_fd(std::int32_t fd, Handler on_readable) {
     if (fd < 0 || !on_readable) {
         log_error("PollPoller::add_fd: 음수 fd 또는 빈 handler");
         return {};

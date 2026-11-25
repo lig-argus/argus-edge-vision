@@ -23,7 +23,7 @@ struct Decoded {
 template <typename Message>
 bus_zmq::Bytes to_bytes(const Message& message) {
     bus_zmq::Bytes body(message.ByteSizeLong());
-    if (!message.SerializeToArray(body.data(), static_cast<int>(body.size()))) {
+    if (!message.SerializeToArray(body.data(), static_cast<std::int32_t>(body.size()))) {
         body.clear();
     }
     return body;
@@ -31,7 +31,7 @@ bus_zmq::Bytes to_bytes(const Message& message) {
 
 template <typename Message>
 bool parse(const bus_zmq::Bytes& body, Message& message) {
-    return message.ParseFromArray(body.data(), static_cast<int>(body.size()));
+    return message.ParseFromArray(body.data(), static_cast<std::int32_t>(body.size()));
 }
 
 void to_message(const vehicle_api::RequestId& id, msg::RequestId& message);

@@ -39,7 +39,7 @@ public:
     explicit PollPoller(const IClock& clock);
 
     // fd 가 음수이거나 handler 가 비어 있으면 등록하지 않고 빈 Subscription 을 반환한다
-    [[nodiscard]] Subscription add_fd(int fd, Handler on_readable) override;
+    [[nodiscard]] Subscription add_fd(std::int32_t fd, Handler on_readable) override;
 
     [[nodiscard]] Subscription add_timer_at(std::int64_t deadline_ns, Handler handler) override;
 
@@ -52,7 +52,7 @@ public:
 
 private:
     struct FdEntry {
-        int fd = -1;  // POSIX 의 file descriptor 형
+        std::int32_t fd = -1;
         Handler handler;
     };
 

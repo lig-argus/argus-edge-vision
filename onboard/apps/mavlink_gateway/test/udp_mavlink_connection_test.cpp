@@ -76,7 +76,7 @@ public:
     }
 
 private:
-    int fd_;
+    std::int32_t fd_;
     bool bound_ = false;
 };
 
@@ -377,7 +377,7 @@ TEST(UdpMavlinkConnectionCreateTest, ReturnsNullWhenAddressIsInvalid) {
 // 등록하지 못하고 빈 Subscription 을 반환하는 IFdWatcher
 class RejectingFdWatcher : public core::IFdWatcher {
 public:
-    [[nodiscard]] core::Subscription add_fd(int /*fd*/, Handler /*on_readable*/) override {
+    [[nodiscard]] core::Subscription add_fd(std::int32_t /*fd*/, Handler /*on_readable*/) override {
         return core::Subscription{};
     }
 };

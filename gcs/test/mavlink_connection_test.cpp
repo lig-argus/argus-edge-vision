@@ -1,5 +1,6 @@
 #include <QSignalSpy>
 #include <QtTest>
+#include <cstdint>
 
 #include "argus/mavlink.h"
 #include "fake_mavlink_connection.hpp"
@@ -51,7 +52,7 @@ private slots:
 
     void destroyedReceiverIsNoLongerCalled() {
         FakeMavlinkConnection connection;
-        int received = 0;
+        std::int32_t received = 0;
         {
             QObject receiver;  // 연결한 객체가 사라지면 Qt 가 연결을 끊는다 (Subscription 역할)
             connect(&connection, &IMavlinkConnection::messageReceived, &receiver,
