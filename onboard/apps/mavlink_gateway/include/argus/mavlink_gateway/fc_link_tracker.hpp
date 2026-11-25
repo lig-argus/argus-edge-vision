@@ -1,6 +1,6 @@
 // FC 연결의 두절 판단과 fc_epoch 관리
 // 규약: docs/spec/icd.md 6.2 (FC 연결 두절), docs/spec/process_interfaces.md 3장 (fc_epoch)
-// 사용: mavlink_gateway 의 main 이 하나를 생성하여 check_timeout() 을 주기 작업으로 등록.
+// 사용: FcGateway 가 하나를 생성하여 check_timeout() 을 주기 작업으로 등록.
 //      FC 메시지를 받는 클래스(FcTelemetryReceiver)가 on_fc_message() 를 호출하고,
 //      fc_epoch 에 묶인 값을 가진 클래스가 subscribe_epoch_changes() 로 변경을 받는다
 #ifndef ARGUS_ONBOARD_FC_LINK_TRACKER_HPP_

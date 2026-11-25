@@ -13,6 +13,7 @@
 #include <vector>
 #include <zmq.hpp>
 
+#include "argus/core/fd_watcher.hpp"
 #include "argus/core/steady_clock.hpp"
 #include "argus/core/subscription.hpp"
 #include "argus/core_testing/fake_clock.hpp"
@@ -128,6 +129,22 @@ TEST_F(ZmqPollerTest, CallsHandlerWhenFdIsReadable) {
     std::vector<std::string> received;
     const core::Subscription subscription =
         poller_.add_fd(udp.fd(), [&] { received.push_back(udp.receive_one()); });
+    ASSERT_TRUE(subscription.active());
+
+    ASSERT_TRUE(udp.send_to_self("datagram"));
+    poller_.process_events(kWait, kBudget);
+
+    EXPECT_EQ(received, std::vector<std::string>{"datagram"});
+}
+
+// UDP 연결 클래스는 ZmqPoller 를 모르고 core::IFdWatcher 로만 등록한다
+TEST_F(ZmqPollerTest, CallsHandlerOfFdRegisteredThroughFdWatcher) {
+    UdpLoopbackSocket udp;
+    ASSERT_GE(udp.fd(), 0);
+    core::IFdWatcher& watcher = poller_;
+    std::vector<std::string> received;
+    const core::Subscription subscription =
+        watcher.add_fd(udp.fd(), [&] { received.push_back(udp.receive_one()); });
     ASSERT_TRUE(subscription.active());
 
     ASSERT_TRUE(udp.send_to_self("datagram"));

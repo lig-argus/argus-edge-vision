@@ -1,7 +1,8 @@
 // core::IPoller 의 ZeroMQ 구현. zmq_poll 로 ZeroMQ 소켓과 file descriptor(UDP 소켓 등)를 함께
 // 기다린다.
 // 규약: docs/design/uml/class_mavlink_gateway.md 1절
-// 사용: 실행 파일의 main() 이 하나를 만들어 EventLoop, ZmqBus, UDP 연결 클래스에 넘긴다
+// 사용: 실행 파일의 main() 이 하나를 만들어 EventLoop(IPoller), ZmqBus, UDP 연결
+// 클래스(IFdWatcher)에 넘긴다
 //
 // 규칙
 // - 한 스레드에서만 사용한다. 등록, 해제, process_events() 를 모두 같은 스레드에서 부른다.
@@ -22,12 +23,13 @@
 #include <zmq.hpp>
 
 #include "argus/core/clock.hpp"
+#include "argus/core/fd_watcher.hpp"
 #include "argus/core/poller.hpp"
 #include "argus/core/subscription.hpp"
 
 namespace argus::bus_zmq {
 
-class ZmqPoller : public core::IPoller {
+class ZmqPoller : public core::IPoller, public core::IFdWatcher {
 public:
     using Handler = std::function<void()>;
 
@@ -41,7 +43,7 @@ public:
 
     // fd 에 읽을 데이터가 있으면 handler 를 부른다. fd 가 음수이거나 handler 가 비어 있으면
     // 등록하지 않고 빈 Subscription 을 반환한다.
-    [[nodiscard]] core::Subscription add_fd(int fd, Handler handler);
+    [[nodiscard]] core::Subscription add_fd(int fd, Handler handler) override;
 
     // clock 의 시각이 deadline_ns 이상이 되면 process_events() 안에서 handler 를 한 번 부른다.
     // deadline_ns 는 IClock::now_monotonic_ns() 와 같은 기준이다. 이미 지난 시각이면 다음

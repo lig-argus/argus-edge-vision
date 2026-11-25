@@ -1,6 +1,6 @@
 // FC 의 telemetry 를 받아 vehicle_api 의 값 타입으로 변환한다
 // 규약: docs/spec/icd.md 2장 (메시지), docs/spec/process_interfaces.md 5.1 (fc/attitude, fc/state)
-// 사용: mavlink_gateway 의 main 이 subscribe_attitude(), subscribe_state() 로 발행 클래스를 연결
+// 사용: FcGateway 가 subscribe_attitude(), subscribe_state() 로 발행 클래스를 연결
 #ifndef ARGUS_ONBOARD_FC_TELEMETRY_RECEIVER_HPP_
 #define ARGUS_ONBOARD_FC_TELEMETRY_RECEIVER_HPP_
 
