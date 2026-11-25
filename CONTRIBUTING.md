@@ -358,7 +358,8 @@ BREAKING CHANGE: GCS 는 v2 파서로 업데이트해야 수신 가능
 
 - 저장소 루트의 안내 파일만 대문자로 사용한다: `README.md`, `CONTRIBUTING.md`, `LICENSE` (GitHub 가 인식하는 이름)
 - `docs/` 아래 문서는 소문자 snake_case 로 사용한다: `docs/spec/icd.md`, `docs/design/system_architecture.md`
-- `docs/` 하위 폴더는 문서 성격으로 나눈다: `spec/` 통신 규약(ICD, 영상, 프로세스 사이), `design/` 설계(아키텍처, 클래스 다이어그램), `guide/` 설치와 운용 안내
+- `docs/` 하위 폴더는 문서 성격으로 나눈다: `requirements/` 요구사항(SSS, SRS), `spec/` 통신 규약(ICD, 영상, 프로세스 사이), `design/` 설계(아키텍처, 클래스 다이어그램, SSDD, SDD), `verification/` 시험(STD, STR), `guide/` 설치와 운용 안내
+- 방산 SW 개발 프로세스 산출물의 명칭과 파일 위치는 `docs/document_list.md` 에 적는다. 문서 원본은 Markdown 으로 작성하고, 제출용 docx·hwp 는 저장소 밖에서 관리한다
 - 근거: PX4, MAVSDK, OpenCV, PyTorch 는 소스 파일과 같은 snake_case 를 문서에도 사용한다. 하위 폴더의 대문자 `.md` 는 도구가 정한 이름(`SUMMARY.md`, `CHANGELOG_*.md`)뿐이다.
 
 ---
