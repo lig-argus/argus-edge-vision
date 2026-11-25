@@ -105,7 +105,7 @@ flowchart LR
 
 ## 5. 메시지
 
-아래 표의 `argus.<영역>.<이름>.vN` 식별자와 `schema` 행은 MessagePack 으로 발행 중인 메시지의 것이다. 각 담당이 그 메시지를 `.proto` 로 옮길 때 이 식별자와 행을 지우고 `.proto` 파일을 가리키게 한다 (3장).
+모든 메시지는 `onboard/libs/protocol/proto/argus_msg/` 의 `.proto` 로 정의한다 (3장). 아래 표는 필드의 뜻을 설명하며, 필드의 형과 번호는 `.proto` 가 기준이다.
 
 ### 5.1 PUB/SUB
 
@@ -114,112 +114,89 @@ flowchart LR
 | `vision/frame/gray8` | 탐지 → 영상 송신부 | 최대 30 FPS | `argus_msg/vision_frame_gray8.proto` (헤더 필드는 5.1.5). 박스를 그리지 않은 **비압축** 8 비트 흑백 프레임 640×480 (Double Plateau 전처리 직후, 레터박스 전. 탐지 결과·추적 결과의 박스와 같은 픽셀 좌표계). multipart `[토픽][protobuf 헤더][픽셀 바이트]`. 헤더는 `vision/overlay/jpeg` 와 같은 구성(source, session_id, frame_id, seq, unix_ns, received_monotonic_ns, width, height) + stride(640), preprocess. IR 입력일 때만 발행. frame_id 는 탐지 결과(`perception/observations`)와 같다. 탐지 쪽 미리보기 송신 소켓(Python → C++ 어댑터)은 SNDHWM 4, 어댑터의 미리보기 수신은 rcvhwm 4 다. 한 프레임에 메시지가 최대 3개(gray8, overlay, npu_input) 연달아 나가므로 최소 3에 여유 1칸을 두었고, 더 키우면 오래된 프레임이 쌓여 지연되므로 4로 제한한다. 그래도 막히면 프레임을 버리므로, 모든 탐지 결과에 같은 frame_id 의 프레임이 있지는 않다. RTSP 영상 트랙의 소스이며 전송 코덱(기본 H.264, 선택 JPEG) 인코딩은 영상 송신부가 한다. 설정으로 켜고 끔(기본 꺼짐), FPS 상한 설정 가능. 전송 경로는 기존 버스 (7장 3) |
 | `vision/overlay/jpeg` | 탐지 → 지상 미리보기 (영상 송신부는 구독하지 않음) | 최대 15 FPS | `argus_msg/vision_overlay_jpeg.proto`. 탐지 박스·라벨이 그려진 JPEG. RTSP 에는 쓰지 않는다. 통제기가 RTSP 로 바뀐 뒤 끌 수 있게 당분간 유지 |
 | `vision/npu_input/jpeg` | 탐지 → 실기체 영상 송신기 `argus_main_gcs_video` (영상 송신부가 `vision/frame/gray8` 로 바뀐 뒤에는 진단용) | 최대 30 FPS | `argus_msg/vision_npu_input_jpeg.proto`. Hailo 에 넣은 입력 영상(lb_scale, lb_pad_x, lb_pad_y 포함). 지금 실기체 HEF 는 입력 640×480 1채널이라 원본과 같은 크기의 흑백 JPEG 이고 lb_scale 1, 패딩 0 이다. 640×640 3채널 HEF 를 쓰면 레터박스 영상이 되어 박스 좌표계가 원본 픽셀과 다르다 |
-| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus.perception.observations.v2` (기존, 5.1.4). protobuf 정의는 `argus_msg/perception_observations.proto` (5.1.4). track_id 는 null. 추론한 프레임마다 발행하며 객체가 없으면 `detections: []` 로 보낸다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
-| `tracking/tracks` | 추적기 → 추종 제어, mavlink_gateway, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus.tracking.tracks.v5` (기존, 5.1.1). protobuf 정의는 `argus_msg/tracking_tracks.proto` (5.1.1) |
-| `tracking/status` | 추적기 → mavlink_gateway | 1 Hz | `argus.tracking.status.v1` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
+| `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus_msg/perception_observations.proto` (5.1.4). 추론한 프레임마다 발행하며 객체가 없으면 `detections` 가 비어 있다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
+| `tracking/tracks` | 추적기 → 추종 제어, mavlink_gateway, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus_msg/tracking_tracks.proto` (5.1.1) |
+| `tracking/status` | 추적기 → mavlink_gateway | 1 Hz | `argus_msg/tracking_status.proto` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
 | `fc/attitude` | mavlink_gateway → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
 | `fc/state` | mavlink_gateway → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, offboard_hover(mavlink_gateway 가 Offboard 상태에서 제자리 유지 setpoint 를 송신 중인지. 기체가 실제로 정지한 상태는 비행 모드가 Hold 이거나, Offboard 이면서 이 값이 true 인 경우). 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → mavlink_gateway | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
-| `follow/status` | 추종 제어 → mavlink_gateway | 1 Hz + 변경 시 | `argus.follow.status.v1` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
+| `follow/status` | 추종 제어 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/follow_status.proto` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
 | `fc/mode_event` | mavlink_gateway → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
 - 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. mavlink_gateway 는 FC 메시지를 그대로 넘긴다.
 - `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
-#### 5.1.1 `tracking/tracks` v5 필드 (2026-10-15 기준)
+#### 5.1.1 `tracking/tracks` 필드 (`tracking_tracks.proto` 의 `TrackingTracks`)
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| schema, source, frame_id | string, string, uint64 | `argus.tracking.tracks.v5`. source·frame_id 는 프레임·탐지 결과 메시지와 같은 값. 세 메시지를 묶는 키 |
-| session_id | string (선택) | `perception/observations`(protobuf)의 `session_id` 를 추적기가 그대로 옮긴 값. v2(MessagePack) 탐지 결과로 만든 메시지에는 값이 없음. protobuf 정의는 `argus_msg/tracking_tracks.proto` 의 `session_id` |
-| fc_epoch, generation | uint64, uint64 | generation 은 추적기 재시작·초기화마다 1 증가하는 영구 저장 카운터. 1~16,777,215 |
-| sample_monotonic_ns, motion_sample_ns, clock_domain, timestamp_source | int64, int64, string, string | 시각과 그 출처. `exposure_monotonic_ns` 는 null, `exposure_time_valid` 는 false (노출 시각 없음) |
-| image_width, image_height, coordinate_frame | int, int, "camera_pixel" | 640, 480. 박스 좌표 기준 (원본 영상 픽셀) |
-| ground_pose | [N, E, D, roll, pitch, yaw] | m, deg |
-| tracks[] | | 아래 |
-| tracks[].track_id | int64 (1~16,777,215) | 프로세스 공통 카운터. 재시작 시 1 부터 (generation 으로 구분) |
-| tracks[].class_id, label, confidence | int32, string, float | |
-| tracks[].x1, y1, x2, y2 | float | 원본 영상 픽셀 |
-| tracks[].state | string | 현재 "CONFIRMED" 만 발행. PREDICTED 발행은 필요 시 확장 **[미결 6]** |
-| tracks[].real_detection, last_real_detection_monotonic_ns | bool, int64 | |
-| tracks[].ground, ground_anchor | [N, E, varN, covNE, varE, alignment_ms], [anchor_y, height_m] | 지면 투영. anchor_y 는 박스 높이를 1 로 보고 위쪽 끝에서 잰 위치 (0 이면 위쪽 끝, 1 이면 아래쪽 끝. 픽셀 아님). C++ 값 타입 `GroundAnchor.anchor_y_ratio` 에 그대로 담는다 |
+| source, session_id, frame_id | string, string, uint64 | 프레임, 탐지 결과 메시지와 같은 값. 세 메시지를 묶는 키. session_id 는 `perception/observations` 의 `session_id` 를 추적기가 옮긴 값이며, 비어 있으면 받는 쪽은 `(source, frame_id)` 로 묶는다 |
+| seq | uint64 | 발행마다 1 증가 (3장 공통 필드) |
+| fc_epoch, generation | uint64, uint32 | generation 은 추적기 재시작과 초기화마다 1 증가하는 영구 저장 카운터. 1~16,777,215 |
+| sample_monotonic_ns, motion_sample_ns | int64, int64 | 프레임의 RPi 수신 시각과 움직임 표본 시각 (CLOCK_MONOTONIC). 노출 시각은 없다 |
+| image_width, image_height | uint32 | 원본 영상 크기 (640, 480). 박스 좌표의 기준 |
+| ground_pose | GroundPose (선택) | 프레임 시각의 기체 위치와 자세: north_m, east_m, down_m, roll_rad, pitch_rad, yaw_rad. FC 자세가 없으면 없다 |
+| tracks[] | Track | 아래 |
+| tracks[].track_id | uint32 (1~16,777,215) | 프로세스 공통 카운터. 재시작 시 1 부터 (generation 으로 구분) |
+| tracks[].classification | Classification | class_id, label, confidence(0~1) |
+| tracks[].box | PixelBox | x1, y1, x2, y2 (float, 원본 영상 픽셀) |
+| tracks[].state | TrackState | 현재 CONFIRMED 만 발행. PREDICTED 발행은 필요 시 확장 **[미결 6]** |
+| tracks[].real_detection, last_real_detection_monotonic_ns | bool, int64 | 이 프레임에 실제 탐지가 있었는지, 마지막 실제 탐지 시각 |
+| tracks[].ground | GroundEstimate (선택) | 지면 투영: north_m, east_m, var_north_m2, cov_north_east_m2, var_east_m2, alignment_s(투영에 사용한 FC 자세와 프레임의 시각 차) |
+| tracks[].ground_anchor | GroundAnchor (선택) | anchor_y_ratio(박스 높이를 1 로 보고 위쪽 끝에서 잰 기준점 위치. 0 이면 위쪽 끝, 1 이면 아래쪽 끝. 픽셀 아님), height_m |
 
-- 트랙이 없으면 `tracks: []`. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음).
+- 트랙이 없으면 `tracks` 가 비어 있다. 메시지 자체가 없을 수도 있다 (입력 부재, 프레임 시각에 맞는 `fc/attitude`, `fc/state` 메시지 없음).
 - 지정 표적 표시(`designated`)는 이 메시지에 없다. 지정 표적은 `follow/status` 가 제공한다.
-- protobuf 정의: `onboard/libs/protocol/proto/argus_msg/tracking_tracks.proto` 의 `TrackingTracks`. 위 표의 v5 와 다른 점은 다음과 같다.
-  - `schema`, `clock_domain`, `timestamp_source`, `coordinate_frame`, `exposure_monotonic_ns`, `exposure_time_valid` 는 메시지에 포함하지 않는다 (3장 공통 필드).
-  - `session_id` 는 항상 값이 있는 `string` 이고, `seq`(발행마다 1 증가)를 둔다.
-  - `ground_pose` 는 배열이 아니라 `GroundPose`(north_m, east_m, down_m, roll_rad, pitch_rad, yaw_rad)이며 각도는 rad 다.
-  - `tracks[].ground` 는 `GroundEstimate`(north_m, east_m, var_north_m2, cov_north_east_m2, var_east_m2, alignment_s)이며 시각 차는 s 다. `tracks[].ground_anchor` 는 `GroundAnchor`(anchor_y_ratio, height_m)다.
-  - `tracks[]` 의 class_id, label, confidence 는 `Classification`, 박스 좌표는 `PixelBox`(float)로 정의한다. `tracks[].state` 는 enum `TrackState` 다.
-  - `track_id`, `generation` 은 `uint32` 다.
 
-#### 5.1.2 `follow/status` v1 필드 (2026-10-16 기준)
+#### 5.1.2 `follow/status` 필드 (`follow_status.proto` 의 `FollowStatus`)
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| schema, source, clock_domain | string | `argus.follow.status.v1`, `argus-follow-controller`, `host_monotonic` |
-| controller_session, client_session, session_id, onboard_session, uid | string | `controller_session`: 추종 제어 프로세스가 시작할 때 만드는 세션. 추종 제어 재시작 감지에 쓴다. `client_session`: 추종 제어가 mavlink_gateway 에 요청할 때의 세션. `session_id`: 이 메시지 발행자의 세션. 지금은 세 값이 같다. `onboard_session`: 상대 mavlink_gateway 의 세션. `uid`: 설정된 대상 FC 의 UID 이며, 이 값만으로 연결이 확인됐다는 뜻은 아니다 |
-| fc_epoch, seq, received_monotonic_ns | uint64, uint64, int64 | |
-| status.mission_state | enum | IDLE, PREPARING, FOLLOW_ACTIVE, HOLD_TRANSITION, HOLD_WAIT, SCAN_ACTIVE, MANUAL, FAULT → `ARGUS_STATUS.mission_state` |
-| status.target_state | enum | NONE, CONFIRMED, PREDICTED, LOST → `ARGUS_STATUS.target_state` |
-| status.target_phase, recovery_reason, ambiguous, mission, reason, active | enum·string·bool | 추종 제어 내부 세부 상태(target_phase: UNSELECTED, LOCKED, GAP_HOLD, REACQUIRE, CONFIRM, LOST). MAVLink 로는 보내지 않고, 거부·실패 이유는 `STATUSTEXT` 에 쓸 수 있다 |
-| status.selected | object 또는 null | 선택 표적: generation, track_id, class_id, label, sensor(문자열) → `ARGUS_STATUS.target_id`·`target_generation`, `active_sensor`(변환표) |
-| status.command_results[] | array (최대 32) | 최근 명령 결과: command_id(uint64), action(`track_start`·`stop`·`search`), outcome, request_accepted (5.2.1), reason, generation·track_id·class_id·sensor. pending·accepted·result(`pending`·`accepted`·`failed`)는 호환용. mavlink_gateway 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 전체 최대 32개만 보관한다. 32개가 차면 완료된 기록부터 지우고 진행 중(IN_PROGRESS)인 기록은 남긴다. 32개를 넘겨 보관하지는 않는다. outcome·request_accepted 는 이전 생산자와의 호환 때문에 schema 에서 선택 필드다 |
-| status.command_epoch, command_sent | uint64, bool | |
-| status.scan_state, scan_state_name, scan_config{yaw_rate_rad_s, sweep_rad, timeout_s}, scan_progress_deg, heading_stop_pending | | Scan 진행. `yaw_rate_rad_s` 는 부호 포함(양수 = 시계 방향). 같은 값의 `rate_deg_s`·`timeout_ms` 는 호환용. 7장 13 의 `scan_remaining_s` 를 추가할 때 Scan 중이 아니면 키를 빼거나 nil 로 보내고, 받는 쪽은 키 없음과 nil 을 모두 미제공으로 읽는다 (`ARGUS_STATUS` 로는 NaN) |
+| source, seq | string, uint64 | 3장 공통 필드 |
+| session_id, controller_session, client_session, onboard_session, uid | string | `session_id`: 이 메시지 발행자의 세션. `controller_session`: 추종 제어 프로세스가 시작할 때 만드는 세션. 추종 제어 재시작 감지에 사용한다. `client_session`: 추종 제어가 mavlink_gateway 에 요청할 때의 세션. 현재 세 값이 같다. `onboard_session`: 상대 mavlink_gateway 의 세션. `uid`: 설정된 대상 FC 의 UID 이며, 이 값만으로 연결이 확인됐다는 뜻은 아니다 |
+| fc_epoch, received_monotonic_ns | uint64, int64 | |
+| mission_state | MissionState | IDLE, PREPARING, FOLLOW_ACTIVE, HOLD_TRANSITION, HOLD_WAIT, SCAN_ACTIVE, MANUAL, FAULT → `ARGUS_STATUS.mission_state`. proto3 의 기본값 0 을 UNSPECIFIED 로 두므로 MAVLink 값보다 1 크다 |
+| target_state | TargetState | NONE, CONFIRMED, PREDICTED, LOST → `ARGUS_STATUS.target_state` (MAVLink 값보다 1 큼) |
+| selected | Target (선택) | 선택 표적: generation, track_id, class_id, label, sensor → `ARGUS_STATUS.target_id`, `target_generation`, `active_sensor` |
+| command_results[] | CommandResult (최대 32) | 최근 명령 결과: command_id, action(TRACK_START, STOP, SEARCH), outcome, request_accepted (5.2.1), reason, target(track_start 의 표적). mavlink_gateway 는 자기 command_id 의 결과를 찾아 `COMMAND_ACK` 로 옮긴다. 32개가 차면 완료된 결과부터 지우고 진행 중(IN_PROGRESS)인 결과는 남긴다. 32개를 넘겨 보관하지 않는다 |
+| command_epoch, command_sent | uint64, bool | |
+| scan | Scan (선택) | Scan 진행: yaw_rate_rad_s(부호 포함, 양수 = 시계 방향), sweep_rad, timeout_s, progress_deg, remaining_s(선택. 계산하지 않으면 없고 `ARGUS_STATUS` 로는 NaN). Scan 중이 아니면 없다 |
 
-#### 5.1.3 `tracking/status` v1 필드 (2026-10-15 기준)
+- 추종 제어의 내부 세부 상태(target_phase, recovery_reason 등)와 heading_stop_pending, scan_state 는 메시지에 포함할지 추적 및 추종 담당과 확인 중이다 **[확인 필요]**.
+
+#### 5.1.3 `tracking/status` 필드 (`tracking_status.proto` 의 `TrackingStatus`)
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| schema, source, clock_domain | string | `argus.tracking.status.v1`, `pi-ucmc`, `host_monotonic` |
-| seq, published_monotonic_ns | uint64, int64 | |
-| generation | uint64 (1~16,777,215) | 현재 추적기 세대 |
+| source, seq, published_monotonic_ns | string, uint64, int64 | 3장 공통 필드와 발행 시각 |
+| generation | uint32 (1~16,777,215) | 현재 추적기 세대 (`tracking/tracks` 와 같은 값) |
 | fc_fresh, cmc_valid | bool | FC 데이터 최신 여부, 카메라 회전 보상 유효 여부. `ARGUS_SENSOR_STATUS.flags` 에 넣을지는 #21 후속 |
-| fps | number | 처리 FPS |
+| fps | double | 처리 FPS |
 
-#### 5.1.4 `perception/observations` v2 필드 (2026-10-29 기준)
+#### 5.1.4 `perception/observations` 필드 (`perception_observations.proto` 의 `PerceptionObservations`)
 
-발행은 C++ `PerceptionWorker` 다. MessagePack map 하나이고 필드는 23개다.
+발행은 C++ `PerceptionWorker` 다.
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| schema | string | `argus.perception.observations.v2` |
 | source | string | 카메라 식별 문자열. `tracking/tracks`, `vision/frame/gray8` 의 source 와 같은 값 |
+| session_id | string | 탐지 프로세스가 시작할 때마다 새로 만드는 값 (`vision/frame/gray8` 의 session_id 와 같은 값) **[미결 14]** |
 | frame_id | uint64 | 카메라 프레임 번호. 인지 큐에서 버린 프레임은 발행하지 않으므로 건너뛸 수 있다 |
-| seq | uint64 | frame_id 와 같은 값 (호환용) |
+| seq | uint64 | 발행마다 1 증가 (3장 공통 필드) |
 | image_width, image_height | uint32 | **원본 영상 크기** (IR 640, 480). 모델 입력 크기가 아니다 |
-| model | string | 추론에 쓴 모델(HEF) 이름. class_id 와 label 의 대응은 모델마다 다르다 (`docs/spec/video.md` 8장) |
-| inference_ms | float64 | NPU 추론 시간 (진단용) |
-| coordinate_frame | string | `camera_pixel`. 박스 좌표가 원본 영상 픽셀이라는 뜻 (레터박스 좌표 아님) |
-| observation_kind | string | `IMAGE2D` |
-| received_unix_ns, received_monotonic_ns | int64, int64 | RPi 가 프레임을 받은 시각. **노출 시각이 아니다.** 추적기는 `received_monotonic_ns` 를 표본 시각으로 쓴다 |
-| captured_unix_ns, captured_monotonic_ns | int64, int64 | received_* 와 같은 값 (호환용 별칭) |
-| source_receive_monotonic_ns | int64 또는 null | 카메라 수신 helper 가 프레임 읽기를 마친 시각 |
-| exposure_monotonic_ns | int64 또는 null | 센서 노출 시각. 지금 카메라는 제공하지 않아 null |
-| exposure_time_valid | bool | exposure_monotonic_ns 가 있을 때만 true. 지금은 false |
-| timestamp_source | string | `host_receive`. 노출 시각이 있으면 `sensor_exposure` |
-| clock_domain | string | `host_monotonic` |
+| model | string | 추론에 사용한 모델(HEF) 이름. class_id 와 label 의 대응은 모델마다 다르다 (`docs/spec/video.md` 8장) |
+| inference_ms | double | NPU 추론 시간 (진단용) |
+| received_unix_ns, received_monotonic_ns | int64, int64 | RPi 가 프레임을 받은 시각. **노출 시각이 아니다.** 추적기는 `received_monotonic_ns` 를 표본 시각으로 사용한다 |
+| source_receive_monotonic_ns | int64 (선택) | 카메라 수신 helper 가 프레임 읽기를 마친 시각 |
+| exposure_monotonic_ns | int64 (선택) | 센서 노출 시각. 현재 카메라는 제공하지 않아 없다 |
 | published_monotonic_ns | int64 | 발행 시각 |
-| t_infer_us, t_publish_us | int64, int64 | 추론 완료 시각, 발행 시각 (µs, 호환용) |
-| detections[] | | 아래. 객체가 없으면 `[]` |
-| detections[].class_id, label, confidence | int32, string, float64 | 모델의 class_id 와 라벨, 신뢰도(0~1) |
-| detections[].x1, y1, x2, y2 | int32 | 원본 영상 픽셀 (정수로 반올림해 원본 영상 안으로 자른 값) |
-| detections[].track_id | null | 탐지 단계에서는 항상 null. 추적 ID 는 `tracking/tracks` 에 있다 |
+| detections[] | Detection | 아래. 객체가 없으면 비어 있다 |
+| detections[].class_id, label, confidence | int32, string, double | 모델의 class_id 와 라벨, 신뢰도(0~1) |
+| detections[].x1, y1, x2, y2 | int32 | 원본 영상 픽셀 (정수로 반올림해 원본 영상 안으로 자른 값). 추적 ID 는 `tracking/tracks` 에 있다 |
 
 - 신뢰도 경계값(현재 0.7) 아래의 박스는 발행하지 않는다.
-- 시각 필드는 5.1.5, `perception_api` 와 같게 int64 로 읽는다. 받는 쪽이 두 시각의 차를 계산할 때 부호 없는 값과 섞여 음수 차가 큰 양수가 되는 것을 막기 위해서다. 값은 모두 양수라 MessagePack 바이트는 발행 코드의 형과 상관없이 같다.
-- 지금 추적기의 역직렬화는 필드가 정확히 23개이고 `detections[]` 원소가 8개 필드일 때만 받고, 모르는 필드가 있으면 메시지를 버린다. 그래서 필드를 더하거나 빼면 schema 버전을 올리고 추적기 역직렬화를 같이 바꾼다. 이 제약은 protobuf 로 옮기면 없어진다 (3장).
-- 호환용 필드(seq, captured_*, t_infer_us, t_publish_us)는 다음 버전에서 뺄 수 있다.
-- 탐지 프로세스의 세션(`session_id`)은 C++ 탐지 프로세스가 시작할 때 만들어 Python 작업자와 미리보기 헤더에 이미 쓰고 있지만, 이 메시지에는 아직 없다 **[미결 14]**.
-- protobuf 정의: `onboard/libs/protocol/proto/argus_msg/perception_observations.proto` 의 `PerceptionObservations`. 위 표의 v2 와 다른 점은 다음과 같다.
-  - `session_id` 를 둔다 **[미결 14]**. `seq` 는 발행마다 1 증가하는 값이다.
-  - `schema`, `coordinate_frame`, `observation_kind`, `clock_domain`, `timestamp_source`, `exposure_time_valid` 는 메시지에 포함하지 않는다 (3장 공통 필드. 노출 시각의 유무는 `exposure_monotonic_ns` 의 유무로 확인한다).
-  - 호환용 필드(`captured_*`, `t_infer_us`, `t_publish_us`)와 `detections[].track_id` 는 메시지에 포함하지 않는다.
-  - `source_receive_monotonic_ns`, `exposure_monotonic_ns` 는 `optional` 이다.
-  - `detections[]` 는 `argus_msg/detection.proto` 의 `Detection` 이다.
+- 시각 필드는 5.1.5, `perception_api` 와 같게 int64 다. 받는 쪽이 두 시각의 차를 계산할 때 부호 없는 값과 섞여 음수 차가 큰 양수가 되는 것을 막기 위해서다.
 
 #### 5.1.5 `vision/frame/gray8` 헤더 필드 (2026-11-13 기준, 실기체 발행 전)
 
@@ -236,7 +213,7 @@ flowchart LR
 | preprocess | string | 전처리 이름. 현재 `double_plateau_adaptive` |
 
 - `session_id` 는 `vision/overlay/jpeg`, `vision/npu_input/jpeg` 헤더의 session_id 와 같은 값이다.
-- 같은 프레임의 탐지 결과와 묶는 키는 `(source, session_id, frame_id)` 다. `perception/observations` 의 protobuf 정의에는 `session_id` 가 있지만, 탐지 프로세스가 protobuf 로 발행하기 전까지 v2(MessagePack)에는 없다. 그동안은 `(source, frame_id)` 로 묶고, 탐지 프로세스가 다시 시작된 직후에는 섞일 수 있다 **[미결 14]**.
+- 같은 프레임의 탐지 결과와 묶는 키는 `(source, session_id, frame_id)` 다. session_id 가 비어 있는 메시지는 `(source, frame_id)` 로 묶으며, 탐지 프로세스가 다시 시작된 직후에는 이전 실행의 메시지와 섞일 수 있다 **[미결 14]**.
 
 ### 5.2 요청-응답 (REQ/REP)
 
@@ -245,21 +222,19 @@ flowchart LR
 | `follow/command` | mavlink_gateway → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(mavlink_gateway 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·mavlink_gateway 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
 | `control/mode_request` | 추종 제어 → mavlink_gateway | mode(OFFBOARD·HOLD) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
-- 엔드포인트(기본값): `control/mode_request` 는 mavlink_gateway RPC REP **6371** (mavlink_gateway bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 schema·필드와 두 요청의 타임아웃은 추적·추종 쪽 구현과 함께 고정한다 **[미결 1]**.
+- 엔드포인트(기본값): `control/mode_request` 는 mavlink_gateway RPC REP **6371** (mavlink_gateway bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 필드와 두 요청의 타임아웃은 추적 및 추종 구현과 함께 고정한다 **[미결 1]**.
 - 검사 분담: 제어권·매개변수 범위 검사는 mavlink_gateway, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
 
-#### 5.2.1 `follow/result` v1·v2 필드 (2026-10-16 기준)
+#### 5.2.1 `follow/result` 필드 (`follow_command.proto` 의 `FollowResult`)
 
-`follow/command` 의 응답이다. schema 는 `argus.follow.result.v1`·`argus.follow.result.v2`.
+`follow/command` 의 응답이다.
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| command_id | uint64 | 요청의 command_id |
-| session_id, seq, fc_epoch | string, uint64, uint64 | 요청의 공통 필드를 그대로 남긴다 (3장) |
-| outcome | enum | IN_PROGRESS·SUCCEEDED·REJECTED·FAILED (아래 표). 진행·완료 판단에 쓴다 |
+| id | RequestId | 요청의 id(command_id, session_id, seq, fc_epoch)를 유지한다 (3장) |
+| outcome | FollowOutcome | IN_PROGRESS, SUCCEEDED, REJECTED, FAILED (아래 표). 진행과 완료 판단에 사용한다 |
 | request_accepted | bool | 요청을 처음에 수락했는지. 수락 뒤 실행이 실패해도 true 로 남는다 |
-| reason | string | 거부·실패의 원인. 판정에 쓰지 않고 `STATUSTEXT` 로 옮긴다 |
-| result, pending, accepted | | 호환용. v1 result 는 `pending`·`accepted`·`failed`, v2 result 는 `ACCEPTED`·`REJECTED`·`FAILED` |
+| reason | string | 거부와 실패의 원인. 판정에 사용하지 않고 `STATUSTEXT` 로 옮긴다 |
 
 | outcome | request_accepted | 뜻 | mavlink_gateway 의 `COMMAND_ACK` |
 |---|---|---|---|
@@ -270,14 +245,13 @@ flowchart LR
 
 - mavlink_gateway 는 요청을 받은 시점에 정해지는 결과(IN_PROGRESS 또는 REJECTED)를 REP 응답에서 받는다. 형식·세션·`valid_until_monotonic_ns` 를 보는 사전 검사에서 거부된 요청은 응답으로만 알려지고 `command_results` 에는 남지 않을 수 있기 때문이다. 이후 진행은 `follow/status.command_results` 에서 같은 command_id 로 찾는다.
 - 같은 command_id 로 다시 요청하면 추종 제어는 재실행하지 않고 저장된 결과를 돌려준다. 단 세션·`valid_until_monotonic_ns`·명령 내용 검사는 다시 하므로, 같은 command_id 로 내용이 바뀐 요청이나 stop 뒤에 온 예전 track_start 는 거부될 수 있다. 그래서 통제기가 `COMMAND_LONG` 을 재전송하면(`docs/spec/icd.md` 4.1) mavlink_gateway 는 같은 command_id 와 같은 내용으로 요청한다.
-- outcome 이 없는 응답(이전 생산자)에는 이 표의 규칙을 적용하지 않는다.
 
 ### 5.3 영상 송신부 (통신 담당, 별도 프로세스)
 
 - 구독: `vision/frame/gray8`(박스 없는 비압축 프레임, 30 FPS), `perception/observations`, `tracking/tracks`. 세 메시지를 `(source, session_id, frame_id)` 로 묶는다 (아래 "메시지 결합" 항목). 같은 frame_id 의 프레임이 없는 탐지 결과가 있을 수 있으므로(5.1) 짝이 없는 탐지·추적 결과는 버린다. `follow/status` 는 구독하지 않는다. 선택된 표적의 표시는 통제기가 `ARGUS_STATUS` 의 `target_id`, `target_generation` 으로 한다 (`docs/spec/video.md` 6장).
 - 박스가 그려진 영상을 쓰지 않는 이유: 탐지 박스가 이미 그려져 있어 통제기가 메타데이터의 추적 박스를 그리면 박스가 두 겹으로 보이고 위치도 다르다. 또 15 FPS 라 탐지 결과 둘 중 하나만 같은 frame_id 의 영상이 있어 메타데이터도 15 FPS 로 묶인다. 박스는 통제기가 메타데이터로만 그린다.
 - 전송 코덱 인코딩(기본 H.264, 선택 JPEG)은 영상 송신부가 한다. 탐지 프로세스는 프레임과 박스만 내고 전송 방식을 모른다(단일 책임). 그래서 코덱 추가·품질 변경은 송신부의 설정과 인코더 구현 추가로 끝나고 탐지 코드는 바뀌지 않으며(개방-폐쇄), 비압축 프레임이 있어 압축 손실 측정과 수신기 테스트도 할 수 있다. 비용: 640×480 8 비트 흑백 307 KB/프레임, 30 FPS 약 9 MB/s (RPi 안 ZeroMQ 로 충분). 송신부 인코딩 비용: JPEG 는 프레임당 1~2 ms, H.264 는 측정 전 (`docs/spec/video.md` 9장 12).
-- 메시지 결합: 세 토픽의 메시지를 같은 `(source, session_id, frame_id)` 끼리 한 프레임으로 묶는다. `session_id` 가 없는 메시지(`perception/observations` v2 와 그것으로 만든 `tracking/tracks`)는 `(source, frame_id)` 로 묶되 `session_id` 가 있는 메시지와 섞지 않는다. 보관 개수와 대기 시간을 제한하고, 도착 순서는 보장되지 않으므로 기다리되 시간 안에 나머지 메시지가 오지 않으면 버린다. 재연결·재시작(`session_id` 변경) 때 보관 중인 메시지를 비운다. 영상 프레임이 없는 탐지·추적 결과는 보내지 않는다.
+- 메시지 결합: 세 토픽의 메시지를 같은 `(source, session_id, frame_id)` 끼리 한 프레임으로 묶는다. `session_id` 가 비어 있는 메시지는 `(source, frame_id)` 로 묶되 `session_id` 가 있는 메시지와 섞지 않는다. 보관 개수와 대기 시간을 제한하고, 도착 순서는 보장되지 않으므로 기다리되 시간 안에 나머지 메시지가 오지 않으면 버린다. 재연결과 재시작(`session_id` 변경) 때 보관 중인 메시지를 비운다. 영상 프레임이 없는 탐지 결과와 추적 결과는 보내지 않는다.
 - 전송: RTSP 세션 하나에 영상 트랙(RTP/H.264)과 메타데이터 트랙(ONVIF XML). 세부는 `docs/spec/video.md` (#20).
 - 시각: 영상 프레임과 메타데이터 모두 프레임의 `unix_ns` 를 쓴다 (RPi 수신 시각. 노출 시각이 아님).
 - 메타데이터의 박스: 운용자가 클릭해 고를 수 있어야 하므로 `tracking/tracks` 의 트랙 기준으로 보낸다. 영상에 그려진 탐지 박스와 위치가 다를 수 있다. 추적 결과가 없는 프레임은 박스 없이 보낸다.
@@ -311,7 +285,7 @@ flowchart LR
 11. 해소 (0.15): (가) 채택. 모든 토픽을 직접 연결(발행자 bind, 구독자 connect)하고 이름과 기본 주소를 `onboard/libs/protocol` 한 곳에서 관리한다. 추적기는 6357 에서 6375 로 옮겨 포트 목록을 6370 대로 통일한다 (#60).
 12. stop 요청도 outcome IN_PROGRESS 를 먼저 돌려주고, 추종·스캔을 끝내고 Hold 를 확인한 뒤 SUCCEEDED 로 바꿀지. TRACK_STOP 의 ACK 가 통제기 재전송 기한 1 초에 걸릴 수 있다 (`docs/spec/icd.md` 4.1·4.2, E7). — 추적/추종, 통신
 13. `follow/status` 에 스캔 남은 시간 `scan_remaining_s`(p3 timeout 과 남은 회전량 중 먼저 오는 쪽) 추가 여부. mavlink_gateway 가 `ARGUS_STATUS.scan_remaining_s` 로 옮겨 통제기에 표시한다 (`docs/spec/icd.md` E8). 회전량은 기존 `scan_progress_deg` 를 쓴다. — 추적/추종, 통신
-14. `perception/observations` 에 `session_id` 추가. 탐지 프로세스가 다시 시작되면 frame_id 가 처음부터 다시 셀 수 있어, 세션 없이 `(source, frame_id)` 로 묶으면 이전 실행의 결과와 섞일 수 있다. 값은 탐지 프로세스가 이미 만들어 쓰는 세션(미리보기 헤더와 같은 값)이다. `.proto` 정의에는 넣었다 (`perception_observations.proto`, `tracking/tracks` 가 이 값을 그대로 옮기는 `tracking_tracks.proto`, #80). 남은 것은 탐지 프로세스의 protobuf 발행 전환이며, 발행과 추적기 수신을 같은 배포에서 바꾸므로 v3 단계는 두지 않는다. — 탐지, 추적/추종, 통신
+14. `perception/observations` 에 `session_id` 추가. 탐지 프로세스가 다시 시작되면 frame_id 가 처음부터 다시 셀 수 있어, 세션 없이 `(source, frame_id)` 로 묶으면 이전 실행의 결과와 섞일 수 있다. 값은 탐지 프로세스가 이미 만들어 사용하는 세션(미리보기 헤더와 같은 값)이다. `.proto` 정의에는 넣었다 (`perception_observations.proto`, `tracking/tracks` 가 이 값을 옮기는 `tracking_tracks.proto`, #80). 남은 것은 탐지 프로세스의 protobuf 발행 전환이며, 발행과 추적기 수신을 같은 배포에서 바꾼다. — 탐지, 추적/추종, 통신
 
 ## 변경 이력
 

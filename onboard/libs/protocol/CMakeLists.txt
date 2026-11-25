@@ -30,8 +30,10 @@ protobuf_generate(TARGET argus_protocol LANGUAGE cpp
                          proto/argus_msg/fc_mode_event.proto
                          proto/argus_msg/fc_state.proto
                          proto/argus_msg/follow_command.proto
+                         proto/argus_msg/follow_status.proto
                          proto/argus_msg/perception_ipc.proto
                          proto/argus_msg/perception_observations.proto
+                         proto/argus_msg/tracking_status.proto
                          proto/argus_msg/tracking_tracks.proto
                          proto/argus_msg/vision_frame_gray8.proto
                          proto/argus_msg/vision_npu_input_jpeg.proto

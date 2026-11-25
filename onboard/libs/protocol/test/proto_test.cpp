@@ -4,7 +4,9 @@
 #include <string>
 
 #include "argus_msg/control_setpoint.pb.h"
+#include "argus_msg/follow_status.pb.h"
 #include "argus_msg/perception_observations.pb.h"
+#include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
 
 namespace argus::protocol {
@@ -151,6 +153,68 @@ TEST(ProtoTest, TrackingTracksParsesToSameValues) {
     EXPECT_DOUBLE_EQ(received.tracks(0).ground().alignment_s(), 0.004);
     // 지면 투영이 없는 값은 없음으로 구분된다
     EXPECT_FALSE(received.tracks(0).has_ground_anchor());
+}
+
+TEST(ProtoTest, TrackingStatusParsesToSameValues) {
+    msg::TrackingStatus sent;
+    sent.set_source("ir");
+    sent.set_seq(7);
+    sent.set_published_monotonic_ns(5'000'000'000);
+    sent.set_generation(16'777'215);
+    sent.set_fc_fresh(true);
+    sent.set_cmc_valid(false);
+    sent.set_fps(29.5);
+
+    std::string bytes;
+    ASSERT_TRUE(sent.SerializeToString(&bytes));
+
+    msg::TrackingStatus received;
+    ASSERT_TRUE(received.ParseFromString(bytes));
+    EXPECT_EQ(received.source(), "ir");
+    EXPECT_EQ(received.seq(), 7U);
+    EXPECT_EQ(received.published_monotonic_ns(), 5'000'000'000);
+    EXPECT_EQ(received.generation(), 16'777'215U);
+    EXPECT_TRUE(received.fc_fresh());
+    EXPECT_FALSE(received.cmc_valid());
+    EXPECT_DOUBLE_EQ(received.fps(), 29.5);
+}
+
+// 값이 없을 수 있는 필드(selected, scan, command_results[].target, scan.remaining_s)는 has_ 로
+// 구분된다 (process_interfaces.md 5.1.2)
+TEST(ProtoTest, FollowStatusParsesToSameValues) {
+    msg::FollowStatus sent;
+    sent.set_session_id("follow-1");
+    sent.set_fc_epoch(3);
+    sent.set_mission_state(msg::MISSION_STATE_SCAN_ACTIVE);
+    sent.set_target_state(msg::TARGET_STATE_NONE);
+    msg::FollowStatus::CommandResult* result = sent.add_command_results();
+    result->set_command_id(42);
+    result->set_action(msg::FOLLOW_ACTION_SEARCH);
+    result->set_outcome(msg::FOLLOW_OUTCOME_IN_PROGRESS);
+    result->set_request_accepted(true);
+    sent.mutable_scan()->set_yaw_rate_rad_s(-0.25);
+    sent.mutable_scan()->set_progress_deg(90.0);
+
+    std::string bytes;
+    ASSERT_TRUE(sent.SerializeToString(&bytes));
+
+    msg::FollowStatus received;
+    ASSERT_TRUE(received.ParseFromString(bytes));
+    EXPECT_EQ(received.session_id(), "follow-1");
+    EXPECT_EQ(received.fc_epoch(), 3U);
+    EXPECT_EQ(received.mission_state(), msg::MISSION_STATE_SCAN_ACTIVE);
+    EXPECT_EQ(received.target_state(), msg::TARGET_STATE_NONE);
+    EXPECT_FALSE(received.has_selected());
+    ASSERT_EQ(received.command_results_size(), 1);
+    EXPECT_EQ(received.command_results(0).command_id(), 42U);
+    EXPECT_EQ(received.command_results(0).action(), msg::FOLLOW_ACTION_SEARCH);
+    EXPECT_EQ(received.command_results(0).outcome(), msg::FOLLOW_OUTCOME_IN_PROGRESS);
+    EXPECT_TRUE(received.command_results(0).request_accepted());
+    EXPECT_FALSE(received.command_results(0).has_target());
+    ASSERT_TRUE(received.has_scan());
+    EXPECT_DOUBLE_EQ(received.scan().yaw_rate_rad_s(), -0.25);
+    EXPECT_DOUBLE_EQ(received.scan().progress_deg(), 90.0);
+    EXPECT_FALSE(received.scan().has_remaining_s());
 }
 
 }  // namespace

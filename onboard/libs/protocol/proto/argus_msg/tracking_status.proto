@@ -1,0 +1,18 @@
+// tracking/status: 추적기 → mavlink_gateway, 1 Hz (docs/spec/process_interfaces.md 5.1, 5.1.3)
+// ARGUS_SENSOR_STATUS 보고에 사용한다.
+// C++ 값 타입 perception_api::TrackingStatus 에 대응한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+message TrackingStatus {
+  string source = 1;                 // 카메라 식별 문자열 (3장 공통 필드)
+  uint64 seq = 2;                    // 발행마다 1 증가 (3장 공통 필드)
+  int64 published_monotonic_ns = 3;  // 발행 시각 (CLOCK_MONOTONIC)
+  // 현재 추적기 세대. 1~16,777,215. 추적기 재시작과 초기화마다 1 증가 (tracking/tracks 와 같은 값)
+  uint32 generation = 4;
+  bool fc_fresh = 5;   // 프레임 시각에 맞는 FC 메시지가 있는지
+  bool cmc_valid = 6;  // 카메라 회전 보상이 유효한지
+  double fps = 7;      // 처리 FPS
+}
