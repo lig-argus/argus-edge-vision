@@ -1,0 +1,91 @@
+// follow/status: 추종 제어 → mavlink_gateway, 1 Hz 와 변경 시 (docs/spec/process_interfaces.md 5.1,
+// 5.1.2). mavlink_gateway 가 ARGUS_STATUS 로 보고하고, 명령 결과를 COMMAND_ACK 로 옮긴다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/follow_command.proto";
+
+// 임무 상태 (docs/design/uml/state_machine.md). ARGUS_STATUS.mission_state(ARGUS_MISSION_STATE)에
+// 대응한다. proto3 의 기본값 0 을 UNSPECIFIED 로 두므로 MAVLink 값보다 1 크다
+enum MissionState {
+  MISSION_STATE_UNSPECIFIED = 0;
+  MISSION_STATE_IDLE = 1;
+  MISSION_STATE_PREPARING = 2;
+  MISSION_STATE_FOLLOW_ACTIVE = 3;
+  MISSION_STATE_HOLD_TRANSITION = 4;
+  MISSION_STATE_HOLD_WAIT = 5;
+  MISSION_STATE_SCAN_ACTIVE = 6;
+  MISSION_STATE_MANUAL = 7;
+  MISSION_STATE_FAULT = 8;
+}
+
+// 표적 상태. ARGUS_STATUS.target_state(ARGUS_TARGET_STATE)에 대응한다. MAVLink 값보다 1 크다
+enum TargetState {
+  TARGET_STATE_UNSPECIFIED = 0;
+  TARGET_STATE_NONE = 1;
+  TARGET_STATE_CONFIRMED = 2;
+  TARGET_STATE_PREDICTED = 3;
+  TARGET_STATE_LOST = 4;
+}
+
+// follow/command 의 명령 종류 (follow_command.proto 의 FollowCommand.action)
+enum FollowAction {
+  FOLLOW_ACTION_UNSPECIFIED = 0;
+  FOLLOW_ACTION_TRACK_START = 1;
+  FOLLOW_ACTION_STOP = 2;
+  FOLLOW_ACTION_SEARCH = 3;
+}
+
+message FollowStatus {
+  // 추종 표적 하나. 추적기의 트랙을 가리킨다
+  message Target {
+    uint32 generation = 1;  // 1~16,777,215
+    uint32 track_id = 2;    // 1~16,777,215
+    int32 class_id = 3;
+    string label = 4;
+    Sensor sensor = 5;
+  }
+
+  // 명령 하나의 최근 결과 (5.2.1). mavlink_gateway 는 자기 command_id 의 결과를 찾아 COMMAND_ACK 로
+  // 옮긴다
+  message CommandResult {
+    uint64 command_id = 1;
+    FollowAction action = 2;
+    FollowOutcome outcome = 3;
+    bool request_accepted = 4;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
+    string reason = 5;          // 거부와 실패의 원인. 판정에는 사용하지 않는다
+    optional Target target = 6;  // track_start 의 표적
+  }
+
+  // Scan 의 진행. Scan 중이 아니면 없다
+  message Scan {
+    double yaw_rate_rad_s = 1;  // 부호 포함 (양수 = 시계 방향)
+    double sweep_rad = 2;
+    double timeout_s = 3;
+    double progress_deg = 4;
+    optional double remaining_s = 5;  // 남은 시간. 계산하지 않으면 없다 (ARGUS_STATUS 로는 NaN)
+  }
+
+  string source = 1;              // 발행자 식별 문자열 (3장 공통 필드)
+  uint64 seq = 2;                 // 발행마다 1 증가 (3장 공통 필드)
+  string session_id = 3;          // 이 메시지 발행자의 세션
+  string controller_session = 4;  // 추종 제어 프로세스가 시작할 때 만드는 세션. 재시작 감지에 사용
+  string client_session = 5;      // 추종 제어가 mavlink_gateway 에 요청할 때의 세션
+  string onboard_session = 6;     // 상대 mavlink_gateway 의 세션
+  string uid = 7;                 // 설정된 대상 FC 의 UID. 이 값만으로 연결이 확인된 것은 아니다
+  uint64 fc_epoch = 8;            // FC 연결의 epoch (3장)
+  int64 received_monotonic_ns = 9;
+
+  MissionState mission_state = 10;
+  TargetState target_state = 11;
+  optional Target selected = 12;  // 선택 표적. 없으면 없다
+
+  // 최근 명령 결과. 최대 32개. 32개가 차면 완료된 결과부터 지우고 진행 중인 결과는 남긴다
+  repeated CommandResult command_results = 13;
+  uint64 command_epoch = 14;
+  bool command_sent = 15;
+
+  optional Scan scan = 16;
+}
