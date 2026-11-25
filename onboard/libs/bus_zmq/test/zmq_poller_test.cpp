@@ -16,6 +16,7 @@
 #include "argus/core/fd_watcher.hpp"
 #include "argus/core/steady_clock.hpp"
 #include "argus/core/subscription.hpp"
+#include "argus/core/timer_scheduler.hpp"
 #include "argus/core_testing/fake_clock.hpp"
 
 namespace argus::bus_zmq {
@@ -387,6 +388,18 @@ TEST_F(ZmqPollerBudgetTest, CallsTimerOnceWhenDeadlineIsReached) {
 
     clock_.advance_ns(10 * kNsPerMs);
     poller_.process_events(milliseconds{0}, kBudget);
+    EXPECT_EQ(calls, 1);
+}
+
+// 시간 초과를 판정하는 통신 구현은 ZmqPoller 를 모르고 core::ITimerScheduler 로만 등록한다
+TEST_F(ZmqPollerBudgetTest, CallsTimerRegisteredThroughTimerScheduler) {
+    core::ITimerScheduler& scheduler = poller_;
+    std::int32_t calls = 0;
+    const core::Subscription timer = scheduler.add_timer_at(10 * kNsPerMs, [&] { ++calls; });
+
+    clock_.advance_ns(10 * kNsPerMs);
+    poller_.process_events(milliseconds{0}, kBudget);
+
     EXPECT_EQ(calls, 1);
 }
 
