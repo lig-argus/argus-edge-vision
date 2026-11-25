@@ -32,7 +32,7 @@ flowchart LR
         qgc[QGC]
     end
     px4 <-->|USB| router
-    router <-->|Wi-Fi UDP 14550| gcs
+    mavlink_gateway <-->|Wi-Fi UDP 14550| gcs
     router -->|Wi-Fi UDP 14551| qgc
     vtx -->|Wi-Fi RTSP| gcs
     ir -->|USB 2.0, i3 SDK usbfs| vision
@@ -46,7 +46,7 @@ flowchart LR
 | 장비 | 실행 환경 | artifact | 담당 | 비고 |
 |---|---|---|---|---|
 | FC 보드 | — | PX4 v1.16 펌웨어, 파라미터 | 통신 (설정) | 펌웨어 업데이트는 하지 않는다. 파라미터 변경은 배포 문서에 기록 |
-| Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 `onboard/config/mavlink-router/` (USB ↔ UDP 14540, 14550, 14551. 비행 중 QGC 입력 차단, 정비용 덮어쓰기 파일) | 통신 | `icd.md` 1.2, `onboard/config/mavlink-router/README.md` |
+| Raspberry Pi | Ubuntu 24.04 | mavlink-router 와 설정 파일 `onboard/config/mavlink-router/` (USB ↔ UDP 14540, 14551. 비행 중 QGC 입력 차단, 정비용 덮어쓰기 파일) | 통신 | `icd.md` 1.2, `onboard/config/mavlink-router/README.md` |
 | Raspberry Pi | Ubuntu 24.04 | mavlink_gateway 실행 파일, 설정 파일 (`source` ↔ `ARGUS_SENSOR` 대응, Scan 기본값, 두절 시간) | 통신 | `process_interfaces.md` 3장, `icd.md` 4.2 |
 | Raspberry Pi | Ubuntu 24.04 | 추종 제어 실행 파일 | 추적·추종 | |
 | Raspberry Pi | Ubuntu 24.04 | UCMC 추적기 실행 파일 | 추적·추종 | |

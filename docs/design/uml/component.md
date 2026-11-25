@@ -135,10 +135,9 @@ flowchart LR
     FC --> i_usb
     i_usb -.-> router
     router --> i_14540
-    router --> i_14550
+    gcs_link --> i_14550
     router --> i_14551
     i_14540 -.-> fc_link
-    i_14540 -.-> gcs_link
     i_14550 -.-> gcs
     i_14551 -.-> qgc
     vtx --> i_rtsp
@@ -150,8 +149,8 @@ flowchart LR
 | 인터페이스 | provided | required | 내용 |
 |---|---|---|---|
 | USB | FC | mavlink-router | 모든 MAVLink. RPi 쪽은 라우터만 연다 (`icd.md` 1.2) |
-| UDP 14540 | mavlink-router | mavlink_gateway FC 통신 (telemetry 수신, setpoint·모드 송신), mavlink_gateway 통제기 통신 (`ARGUS_*` 송신, `COMMAND_LONG` 수신) | mavlink_gateway 가 compid 191·195 로 나눠 쓴다 (`icd.md` 1.1) |
-| UDP 14550 | mavlink-router | 통제기 | telemetry·`ARGUS_STATUS`·`ARGUS_SENSOR_STATUS`·`COMMAND_ACK` 수신, `HEARTBEAT`·`COMMAND_LONG`·비행 명령 송신 |
+| UDP 14540 | mavlink-router | mavlink_gateway FC 통신 (telemetry 수신, setpoint, 모드 송신, 통제기 메시지 중 FC 로 전달하는 것 송신) | mavlink_gateway 가 compid 191·195 로 나눠 쓴다 (`icd.md` 1.1) |
+| UDP 14550 | mavlink_gateway 통제기 통신 | 통제기 | telemetry·`ARGUS_STATUS`·`ARGUS_SENSOR_STATUS`·`COMMAND_ACK` 수신, `HEARTBEAT`·`COMMAND_LONG`·비행 명령 송신 |
 | UDP 14551 | mavlink-router | QGC | telemetry 만. QGC 명령은 라우터가 FC 로 보내지 않는다 |
 | RTSP | 영상 송신부 | 통제기 | RTP/H.264 영상 트랙 + ONVIF XML 메타데이터 트랙 (`docs/spec/video.md`) |
 | UDP 미리보기 | `argus_preview_udp_relay` | 통제기 | `vision/overlay/jpeg` 의 JPEG. RTSP 전환 전까지 쓰는 지금의 미리보기 경로. 포트는 확인 필요 |
