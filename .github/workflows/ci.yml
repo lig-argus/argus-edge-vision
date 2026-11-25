@@ -128,3 +128,53 @@ jobs:
           else
             echo "compile_commands.json 없음: 컴파일할 소스가 없어 건너뜀"
           fi
+
+  # bus 인터페이스의 Fast DDS 구현 (onboard/libs/bus_dds). Ubuntu 24.04 apt 에 Fast DDS 3.6 이 없으므로 소스
+  # 빌드하여 캐시한다 (버전이 바뀌면 key 를 바꾼다). 버전은 README.md 의 Fast DDS 설치와 같다
+  onboard-dds:
+    name: onboard bus_dds (Fast DDS) build, test, clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        # onboard 작업과 같은 패키지 + Fast DDS 빌드에 사용하는 libtinyxml2-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev libtinyxml2-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
+          pip install clang-tidy==22.1.8
+      - name: Cache Fast DDS
+        id: cache-fastdds
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/fastdds
+          key: fastdds-3.6.2-fastcdr-2.3.7-foonathan-1.4.1-${{ runner.os }}
+      - name: Build Fast DDS
+        if: steps.cache-fastdds.outputs.cache-hit != 'true'
+        # 설치 위치는 onboard/CMakePresets.json 의 linux-dds preset 이 찾는 $HOME/.local/fastdds
+        run: |
+          FASTDDS_PREFIX="$HOME/.local/fastdds"
+          git -c advice.detachedHead=false clone -q --depth 1 --branch v1.4.1 https://github.com/eProsima/foonathan_memory_vendor.git /tmp/foonathan
+          git -c advice.detachedHead=false clone -q --depth 1 --branch v2.3.7 https://github.com/eProsima/Fast-CDR.git /tmp/fastcdr
+          git -c advice.detachedHead=false clone -q --depth 1 --branch v3.6.2 https://github.com/eProsima/Fast-DDS.git /tmp/fastdds
+          git -C /tmp/fastdds submodule update -q --init --depth 1 thirdparty/asio
+          cmake -S /tmp/foonathan -B /tmp/foonathan/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FASTDDS_PREFIX"
+          cmake --build /tmp/foonathan/build && cmake --install /tmp/foonathan/build
+          cmake -S /tmp/fastcdr -B /tmp/fastcdr/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FASTDDS_PREFIX"
+          cmake --build /tmp/fastcdr/build && cmake --install /tmp/fastcdr/build
+          cmake -S /tmp/fastdds -B /tmp/fastdds/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FASTDDS_PREFIX" -DCMAKE_PREFIX_PATH="$FASTDDS_PREFIX" -DTHIRDPARTY_Asio=FORCE -DTHIRDPARTY_fastcdr=OFF -DTHIRDPARTY_TinyXML2=OFF -DSECURITY=OFF -DCOMPILE_EXAMPLES=OFF -DBUILD_TESTING=OFF -DCOMPILE_TOOLS=OFF
+          cmake --build /tmp/fastdds/build && cmake --install /tmp/fastdds/build
+      - name: Configure
+        # 설정은 onboard/CMakePresets.json 의 linux-dds preset (빌드 폴더 build/onboard)
+        run: cmake --preset linux-dds
+        working-directory: onboard
+      - name: Build
+        run: cmake --build build/onboard --target bus_dds_test bus_dds_transport_test
+      - name: Test
+        run: ctest --test-dir build/onboard --output-on-failure -R "DdsBus|FastDdsServiceApi"
+      - name: clang-tidy
+        # bus_dds 의 소스만 검사한다 (나머지는 onboard 작업이 검사). fastddsgen 생성 소스(test/generated/)는 제외
+        run: run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*' 'bus_dds/(src|test)/[a-z_]+\.cpp'

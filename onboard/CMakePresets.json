@@ -42,6 +42,24 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "linux-dds",
+      "inherits": "linux",
+      "displayName": "Ubuntu 24.04 apt + Fast DDS (libs/bus_dds)",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{HOME}/.local/fastdds",
+        "ARGUS_BUILD_BUS_DDS": "ON"
+      }
+    },
+    {
+      "name": "macos-dds",
+      "inherits": "macos",
+      "displayName": "macOS + Fast DDS (libs/bus_dds)",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{HOME}/.local/protobuf-21;$env{HOME}/.local/fastdds",
+        "ARGUS_BUILD_BUS_DDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -52,6 +70,14 @@
     {
       "name": "macos",
       "configurePreset": "macos"
+    },
+    {
+      "name": "linux-dds",
+      "configurePreset": "linux-dds"
+    },
+    {
+      "name": "macos-dds",
+      "configurePreset": "macos-dds"
     }
   ],
   "testPresets": [
@@ -65,6 +91,20 @@
     {
       "name": "macos",
       "configurePreset": "macos",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-dds",
+      "configurePreset": "linux-dds",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-dds",
+      "configurePreset": "macos-dds",
       "output": {
         "outputOnFailure": true
       }
