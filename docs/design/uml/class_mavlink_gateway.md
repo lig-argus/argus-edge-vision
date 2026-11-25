@@ -47,6 +47,9 @@ classDiagram
         +name()
         +serve(handler) Subscription
     }
+    class DdsBus {
+        +create(IFdWatcher, ITimerScheduler, IClock, domain_id, DdsTypeTable)$ DdsBus
+    }
     class ZmqBus {
         -endpoints 이름 → 주소
     }
@@ -88,6 +91,9 @@ classDiagram
 
     IMavlinkConnection <|.. UdpMavlinkConnection
     IBus <|.. ZmqBus
+    IBus <|.. DdsBus
+    DdsBus ..> IFdWatcher : 수신 알림 pipe
+    DdsBus ..> ITimerScheduler : 요청 timeout
     IBus ..> ITopicPublisher : create
     IBus ..> ITopicSubscriber : create
     IBus ..> IRequester : create
@@ -109,6 +115,7 @@ classDiagram
     ZmqBus ..> ZmqPoller : 소켓 등록, 요청 timeout
 ```
 
+- `DdsBus`(`bus_dds` 모듈)는 `IBus` 의 Fast DDS 구현이다. 토픽은 IDL 타입 토픽(RELIABLE, VOLATILE, KEEP_LAST)이고, 요청-응답은 이름마다 토픽 `<이름>_Request` 와 `<이름>_Reply` 를 쓰며 응답에 요청 표본의 식별자를 붙여 짝을 맞춘다 (Fast DDS 3.6 의 요청-응답 API 는 미지원). C++ 값과 IDL 표본 사이의 변환은 생성할 때 받는 `DdsTypeTable` 의 함수로 한다. Fast DDS 스레드의 수신 알림은 pipe 를 깨우기만 하고, `IFdWatcher` 에 등록한 handler 가 `process_events()` 안에서 표본을 꺼내 전달한다. Fast DDS 고유 기능(Data Sharing 끄기, 표본 식별자)은 `bus_dds/src/fastdds_specific` 한 곳에 모은다.
 - poller 는 실행 파일이 쓰는 통신 구현에 맞춰 `main` 이 하나를 고른다. ZeroMQ 를 쓰면 ZeroMQ 소켓도 함께 기다리는 `ZmqPoller`, 쓰지 않으면 `poll()` 로 fd 와 타이머만 기다리는 `PollPoller`(`core` 모듈)다. 소켓을 여는 클래스는 `IFdWatcher` 로 fd 를, 요청의 시간 초과를 판정하는 통신 구현은 `ITimerScheduler` 로 타이머를 등록하므로 어느 poller 인지 모른다. `PollPoller` 를 `core` 에 두는 이유: ZeroMQ 를 쓰지 않는 실행 파일이 fd 와 타이머를 기다리려고 `bus_zmq` 와 libzmq 를 링크하지 않도록 한다.
 - `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryReceiver`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 mavlink_gateway 만 쓰므로 `apps/mavlink_gateway/test/` 에 있다.
 - `IBus` 는 프로세스가 붙는 메시지 통로이며 토픽 발행자, 구독자, 요청하는 쪽, 응답하는 쪽을 만든다 (ROS 2 rmw 의 node, DDS 의 DomainParticipant 에 해당). main 에서 하나를 만들어 주입하고, 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 `IBus` 와 넷은 바뀌지 않는다. 구현별 설정(주소, QoS 프로파일)은 구현 클래스의 생성자 인자다. bus 는 타입 있는 값을 받고, 값을 전송 형식으로 바꾸는 일은 통신 구현이 한다 (`ZmqBus` 는 생성자에 받은 변환 표의 함수로 직렬화한다). 생성 함수는 메시지 타입의 식별(`MessageType`: 이름, C++ 타입)을 필수 인자로 받으며, 구현이 변환 방법을 모르는 타입이면 nullptr 를 반환한다. 인터페이스는 타입을 지운 값(`const void*`)을 전달하고, 호출하는 코드는 `bus/typed.hpp` 의 래퍼(`Publisher<T>`, `Subscriber<T>`, `Requester<Request, Reply>`, `Replier<Request, Reply>`)를 쓴다. 구독 handler 는 값과 함께 발행자가 붙인 순번(`MessageInfo::sequence`)을 받는다. 메시지 정의(`.proto`)와 생성 코드는 `protocol` 모듈에 있다. `publish` 는 기다리지 않으며 보내지 못했을 때만 false 를 반환한다. true 가 모든 구독자의 수신을 뜻하지는 않는다. `request` 는 응답을 기다리지 않고 바로 반환하며 응답은 `on_reply` 로 받는다. 모든 구현이 따라야 하는 contract 는 `bus/bus.hpp` 파일 상단 주석.

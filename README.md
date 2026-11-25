@@ -77,6 +77,23 @@ cmake -S /tmp/protobuf-21 -B /tmp/protobuf-21/build -G Ninja -Dprotobuf_BUILD_TE
 cd onboard && cmake --preset macos && cmake --build --preset macos && ctest --preset macos
 ```
 
+### Fast DDS (bus 의 DDS 구현, 선택)
+
+`onboard/libs/bus_dds`(bus 인터페이스의 Fast DDS 구현)는 Fast DDS 가 설치된 경우에만 `-DARGUS_BUILD_BUS_DDS=ON` 으로 빌드한다. 기본 빌드에는 필요 없다. Ubuntu 24.04 apt 에 Fast DDS 3.6 이 없으므로 모든 환경에서 소스 빌드해 `$HOME/.local/fastdds` 에 설치한다 (CI 의 `onboard-dds` 작업과 같은 버전). Ubuntu 는 `sudo apt install libtinyxml2-dev`, macOS 는 `brew install tinyxml2` 가 먼저 필요하다.
+
+```bash
+git clone --depth 1 --branch v1.4.1 https://github.com/eProsima/foonathan_memory_vendor.git /tmp/foonathan
+git clone --depth 1 --branch v2.3.7 https://github.com/eProsima/Fast-CDR.git /tmp/fastcdr
+git clone --depth 1 --branch v3.6.2 https://github.com/eProsima/Fast-DDS.git /tmp/fastdds && git -C /tmp/fastdds submodule update --init --depth 1 thirdparty/asio
+```
+
+```bash
+for d in foonathan fastcdr; do cmake -S /tmp/$d -B /tmp/$d/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local/fastdds && cmake --build /tmp/$d/build && cmake --install /tmp/$d/build; done
+cmake -S /tmp/fastdds -B /tmp/fastdds/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local/fastdds -DCMAKE_PREFIX_PATH=$HOME/.local/fastdds -DTHIRDPARTY_Asio=FORCE -DTHIRDPARTY_fastcdr=OFF -DTHIRDPARTY_TinyXML2=OFF -DSECURITY=OFF -DCOMPILE_EXAMPLES=OFF -DBUILD_TESTING=OFF -DCOMPILE_TOOLS=OFF && cmake --build /tmp/fastdds/build && cmake --install /tmp/fastdds/build
+```
+
+빌드할 때는 preset `macos-dds`(macOS) 또는 `linux-dds`(Ubuntu)를 사용한다. 두 preset 은 `macos`, `linux` 에 `$HOME/.local/fastdds` 경로와 `ARGUS_BUILD_BUS_DDS=ON` 을 더한 것이다. IDL 타입의 C++ 코드는 fastddsgen 으로 생성해 커밋하므로 빌드에는 fastddsgen(Java)이 필요 없다. IDL 을 바꾸는 경우에만 Fast DDS 3.6.2 와 짝인 fastddsgen 4.3.0 이 필요하다 (생성 명령은 `onboard/libs/bus_dds/CMakeLists.txt` 의 주석).
+
 ## 통제기 빌드 (`gcs/`)
 
 Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.

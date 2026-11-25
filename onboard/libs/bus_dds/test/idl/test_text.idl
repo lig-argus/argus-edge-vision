@@ -1,0 +1,10 @@
+// bus_dds 테스트용 IDL 타입. 생성 코드는 test/generated/ 에 커밋한다. 다시 생성하는 명령은
+// onboard/libs/bus_dds/CMakeLists.txt 의 주석
+module argus {
+    module bus_dds_test {
+        struct TestText {
+            string text;
+            long number;
+        };
+    };
+};

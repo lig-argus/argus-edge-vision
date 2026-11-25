@@ -1,0 +1,4 @@
+# fastddsgen 이 생성한 코드는 직접 수정하지 않고 fastddsgen 으로 다시 생성한다 (생성 명령은 onboard/libs/bus_dds/CMakeLists.txt).
+# 다시 생성하면 생성기의 형식으로 돌아가므로 이 폴더는 clang-format 형식 검사에서 제외한다.
+DisableFormat: true
+SortIncludes: Never
