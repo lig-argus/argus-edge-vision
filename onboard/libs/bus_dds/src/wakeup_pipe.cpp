@@ -9,7 +9,7 @@
 namespace argus::bus_dds::detail {
 namespace {
 
-bool set_nonblocking(int fd) {
+bool set_nonblocking(std::int32_t fd) {
     const auto flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
         return false;
@@ -22,7 +22,7 @@ bool set_nonblocking(int fd) {
 }  // namespace
 
 WakeupPipe::WakeupPipe() {
-    std::array<int, 2> fds{-1, -1};
+    std::array<std::int32_t, 2> fds{-1, -1};
     if (pipe(fds.data()) != 0) {
         return;
     }
