@@ -20,11 +20,15 @@ target_link_libraries(argus_video_sender_interfaces INTERFACE argus::core argus:
 # - TestPatternFrameSource, test_pattern_scene: 카메라와 탐지 프로세스 없이 송신을 확인하기 위한
 #   시험용 입력
 # - stream_timing.hpp: RTP 타임스탬프와 PTS 계산 (헤더만)
+# - BusFrameSource, VideoBusInput: bus 의 프레임, 탐지 결과, 추적 결과를 FrameCollector 에 넣음.
+#   bus 인터페이스만 쓰고 통신 구현(bus_zmq)은 링크하지 않는다 (실행 파일만 링크)
 add_library(argus_video_sender_core STATIC
             src/frame_collector.cpp src/onvif_metadata_serializer.cpp src/metadata_rtp_packetizer.cpp
-            src/video_sender.cpp src/test_pattern_scene.cpp src/test_pattern_frame_source.cpp)
+            src/video_sender.cpp src/test_pattern_scene.cpp src/test_pattern_frame_source.cpp
+            src/bus_frame_source.cpp src/video_bus_input.cpp)
 add_library(argus::video_sender_core ALIAS argus_video_sender_core)
-target_link_libraries(argus_video_sender_core PUBLIC argus::video_sender_interfaces)
+target_link_libraries(argus_video_sender_core
+                      PUBLIC argus::video_sender_interfaces argus::perception_api_bus)
 
 # RtspServer: IStreamSink 의 gst-rtsp-server 구현. GStreamer 를 링크하는 유일한 라이브러리이다
 # (PkgConfig::ARGUS_GSTREAMER 는 onboard/CMakeLists.txt 에서 탐색한다). GStreamer 를 사용하지 않는
@@ -34,8 +38,11 @@ add_library(argus::video_sender_rtsp ALIAS argus_video_sender_rtsp)
 target_link_libraries(argus_video_sender_rtsp PUBLIC argus::video_sender_core
                                               PRIVATE PkgConfig::ARGUS_GSTREAMER)
 
+# 통신 구현(ZeroMQ)과 실제 시계는 main.cpp 에서만 생성한다
 add_executable(argus_video_sender src/main.cpp)
-target_link_libraries(argus_video_sender PRIVATE argus::video_sender_rtsp argus_onboard_warnings)
+target_link_libraries(argus_video_sender
+                      PRIVATE argus::video_sender_rtsp argus::perception_api_bus_zmq
+                              argus::protocol_names argus_onboard_warnings)
 
 # FakeFrameSource, FakeStreamSink 는 영상 송신부 테스트만 사용하므로 test/ 에 둔다
 argus_add_test(video_sender_fake_frame_source_test SOURCES test/fake_frame_source_test.cpp
@@ -57,6 +64,12 @@ argus_add_test(video_sender_test_pattern_scene_test SOURCES test/test_pattern_sc
                LIBS argus::video_sender_core)
 argus_add_test(video_sender_stream_timing_test SOURCES test/stream_timing_test.cpp
                LIBS argus::video_sender_core)
+argus_add_test(video_sender_bus_frame_source_test SOURCES test/bus_frame_source_test.cpp
+               LIBS argus::video_sender_core argus::bus_testing argus::core_testing
+                    argus::protocol_names)
+argus_add_test(video_sender_video_bus_input_test SOURCES test/video_bus_input_test.cpp
+               LIBS argus::video_sender_core argus::bus_testing argus::core_testing
+                    argus::protocol_names)
 # 테스트가 RTSP 클라이언트(rtspsrc)를 직접 구성하므로 GStreamer 를 함께 링크한다
 argus_add_test(video_sender_rtsp_server_test SOURCES test/rtsp_server_test.cpp
                LIBS argus::video_sender_rtsp PkgConfig::ARGUS_GSTREAMER)

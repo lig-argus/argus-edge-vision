@@ -40,9 +40,10 @@ TEST(FrameTest, SessionAndReceiveTimeDefaultToEmpty) {
     EXPECT_EQ(frame.received_monotonic_ns, 0);
 }
 
-TEST(ObservationsTest, DefaultsToNoDetectionsAndNoModel) {
+TEST(ObservationsTest, DefaultsToNoDetectionsNoModelAndNoSession) {
     const Observations observations;
 
+    EXPECT_FALSE(observations.session_id.has_value());
     EXPECT_TRUE(observations.detections.empty());
     EXPECT_EQ(observations.frame_id, 0U);
     EXPECT_TRUE(observations.model.empty());
