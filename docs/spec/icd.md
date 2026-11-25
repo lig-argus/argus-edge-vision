@@ -64,10 +64,9 @@ flowchart LR
         qgc[QGC<br/>sysid 255]
     end
     FC <-->|USB<br/>모든 MAVLink| router
-    router <-->|UDP 127.0.0.1:14540<br/>mavlink_gateway 가 주고받는 모든 MAVLink| mavlink_gateway
+    router <-->|UDP 127.0.0.1:14540<br/>FC 와 주고받는 MAVLink| mavlink_gateway
     router -->|UDP 14551<br/>telemetry| qgc
-    router -->|UDP 14550<br/>telemetry·ARGUS 상태| gcs
-    gcs -->|UDP 14550<br/>통제기 명령| router
+    mavlink_gateway <-->|UDP 14550<br/>telemetry, ARGUS 상태, 통제기 명령| gcs
     mavlink_gateway -->|기체 상태| follow
     follow -->|setpoint·모드·추종 명령| mavlink_gateway
     mavlink_gateway -->|기체 상태| tracker
@@ -82,14 +81,14 @@ flowchart LR
 | 링크 | 전송 | 주소·포트 | 내용 |
 |---|---|---|---|
 | FC ↔ RPi | USB (CDC-ACM) | `/dev/ttyACM0` | 모든 MAVLink 트래픽. RPi 쪽은 mavlink-router 만 연다 |
-| RPi 라우터 ↔ mavlink_gateway | UDP, RPi 안 | `127.0.0.1:14540` | mavlink_gateway 가 FC·통제기와 주고받는 모든 메시지 |
-| RPi 라우터 ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (서버) | 통제기가 먼저 보내면 라우터가 그 주소로 응답 |
+| RPi 라우터 ↔ mavlink_gateway | UDP, RPi 안 | `127.0.0.1:14540` | mavlink_gateway 가 FC 와 주고받는 모든 메시지. 통제기의 메시지 중 5.2 의 조건을 통과한 것도 이 경로로 FC 에 보낸다 |
+| mavlink_gateway ↔ 통제기 | UDP, Wi-Fi | RPi `:14550` (mavlink_gateway 가 연다) | 통제기가 먼저 보내면 mavlink_gateway 가 그 주소로 응답한다. 통제기 여러 대가 접속할 수 있고, mavlink_gateway 는 통제기의 (IP 주소, UDP 포트)마다 따로 보낸다 (5.1) |
 | RPi 라우터 ↔ QGC | UDP, Wi-Fi | RPi `:14551` | QGC 전용. 비행 중에는 라우터가 QGC(sysid 255)가 보낸 패킷을 모두 폐기하므로 QGC 는 telemetry 만 수신한다. 파라미터, 보정은 정비 절차(`onboard/config/mavlink-router/README.md`)로 |
 | mavlink_gateway ↔ 추적기·추종 제어, 탐지 → 추적기·영상 송신부 | ZeroMQ, RPi 안 | `docs/spec/process_interfaces.md` | 기체 상태, 탐지·추적 결과, 추종 명령·setpoint·모드 요청 |
 | 영상 송신부 → 통제기 | RTSP 요청 + RTP/UDP, Wi-Fi | `docs/spec/video.md` | H.264 영상 트랙(박스 없는 비압축 프레임을 영상 송신부가 인코딩) + ONVIF XML 메타데이터 트랙(`tracking/tracks` 의 추적 박스). 통제기가 메타데이터로 박스를 그린다. 동기화 방법은 `docs/spec/video.md` 4장 |
 
-- mavlink-router 가 FC 의 USB 장치를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 그래서 mavlink_gateway 와 통제기는 서로의 메시지도 받는다 (sysid·compid 로 걸러 쓴다).
-- mavlink-router 설정 파일은 `onboard/config/mavlink-router/main.conf`(비행)와 `config.d/qgc-maintenance.conf`(정비 때만 설치)다. 시동, 이륙, 모드 변경, 보정 명령이 모두 `COMMAND_LONG` 한 메시지로 가므로 라우터는 메시지 id 로 비행 명령만 골라 차단할 수 없고, 보낸 쪽 sysid 로 QGC 의 입력을 모두 차단한다. 통제기(sysid 250)의 명령은 mavlink_gateway 가 제어권으로 검사한다 (5장).
+- mavlink-router 가 FC 의 USB 장치를 혼자 차지하고, 받은 패킷을 다른 모든 엔드포인트로 중계한다. 통제기는 라우터에 연결하지 않는다. mavlink_gateway 가 라우터에서 받은 FC 의 telemetry 를 통제기에 전달하고, 통제기의 메시지는 5.2 의 조건을 확인한 뒤 FC 로 전달한다.
+- mavlink-router 설정 파일은 `onboard/config/mavlink-router/main.conf`(비행)와 `config.d/qgc-maintenance.conf`(정비 때만 설치)다. 시동, 이륙, 모드 변경, 보정 명령이 모두 `COMMAND_LONG` 한 메시지로 가므로 라우터는 메시지 id 로 비행 명령만 골라 차단할 수 없고, 보낸 쪽 sysid 로 QGC 의 입력을 모두 차단한다. 통제기(sysid 250)의 메시지는 라우터를 거치지 않고 mavlink_gateway 가 받아 제어권과 5.2 의 조건으로 검사한다.
 - 프로토콜은 **MAVLink 2** 만 쓴다. 메시지 id 45000 번대는 MAVLink 1 로 보낼 수 없다. 서명(signing)은 쓰지 않는다 [미결 D1].
 
 ## 2. 표준 메시지 사용 목록
@@ -107,10 +106,10 @@ flowchart LR
 | BATTERY_STATUS (147) | FC → 전체 | 1 Hz | 전압·잔량 |
 | STATUSTEXT (253) | FC, mavlink_gateway → 전체 | 이벤트 | 사람이 읽는 상태 문구. mavlink_gateway 는 임무 상태 변화·거부 이유를 보낸다 |
 | TIMESYNC (111) | mavlink_gateway(191) ↔ FC | mavlink_gateway 가 주기적으로 요청 | RPi 시계와 FC `time_boot_ms` 의 차이 (아키텍처 문서 1.9) |
-| COMMAND_LONG (76) | 통제기 → FC 또는 mavlink_gateway | 이벤트 | 명령 (4장). `target_component` 로 FC(1)·mavlink_gateway(195) 구분 |
+| COMMAND_LONG (76) | 통제기 → FC 또는 mavlink_gateway | 이벤트 | 명령 (4장). `target_component` 로 FC(1)·mavlink_gateway(195) 구분. FC 로 가는 명령은 mavlink_gateway 가 검사한 뒤 전달 (5.2) |
 | COMMAND_ACK (77) | FC, mavlink_gateway → 통제기 | 응답 | 명령 결과 (4장) |
 | SET_POSITION_TARGET_LOCAL_NED (84) | mavlink_gateway → FC | 20 Hz | Offboard 속도 setpoint 와 yaw 회전 속도(추종, Scan), 위치 setpoint(제자리 유지). Offboard 진입 전부터 보내고, 정지한 뒤에도 제자리 유지 중에는 계속 보낸다 (4.2) |
-| MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만 |
+| MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만. mavlink_gateway 가 검사한 뒤 전달 (5.2) |
 | VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_H264`(1) (JPEG 를 선택한 경우 MAVLink 에 JPEG 값이 없어 `VIDEO_STREAM_ENCODING_UNKNOWN`(0). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
 | PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·mavlink_gateway 는 쓰지 않는다 |
 
@@ -128,7 +127,7 @@ flowchart LR
 | ARGUS_STATUS (45000) | mavlink_gateway → 통제기 | 1 Hz, 그리고 `mission_state`·`target_state`·`health`·`active_sensor` 가 바뀌면 즉시 1회 | 통제기: 임무 상태·표적 상태·연결 상태 표시. 6.1 의 두절 판단에 사용 |
 | ARGUS_SENSOR_STATUS (45001) | mavlink_gateway → 통제기 | 센서마다 1 Hz, `flags` 가 바뀌면 즉시 1회 | 통제기: 센서별 상태 표시, FOLLOWABLE 로 표적 선택 가능 여부 결정 |
 
-- `ARGUS_STATUS` 의 필드: `mission_state`(부록 B, 8개), `target_state`(부록 B, 4개), `target_id`·`target_generation`(선택된 표적. 없으면 0), `active_sensor`, `health`, `control_sysid`, `time_boot_ms`, `cpu_temp`, `scan_yaw_done_rad`(스캔 중 지금까지 회전한 yaw, rad. 스캔 중이 아니면 NaN), `scan_remaining_s`(스캔이 끝나기까지 남은 시간, s. p3 timeout 과 남은 회전량 중 먼저 오는 쪽. 스캔 중이 아니거나 모르면 NaN). 값은 추종 제어가 mavlink_gateway 에 주는 상태를 그대로 옮긴다. 통제기는 `mission_state` 가 SCAN_ACTIVE 이고 값이 NaN 이 아닐 때만 두 스캔 값을 진행 막대와 남은 시간으로 표시한다. 이 두 필드는 확장 필드라 보내지 않는 송신자의 값이 MAVLink 2 규칙으로 0 으로 복원되므로, 0 을 "남은 시간 0 초" 로 읽지 않는다.
+- `ARGUS_STATUS` 의 필드: `mission_state`(부록 B, 8개), `target_state`(부록 B, 4개), `target_id`·`target_generation`(선택된 표적. 없으면 0), `active_sensor`, `health`, `control_state`(이 통제기의 제어 상태. mavlink_gateway 가 통제기마다 따로 채운다, 5.1), `time_boot_ms`, `cpu_temp`, `scan_yaw_done_rad`(스캔 중 지금까지 회전한 yaw, rad. 스캔 중이 아니면 NaN), `scan_remaining_s`(스캔이 끝나기까지 남은 시간, s. p3 timeout 과 남은 회전량 중 먼저 오는 쪽. 스캔 중이 아니거나 모르면 NaN). 값은 추종 제어가 mavlink_gateway 에 주는 상태를 그대로 옮긴다. 통제기는 `mission_state` 가 SCAN_ACTIVE 이고 값이 NaN 이 아닐 때만 두 스캔 값을 진행 막대와 남은 시간으로 표시한다. 이 두 필드는 확장 필드라 보내지 않는 송신자의 값이 MAVLink 2 규칙으로 0 으로 복원되므로, 0 을 "남은 시간 0 초" 로 읽지 않는다.
 - 프레임별 탐지 결과(ARGUS_DETECTION, 45001)는 MAVLink 로 보내지 않고 삭제한다. ARGUS_SENSOR_STATUS 를 45002 에서 45001 로 당긴다 (#21). 1.0 확정 뒤에는 메시지 id 를 재사용·변경하지 않는다. mavlink_gateway·추종 제어는 RPi 내부 토픽으로, 통제기는 영상 메타데이터 트랙(`docs/spec/video.md`)으로 받는다.
 - `ARGUS_SENSOR_STATUS.flags` 의 TRACKING 은 그 센서의 탐지 결과에 추적기가 track_id 를 붙인다는 뜻이다. FOLLOWABLE 센서만 표적 선택이 가능하다.
 - 통제기가 영상 위에 그리는 바운딩 박스와 운용자가 고르는 표적은 영상 메타데이터 트랙의 추적 결과(`tracking/tracks` 기준)다. 표적의 식별자는 (sensor, generation, class_id, track_id) 네 값이다.
@@ -142,8 +141,9 @@ flowchart LR
 ### 4.1 공통 규칙
 
 - 명령은 `COMMAND_LONG` 으로 보내고, 수신자는 `COMMAND_ACK` 로 답한다. `target_system = 1`, `target_component` 는 FC 가 1, mavlink_gateway 가 195. mavlink_gateway 는 `target_system` 이 1 이 아니거나 `target_component` 가 195 가 아닌 명령(0 포함)을 응답 없이 폐기한다 (0 은 FC 와 mavlink_gateway 가 모두 응답하므로 허용하지 않는다). `COMMAND_INT` 로 온 argus 명령에는 MAV_RESULT_COMMAND_LONG_ONLY 로 답한다.
+- 통제기가 FC 로 보내는 명령(4.3)도 mavlink_gateway 가 받는다. mavlink_gateway 는 5.2 의 조건을 만족하면 FC 로 전달하고, 만족하지 않으면 FC 로 전달하지 않고 직접 답한다 (제어권 없음 DENIED, 상태 조건 TEMPORARILY_REJECTED).
 - **명령 번호**: 4.2 의 argus 명령은 `param7` 이 명령 번호이다. 통제기는 명령을 보낼 때마다 번호를 1 증가시킨다 (16,777,215 를 넘으면 0). 시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지다. 0 에서 시작하면 통제기 재시작 뒤 첫 명령이 mavlink_gateway 가 보관한 이전 번호와 겹쳐 재전송으로 처리될 수 있다. 재전송 시에는 동일한 번호로 보낸다. 사용하지 않는 param 은 NaN 으로 보낸다 (MAVLink COMMAND_LONG 의 빈 param 규칙). mavlink_gateway 는 이 번호로 재전송과 새 명령을 구분한다 (아래 재전송 판단).
-- `COMMAND_ACK` 의 `target_system`, `target_component` 는 명령을 보낸 쪽의 sysid, compid 이다. 수신자는 두 필드가 자신의 sysid, compid 이고 `command` 가 기다리는 MAV_CMD 와 같은 ACK 만 처리한다. 이유: 통제기(compid 190)와 mavlink_gateway(195)가 모두 FC 에 DO_SET_MODE 를 보내고 라우터가 FC 의 ACK 를 양쪽에 전달하므로, 두 필드를 확인하지 않으면 상대의 ACK 를 자신의 것으로 처리한다.
+- `COMMAND_ACK` 의 `target_system`, `target_component` 는 명령을 보낸 쪽의 sysid, compid 이다. 수신자는 두 필드가 자신의 sysid, compid 이고 `command` 가 기다리는 MAV_CMD 와 같은 ACK 만 처리한다. 이유: 통제기(compid 190)와 mavlink_gateway(195)가 모두 FC 에 DO_SET_MODE 를 보내고 FC 의 ACK 는 모두 라우터를 거쳐 mavlink_gateway 에 도착하므로, mavlink_gateway 는 두 필드로 자기 명령의 ACK 와 통제기에 전달할 ACK 를 나눈다.
 - 통제기는 ACK 가 **1 초** 안에 오지 않으면 같은 명령을 다시 보내고, 3 회 뒤에도 없으면 "응답 없음" 으로 표시한다. `confirmation` 필드에 재전송 횟수를 기록한다 (mavlink_gateway 는 읽지 않는다). 같은 compid 에 같은 MAV_CMD 의 응답을 기다리는 동안에는 새 명령을 보내지 않는다 (화면에서 차단).
 - IN_PROGRESS 응답의 `progress` 는 진행 백분율(0~100)이고, 모르면 255 다 (MAVLink `COMMAND_ACK.progress`). 4.2 의 명령별 뜻을 따른다.
 - mavlink_gateway 는 진행 중인 명령의 IN_PROGRESS 를 **1 초**마다 다시 보낸다 (진행률이 바뀌면 바로). 통제기는 마지막 IN_PROGRESS 뒤 **3 초** 안에 다음 ACK 가 없으면 "응답 없음" 으로 표시한다.
@@ -201,7 +201,7 @@ sequenceDiagram
   - `mission_state` 의 이름 HOLD_TRANSITION, HOLD_WAIT 는 그대로 쓴다. Hold 모드만이 아니라 정지 상태를 뜻한다.
 - Scan 의 yaw 회전은 Offboard 상태에서 `SET_POSITION_TARGET_LOCAL_NED` 의 yaw 회전 속도로 수행한다. Hold 상태에서 절대 heading 을 요청하는 방식(`MAV_CMD_DO_REPOSITION` 의 yaw)은 사용하지 않는다. GPS 가 없는 환경에서는 PX4 가 Hold 진입을 거절하기 때문이다 (기체 시험, 2026-11-12. PX4 v1.16 의 Hold 는 local 위치와 global 위치 추정을 모두 요구한다). PX4 는 위치, 속도, 가속도 값이 모두 없는 setpoint 를 폐기하므로 yaw 회전 속도는 속도 값과 함께 보낸다. 정지 절차와 감시 시간은 E3.
 
-### 4.3 비행 명령 (FC 가 받는다, 통제기 → FC 직접)
+### 4.3 비행 명령 (FC 가 받는다, mavlink_gateway 가 검사한 뒤 전달)
 
 | 명령 | 비고 |
 |---|---|
@@ -211,28 +211,93 @@ sequenceDiagram
 | MAV_CMD_NAV_RETURN_TO_LAUNCH (20) | |
 | MAV_CMD_DO_SET_MODE (176) | PX4 모드 변경 (부록 A 의 번호). Hold, Position, Altitude, Stabilized |
 
-- 이 명령들은 mavlink_gateway 를 거치지 않는다. mavlink_gateway 는 추종·스캔 중에 모드가 Offboard 에서 벗어난 것을 HEARTBEAT 로 알아채면 추종을 끝내고 `mission_state` 를 MANUAL(조종사·통제기가 모드를 바꾼 경우) 또는 FAULT 로 보고한다. 분류 규칙은 아키텍처 문서 2.11·2.20.
+- 통제기는 이 명령을 `target_component = 1` 로 보내고, mavlink_gateway 가 5.2 의 조건을 확인한 뒤 FC 로 전달한다. FC 의 COMMAND_ACK 는 mavlink_gateway 가 그 명령을 보낸 통제기에 전달한다. FC 로 전달하는 메시지 전체와 조건은 5.2.
+- mavlink_gateway 는 추종·스캔 중에 모드가 Offboard 에서 벗어난 것을 HEARTBEAT 로 알아채면 추종을 끝내고 `mission_state` 를 MANUAL(조종사·통제기가 모드를 바꾼 경우) 또는 FAULT 로 보고한다. 분류 규칙은 아키텍처 문서 2.11·2.20.
 - 추종 중(mavlink_gateway 가 Offboard 유지)에 통제기가 모드를 바꾸면 추종이 끝난다. 통제기는 그 전에 확인 창을 띄운다.
+
+### 4.4 제어권 명령 (mavlink_gateway 가 받는다)
+
+| 명령 | 매개변수 | 응답 |
+|---|---|---|
+| MAV_CMD_ARGUS_REQUEST_OPERATOR_CONTROL (45010) | p1 동작 (0 해제, 1 요청), p2 와 p3 은 사용하지 않음(NaN, MAVLink 32100 의 넘겨받기 허용, 대기 시간 자리), p7 명령 번호 | 요청: 부여하면 ACCEPTED, 5.1 의 거부 조건이면 TEMPORARILY_REJECTED. 해제: 제어권을 가진 통제기가 보내면 ACCEPTED, 아니면 DENIED |
+| MAV_CMD_ARGUS_END_RC_OVERRIDE (45011) | p7 명령 번호 | 5.4 의 조건을 모두 확인하면 ACCEPTED 뒤 제자리 유지 시작. 조건 불충족 TEMPORARILY_REJECTED, 제어권 없음 DENIED |
+
+- 명령 번호, 재전송 판단은 4.1 과 같다.
+- 제어권을 가진 통제기에 넘겨줄지 묻는 절차는 없다. mavlink_gateway 가 5.1 의 조건으로 부여하거나 거부한다. 따라서 비행 중에는 제어권을 가진 통제기가 두절(6.1)된 뒤에만 다른 통제기에 넘어간다.
 
 ## 5. 제어권과 송신 규칙
 
-- **제어권**은 sysid 250 통제기 하나가 가진다. mavlink_gateway 는 다른 sysid 가 보낸 TRACK_START/STOP·SCAN_START 를 DENIED 로 거부하고 `ARGUS_STATUS.control_sysid` 에 250 을 넣는다.
-- 통제기 두 대가 동시에 붙는 경우는 지원하지 않는다 [미결 D2].
+### 5.1 제어권
+
+- 제어권은 통제기 하나가 가진다. mavlink_gateway 는 제어권을 가진 통제기를 (IP 주소, UDP 포트, sysid, compid)로 기억한다.
+- mavlink_gateway 는 sysid 250, compid 190 이고 HEARTBEAT 의 type 이 MAV_TYPE_GCS 인 송신자만 통제기로 인정한다. 그 밖의 패킷은 폐기한다.
+- 제어권의 부여: 제어권을 가진 통제기가 없고, 진행 중인 명령과 추종, 스캔, mavlink_gateway 의 setpoint 송신이 없을 때, 처음 HEARTBEAT 를 보낸 통제기에 부여한다.
+- 제어권의 요청: 제어권이 없는 통제기는 `MAV_CMD_ARGUS_REQUEST_OPERATOR_CONTROL`(4.4)로 제어권을 요청한다. mavlink_gateway 는 다음 경우에 거부한다 (TEMPORARILY_REJECTED).
+  - 제어권을 가진 통제기의 HEARTBEAT 가 3 초 이내에 있었고 기체가 비행 중인 경우
+  - 명령이 진행 중이거나 추종, 스캔 중인 경우
+  - 착륙 잠금 상태인 경우 (5.3)
+- 제어권이 없는 통제기: FC 의 telemetry 와 `ARGUS_STATUS` 는 받는다. 명령을 보내면 mavlink_gateway 가 DENIED 로 답하고 FC 로 전달하지 않는다.
+- mavlink_gateway 는 `ARGUS_STATUS` 를 통제기마다 따로 보내고, `control_state` 로 그 통제기의 제어 상태를 알린다 (0 제어권을 가진 통제기 없음, 1 이 통제기, 2 다른 통제기). 통제기는 제어권이 없으면 명령 버튼을 막고 "제어권 없음" 을 표시한다.
+
+### 5.2 FC 로 전달하는 메시지
+
+mavlink_gateway 는 제어권을 가진 통제기가 보낸 아래 메시지만 FC 로 전달한다. 그 밖의 메시지는 전달하지 않고, 명령이면 DENIED 로 답한다.
+
+| 메시지 | 전달 조건 |
+|---|---|
+| HEARTBEAT | 항상 |
+| MAV_CMD_COMPONENT_ARM_DISARM (400) | `param2` 가 0 (강제 시동, 강제 시동 끔은 거부). mavlink_gateway 가 setpoint 를 보내는 중이 아님 |
+| MAV_CMD_NAV_TAKEOFF (22), MAV_CMD_NAV_RETURN_TO_LAUNCH (20) | 전역 위치가 유효함. mavlink_gateway 가 setpoint 를 보내는 중이 아님. 조종사 개입 중이 아님 |
+| MAV_CMD_NAV_LAND (21) | 항상. 다른 명령의 처리를 기다리지 않고 바로 전달 (5.3) |
+| MAV_CMD_DO_SET_MODE (176) | 모드가 Position, Altitude, Stabilized 중 하나. mavlink_gateway 가 setpoint 를 보내는 중이면 FC 가 새 모드를 보고한 뒤에 송신을 멈춤 |
+| MAV_CMD_DO_SET_HOME (179), MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (246) | 지상이고 시동이 꺼져 있음 |
+| PARAM_REQUEST_READ | 항상 |
+| PARAM_SET | 지상이고 시동이 꺼져 있음. 추종, 스캔 중이 아님 |
+| MANUAL_CONTROL | FC 모드가 Position, Altitude, Stabilized 중 하나. mavlink_gateway 가 setpoint 를 보내는 중이 아님. 조종사 개입 중이 아님 |
+| MAV_CMD_REQUEST_MESSAGE (512) | 항상 |
+
+- 통제기의 HOLD 는 FC 로 전달하지 않고 mavlink_gateway 가 제자리 유지로 처리한다 (4.2 정지 명령과 같은 동작).
+- FC 의 COMMAND_ACK 는 제어권을 가진 통제기에만 전달한다.
+
+### 5.3 착륙 잠금
+
+- 통제기의 착륙 명령을 전달하면 mavlink_gateway 는 착륙 잠금 상태가 된다. 진행 중인 명령을 취소하고 setpoint 송신을 멈춘다.
+- 착륙 잠금 상태에서는 착륙 외의 명령을 모두 거부한다.
+- 잠금은 다음 두 경우에 푼다.
+  - 기체가 지상에 있고 시동이 꺼진 것을 확인한 경우
+  - 조종사가 조종기로 기체를 넘겨받은 뒤, 통제기가 5.4 의 복귀 절차를 마친 경우. 이유: 조종사가 착륙을 취소하고 기체를 다시 띄웠을 때, 통제기가 착륙할 때까지 명령을 보낼 수 없게 되는 것을 막기 위함
+- 잠금 중에도 조종사의 조종기 입력에는 영향이 없다.
+
+### 5.4 조종사(RC)의 개입과 통제기로의 복귀
+
+- 조종사의 개입이 항상 우선한다. mavlink_gateway 는 FC 가 조종사의 개입을 알리거나(STATUSTEXT) Offboard 에서 벗어난 것을 보면 "조종사 개입 중" 으로 판정하고 setpoint 송신을 멈춘다.
+- 조종사 개입 중에는 착륙을 제외한 통제기의 명령을 거부한다.
+- 통제기가 기체를 다시 넘겨받으려면 `MAV_CMD_ARGUS_END_RC_OVERRIDE`(4.4)를 보낸다. mavlink_gateway 는 아래 조건을 모두 확인한 뒤 제자리 유지를 시작한다.
+  - FC 모드가 실제로 Hold 또는 Position
+  - 스틱 4축이 FC 의 RC 보정값(`RCn_TRIM` ± `RCn_DZ`) 안에서 설정값으로 정한 시간 이상 유지됨
+  - RC 수신기 정상, 위치와 자세 추정 유효
+  - 진행 중인 명령, 착륙, 추종, 스캔 없음
+- 절차 중 조종사의 개입이나 모드 이탈이 보이면 바로 포기하고 FC 로 모드 명령을 보내지 않는다.
+- 넘겨받은 뒤의 상태는 제자리 유지이다. 추종은 추종 시작 명령을 새로 받아야 시작한다.
+
+### 5.5 송신 규칙
+
 - 통제기 제어권과 별개로, FC 로 setpoint·모드를 보낼 **FC 제어 명령 송신권**은 mavlink_gateway 가 관리한다. 다른 소유자가 있으면 추종 시작을 거부하고, 세션 변경·RC 개입·권한 폐기 뒤에는 이전 권한으로 보낼 수 없다 (`docs/spec/process_interfaces.md` 6장).
-- mavlink_gateway 는 통제기의 HEARTBEAT 를 받아 `ARGUS_HEALTH_GCS_LINK` 를 유지한다 (6.1).
+- mavlink_gateway 는 제어권을 가진 통제기의 HEARTBEAT 를 받아 `ARGUS_HEALTH_GCS_LINK` 를 유지한다 (6.1).
 - 모든 송신자는 MAVLink 2 의 `seq` 를 1 씩 올린다. 수신자는 송신자(sysid, compid)별 `seq` 빈칸으로 손실률을 센다. 라우터 때문에 "자기에게 오지 않는 메시지" 도 빈칸으로 보이므로, 링크 품질은 HEARTBEAT 수신률(1 Hz 기대)로 판단한다.
 
 ## 6. 통신 두절 판단과 동작
 
 | 구간 | 판단 기준 | 두절 시 동작 |
 |---|---|---|
-| 6.1 통제기 → mavlink_gateway | 통제기 HEARTBEAT 가 **3 초** 없음 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종·스캔 중이면 TRACK_STOP 과 같은 절차로 정지. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음) |
+| 6.1 통제기 → mavlink_gateway | 제어권을 가진 통제기의 HEARTBEAT 가 **3 초** 없음. 제어권이 없는 통제기의 HEARTBEAT 는 판단에 사용하지 않는다 | `ARGUS_HEALTH_GCS_LINK = 0`. 추종, 스캔 중이면 TRACK_STOP 과 같은 절차로 정지. 다시 받으면 플래그만 복구(추종은 자동 재개하지 않음). 두절 동안 다른 통제기는 5.1 의 요청으로 제어권을 가져갈 수 있다 |
 | 6.2 FC → mavlink_gateway | ⓐ ATTITUDE 가 **0.5 초** 없음 ⓑ HEARTBEAT 가 **3 초** 없음 | ⓐ: FC 연결 두절. `ARGUS_HEALTH_FC_CONNECTED = 0`. 추종 중이면 추종 제어의 속도 setpoint 는 보내지 않고, 제자리 유지 setpoint 로 바꾸어 계속 보낸다 (FC 로부터의 수신만 끊긴 경우 FC 는 Offboard 인 채 mavlink_gateway 의 setpoint 를 받고 있을 수 있다). FC 제어 명령 송신권은 폐기한다. ⓑ: FC 의 모드를 알 수 없는 것으로 보고 ⓐ 와 같이 제자리 유지로 바꾼다. Offboard 진입을 기다리는 중이면 진입을 취소한다(4.2). 다시 받았을 때의 동작은 4.2 의 정지 상태 항목 |
 | 6.3 추적 → 추종 제어 | 추종 중인 센서의 추적 결과(`tracking/tracks`)가 끊김. 판단 시간은 아키텍처 문서 2.7(TTL) | 추종 제어 동작은 아키텍처 문서 2.7·2.11. 통제기는 `target_state`·`mission_state` 변화로 표시. 센서 상태 `CAMERA_OK`·`INFERENCE_OK` 는 탐지 프로세스 보고대로 |
 | 6.4 추종 제어 → mavlink_gateway | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: mavlink_gateway 가 setpoint 전달을 멈추고 정지한다. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 정지한다. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 | 6.6 mavlink_gateway 독립 감시 | 추종 제어의 상태 보고와 관계없이 mavlink_gateway 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
 
+- mavlink_gateway 가 멈추면 통제기의 메시지가 FC 에 도달하지 않는다. 이때는 조종사의 조종기와 FC 의 자체 동작에 의존한다 (setpoint 두절 시 `COM_OBL_RC_ACT`, 통제기 HEARTBEAT 두절 시 `NAV_DLL_ACT`).
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). mavlink_gateway 의 6.1 과 독립이다.
 - 6.2 의 판단 기준을 둘로 나눈 이유: ATTITUDE 는 30 Hz 이상(2장)으로 오므로 1 Hz 인 HEARTBEAT 보다 FC 연결 두절을 빨리 알 수 있다. 두절 동안 mavlink_gateway 는 기체 상태를 모르는 채 추종 제어의 setpoint 를 전달하게 되므로, 그 시간을 0.5 초(PX4 의 RC 입력 두절 기준 `COM_RC_LOSS_T` 의 기본값과 같음)로 줄인다. FC 의 모드는 HEARTBEAT 로만 알 수 있으므로 ⓑ 를 따로 둔다. 3 초는 통제기 화면의 "연결 끊김" 기준과 같다.
 - 한쪽 방향만 끊긴 경우와 두 방향이 함께 끊긴 경우: 두 방향이 함께 끊기면 FC 는 setpoint 를 받지 못해 `COM_OF_LOSS_T`(1.0 s, 2장) 뒤 스스로 Offboard 를 빠져나간다. FC → mavlink_gateway 방향만 끊기면 FC 는 Offboard 인 채 setpoint 를 계속 받으므로, mavlink_gateway 가 보내는 제자리 유지 setpoint 로 기체가 멈춘다.
@@ -252,8 +317,8 @@ sequenceDiagram
 | B4 | EO 카메라 역할 | 탐지만 / 탐지+추적 / 탐지+추적+추종 (장착 후 결정) | 전체 |
 | B5 | class_id 표 | IR 모델 v1 클래스 목록 (`docs/spec/video.md`) | 탐지 |
 | C | 영상 전송 | RTSP + RTP/H.264 + ONVIF XML 메타데이터 트랙으로 정함. 영상 소스는 박스 없는 비압축 프레임(`vision/frame/gray8`)이며 영상 송신부가 H.264 로 인코딩한다 (#28, #74). 남은 항목(RTSP 서버, 통제기 수신, 포트, Extension 요소 이름 등)은 `docs/spec/video.md` 9장 | 통제기·탐지 |
-| D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. 라우터의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 mavlink_gateway 가 거부한다 | 통제기 |
-| D2 | 통제기 두 대 | 예비 통제기 인계 절차 | 통제기 |
+| D1 | MAVLink 서명 | 미사용 유지 vs 통제기-RPi 구간 서명. mavlink_gateway 의 14550 은 같은 Wi-Fi 의 어느 장치든 보낼 수 있어 지금은 기체와 통제기만 있는 사설 Wi-Fi 라는 운용 조건에 의존한다. 서명을 사용하면 키가 없는 장치의 명령을 FC 와 mavlink_gateway 가 거부한다 | 통제기 |
+| D2 | 통제기 여러 대 | 해소: 여러 대가 접속하고 제어권은 한 대만 가진다. 제어권이 없는 통제기는 화면만 표시한다. 요청과 인계 절차는 4.4, 5.1 | 통제기 |
 | D3 | 두절 시간 | 6.1 의 값(3 s)은 현장에서 Wi-Fi 끊김 길이를 측정한 뒤 확정. 6.2 ⓐ 의 0.5 s 는 탐지, 추적, 영상 송신을 모두 실행한 상태에서 ATTITUDE 최대 공백을 측정해 확인 | 전체 |
 | D4 | Offboard 끊김 동작 | `COM_OBL_RC_ACT` 의 값. 지금 규약은 5(Hold)이지만 GPS 가 없는 환경에서는 PX4 가 Hold 를 실행할 수 없어 다음 동작(RTL, Land, Descend 순)으로 넘어간다 (PX4 v1.16 의 failsafe 처리). 값의 후보는 Position(조종기 연결과 local 위치 추정이 유효할 때 조종사에게 넘김)과 Land 이며 기체 시험으로 정한다. 정한 값이 기체 FC 에 적용됐는지도 확인 | 통제기 |
 | D5 | FC 메시지 30 Hz | 자세(약 100 Hz)·local 위치(약 30 Hz)는 2026-10-15 실측 확인. GLOBAL_POSITION_INT·DISTANCE_SENSOR 가 들어오지 않은 원인(PX4 의 USB 연결 스트림 설정, 거리 센서 유무) 확인 뒤 설정 | 통제기·제어 |
