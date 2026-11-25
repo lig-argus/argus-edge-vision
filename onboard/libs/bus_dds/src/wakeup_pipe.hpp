@@ -3,6 +3,8 @@
 #ifndef ARGUS_BUS_DDS_SRC_WAKEUP_PIPE_HPP_
 #define ARGUS_BUS_DDS_SRC_WAKEUP_PIPE_HPP_
 
+#include <cstdint>
+
 namespace argus::bus_dds::detail {
 
 // notify() 는 어느 스레드에서 불러도 된다. 나머지는 process_events() 를 부르는 스레드에서 부른다.
@@ -20,7 +22,7 @@ public:
     bool valid() const { return read_fd_ >= 0; }
 
     // IFdWatcher 에 등록할 읽는 쪽 fd
-    int read_fd() const { return read_fd_; }
+    std::int32_t read_fd() const { return read_fd_; }
 
     // 1 바이트를 기록한다. pipe 가 가득 차 있으면 이미 깨울 바이트가 있으므로 기록하지 않는다
     void notify() const;
@@ -29,8 +31,8 @@ public:
     void drain() const;
 
 private:
-    int read_fd_ = -1;   // POSIX 의 file descriptor 형
-    int write_fd_ = -1;  // POSIX 의 file descriptor 형
+    std::int32_t read_fd_ = -1;
+    std::int32_t write_fd_ = -1;
 };
 
 }  // namespace argus::bus_dds::detail

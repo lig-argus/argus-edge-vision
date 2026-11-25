@@ -66,6 +66,12 @@ C++ 형식은 clang-format 23, 코드 검사는 clang-tidy 로 한다. 규칙은
 - 헤더는 `#ifndef`, `#define`, `#endif` include guard 를 사용하고 `#pragma once` 는 사용하지 않는다. `#pragma once` 는 C++ 표준이 아니고, 방산 코딩 표준인 JSF AV C++ Rule 27 이 include guard 외의 방법을 금지하기 때문이다.
 - `continue` 와 `break`(`switch` 의 case 를 끝내는 것은 제외)는 사용을 최대한 지양한다. 조건을 합치거나 함수를 나누어 같은 흐름을 만든다. JSF AV C++ Rule 190, 191 이 둘을 금지하기 때문이다.
 
+**C++ 정수 타입**
+
+- 기본 정수 타입(`int`, `unsigned`, `short`, `long`, `long long`)을 사용하지 않고 `<cstdint>` 의 크기가 정해진 타입(`std::int32_t`, `std::uint8_t` 등)을 사용한다. AUTOSAR C++14 A3-9-1 과 같은 기준이다. file descriptor 도 `std::int32_t` 로 표기한다 (Linux 와 macOS 에서 `int` 와 같은 타입이므로 운영체제 함수에 변환 없이 전달된다).
+- 예외는 `main` 의 선언(`int main`, `int argc`)이다. C++ 표준이 반환 타입과 `argc` 를 `int` 로 정한다.
+- `short`, `long` 은 `.clang-tidy` 의 `google-runtime-int` 가, `int` 와 `unsigned` 는 `tools/check_int.sh` 가 검사한다. 둘 다 CI 에서 실행되며 `tools/check_int.sh` 는 로컬에서도 실행할 수 있다.
+
 **클래스 이름 짓기**
 
 `.clang-tidy` 가 검사하지 않는, 이름의 뜻에 대한 규칙이다.

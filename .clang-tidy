@@ -1,6 +1,8 @@
 # clang-tidy 설정. 이름 규칙 설명은 CONTRIBUTING.md 0.2 "C++ 이름 규칙".
 # 검사 묶음은 버그·성능·현대화·정적 분석 네 가지만 켜고(Catch2·gRPC와 같은 골격),
 # 이름 규칙은 readability-identifier-naming 옵션으로 둔다(LLVM·Envoy 방식).
+# google-runtime-int 는 short, long, long long 의 사용을 검사한다 (CONTRIBUTING.md 0.2 "C++ 정수 타입").
+# int 와 unsigned 는 이 검사가 잡지 않으므로 tools/check_int.sh 가 검사한다.
 # 끄는 검사 세 개와 이유 (Catch2·gRPC도 같은 것을 끈다):
 #   modernize-use-trailing-return-type  auto f() -> T 꼴을 강제한다. 쓰지 않는 문법
 #   modernize-use-nodiscard             const 멤버 함수마다 [[nodiscard]]를 요구해 경고 77개. 읽기 함수는 반환값을 버려도 된다
@@ -14,6 +16,7 @@ Checks: >
   -modernize-use-nodiscard,
   clang-analyzer-*,
   readability-identifier-naming,
+  google-runtime-int,
   -bugprone-easily-swappable-parameters
 
 WarningsAsErrors: ''
