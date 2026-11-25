@@ -111,7 +111,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
           pip install clang-tidy==22.1.8
       - name: Configure
-        run: cmake -S onboard -B build/onboard -G Ninja -DCMAKE_BUILD_TYPE=Release
+        # 설정은 onboard/CMakePresets.json 의 linux preset (빌드 폴더 build/onboard)
+        run: cmake --preset linux
+        working-directory: onboard
       - name: Build
         run: cmake --build build/onboard
       - name: Test

@@ -57,7 +57,7 @@ onboard/
 | OS | 설치 |
 |---|---|
 | Ubuntu 24.04 (RPi, CI) | `sudo apt install cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly` |
-| macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest pkg-config gstreamer` + 아래 protobuf 3.21.12 소스 빌드 |
+| macOS (개발용) | `brew install cmake ninja zeromq cppzmq googletest pkg-config gstreamer libomp` + 아래 protobuf 3.21.12 소스 빌드 |
 
 GStreamer 는 영상 송신부(`onboard/apps/video_sender`)의 RTSP 송신에 사용한다 (1.24 이상, `docs/spec/video.md` 1장). `plugins-base` 와 `plugins-good` 은 실행 시 사용하는 요소(`videoconvert`, `jpegenc`, `rtpjpegpay`, `rtph264pay`, `rtppassthroughpay`)가 있는 패키지이고, `plugins-ugly` 는 H.264 인코더 `x264enc` 가 있는 패키지이다.
 
@@ -71,10 +71,10 @@ git clone --depth 1 --branch v21.12 https://github.com/protocolbuffers/protobuf.
 cmake -S /tmp/protobuf-21 -B /tmp/protobuf-21/build -G Ninja -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local/protobuf-21 && cmake --build /tmp/protobuf-21/build && cmake --install /tmp/protobuf-21/build
 ```
 
+빌드 설정은 `onboard/CMakePresets.json` 의 preset 으로 정한다 (Ubuntu 는 `linux`, macOS 는 `macos`). 빌드 폴더는 `build/onboard` 이다. CLion 과 VS Code 는 이 파일을 읽어 같은 preset 을 고를 수 있다. protobuf 가 3.21.12 가 아니면 CMake 설정 단계에서 멈춘다.
+
 ```bash
-cmake -S onboard -B build/onboard -G Ninja -DCMAKE_PREFIX_PATH=$HOME/.local/protobuf-21
-cmake --build build/onboard
-ctest --test-dir build/onboard --output-on-failure
+cd onboard && cmake --preset macos && cmake --build --preset macos && ctest --preset macos
 ```
 
 ## 통제기 빌드 (`gcs/`)
