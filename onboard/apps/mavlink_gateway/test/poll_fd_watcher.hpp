@@ -20,7 +20,7 @@ class PollFdWatcher : public core::IFdWatcher {
 public:
     PollFdWatcher() : entries_(std::make_shared<Entries>()) {}
 
-    [[nodiscard]] core::Subscription add_fd(int fd, Handler on_readable) override {
+    [[nodiscard]] core::Subscription add_fd(std::int32_t fd, Handler on_readable) override {
         const std::uint64_t id = entries_->next_id++;
         entries_->by_id[id] = Entry{fd, std::move(on_readable)};
         const std::weak_ptr<Entries> weak = entries_;
@@ -40,14 +40,14 @@ public:
             fds.push_back(pollfd{entry.fd, POLLIN, 0});
             handlers.push_back(entry.on_readable);
         }
-        if (poll(fds.data(), static_cast<nfds_t>(fds.size()), static_cast<int>(wait.count())) <=
-            0) {
+        if (poll(fds.data(), static_cast<nfds_t>(fds.size()),
+                 static_cast<std::int32_t>(wait.count())) <= 0) {
             return 0;
         }
         std::int32_t called = 0;
         for (std::size_t index = 0; index < fds.size(); ++index) {
-            if ((static_cast<unsigned int>(fds[index].revents) &
-                 static_cast<unsigned int>(POLLIN)) != 0U) {
+            if ((static_cast<std::uint32_t>(fds[index].revents) &
+                 static_cast<std::uint32_t>(POLLIN)) != 0U) {
                 handlers[index]();
                 ++called;
             }
@@ -59,7 +59,7 @@ public:
 
 private:
     struct Entry {
-        int fd = -1;
+        std::int32_t fd = -1;
         Handler on_readable;
     };
     struct Entries {

@@ -20,7 +20,7 @@ constexpr std::int64_t kNsPerMs = 1'000'000;
 // 정지 신호를 받을 루프. 신호 처리기 안에서는 원자 변수만 읽고 쓴다 (async-signal-safe)
 std::atomic<EventLoop*> g_signal_loop{nullptr};
 
-void on_stop_signal(int /*signal*/) {
+void on_stop_signal(std::int32_t /*signal*/) {
     EventLoop* loop = g_signal_loop.load();
     if (loop != nullptr) {
         loop->stop();

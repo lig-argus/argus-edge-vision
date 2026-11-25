@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 
+#include <cstdint>
 #include <utility>
 
 namespace argus::mavlink_gateway {
@@ -11,7 +12,7 @@ namespace argus::mavlink_gateway {
 class UniqueFd {
 public:
     // fd 가 음수인 경우 소유한 file descriptor 가 없는 객체
-    explicit UniqueFd(int fd = -1) : fd_(fd) {}
+    explicit UniqueFd(std::int32_t fd = -1) : fd_(fd) {}
     ~UniqueFd() {
         if (fd_ >= 0) {
             close(fd_);
@@ -23,10 +24,10 @@ public:
     UniqueFd& operator=(UniqueFd&&) = delete;
 
     bool valid() const { return fd_ >= 0; }
-    int get() const { return fd_; }
+    std::int32_t get() const { return fd_; }
 
 private:
-    int fd_;
+    std::int32_t fd_;
 };
 
 }  // namespace argus::mavlink_gateway

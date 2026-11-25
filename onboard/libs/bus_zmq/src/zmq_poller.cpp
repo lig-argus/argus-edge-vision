@@ -31,7 +31,7 @@ core::Subscription ZmqPoller::add_socket(zmq::socket_ref socket, Handler handler
     return add(std::move(entry));
 }
 
-core::Subscription ZmqPoller::add_fd(int fd, Handler handler) {
+core::Subscription ZmqPoller::add_fd(std::int32_t fd, Handler handler) {
     if (fd < 0 || !handler) {
         log_error("ZmqPoller::add_fd: 음수 fd 또는 빈 handler");
         return {};

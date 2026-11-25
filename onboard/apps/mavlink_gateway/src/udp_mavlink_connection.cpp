@@ -47,10 +47,10 @@ UniqueFd open_nonblocking_udp_socket() {
         detail::log_error("UDP 소켓 생성 실패: " + errno_text());
         return UniqueFd();
     }
-    const int flags = fcntl(fd.get(), F_GETFL, 0);
+    const std::int32_t flags = fcntl(fd.get(), F_GETFL, 0);
     // 비트 연산은 부호 없는 타입으로 한다
-    const int nonblocking_flags =
-        static_cast<int>(static_cast<unsigned int>(flags) | static_cast<unsigned int>(O_NONBLOCK));
+    const auto nonblocking_flags = static_cast<std::int32_t>(
+        static_cast<std::uint32_t>(flags) | static_cast<std::uint32_t>(O_NONBLOCK));
     if (flags < 0 || fcntl(fd.get(), F_SETFL, nonblocking_flags) < 0) {
         detail::log_error("UDP 소켓 non-blocking 설정 실패: " + errno_text());
         return UniqueFd();
@@ -58,7 +58,7 @@ UniqueFd open_nonblocking_udp_socket() {
     return fd;
 }
 
-bool bind_socket(int fd, const sockaddr_in& address) {
+bool bind_socket(std::int32_t fd, const sockaddr_in& address) {
     if (bind(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0) {
         detail::log_error("UDP bind 실패: " + errno_text());
         return false;
@@ -67,7 +67,7 @@ bool bind_socket(int fd, const sockaddr_in& address) {
 }
 
 // fd 가 실제로 bind 된 포트. 확인하지 못한 경우 nullopt
-std::optional<std::uint16_t> bound_port(int fd) {
+std::optional<std::uint16_t> bound_port(std::int32_t fd) {
     sockaddr_in bound{};
     socklen_t bound_size = sizeof(bound);
     if (getsockname(fd, reinterpret_cast<sockaddr*>(&bound), &bound_size) < 0) {
@@ -97,7 +97,7 @@ std::unique_ptr<UdpMavlinkConnection> UdpMavlinkConnection::create(core::IFdWatc
     if (!port.has_value()) {
         return nullptr;
     }
-    const int raw_fd = fd.get();
+    const std::int32_t raw_fd = fd.get();
     // 생성자가 private 이므로 make_unique 를 사용할 수 없다
     std::unique_ptr<UdpMavlinkConnection> connection(
         new UdpMavlinkConnection(std::move(fd), port.value_or(0)));

@@ -29,7 +29,7 @@ constexpr std::int64_t kNsPerMs = 1'000'000;
 class Pipe {
 public:
     Pipe() {
-        std::array<int, 2> fds{-1, -1};
+        std::array<std::int32_t, 2> fds{-1, -1};
         if (::pipe(fds.data()) == 0) {
             read_fd_ = fds[0];
             write_fd_ = fds[1];
@@ -46,7 +46,7 @@ public:
     Pipe(Pipe&&) = delete;
     Pipe& operator=(Pipe&&) = delete;
 
-    int read_fd() const { return read_fd_; }
+    std::int32_t read_fd() const { return read_fd_; }
 
     bool write_byte(char value) const { return ::write(write_fd_, &value, 1) == 1; }
 
@@ -57,8 +57,8 @@ public:
     }
 
 private:
-    int read_fd_ = -1;
-    int write_fd_ = -1;
+    std::int32_t read_fd_ = -1;
+    std::int32_t write_fd_ = -1;
 };
 
 class PollPollerTest : public ::testing::Test {

@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+
 #include "argus/mavlink.h"
 // 인터페이스 헤더가 ZeroMQ·protobuf 없이 각각 컴파일되는지 함께 확인한다
 #include "argus/vehicle_api/flight_mode_control.hpp"
@@ -29,9 +31,9 @@ TEST(ScanRequestTest, DefaultsToEmptyMeaningConfiguredDefault) {
 }
 
 TEST(SensorTest, MatchesMavlinkArgusSensor) {
-    EXPECT_EQ(static_cast<int>(Sensor::Unknown), ARGUS_SENSOR_UNKNOWN);
-    EXPECT_EQ(static_cast<int>(Sensor::Ir), ARGUS_SENSOR_IR);
-    EXPECT_EQ(static_cast<int>(Sensor::Eo), ARGUS_SENSOR_EO);
+    EXPECT_EQ(static_cast<std::int32_t>(Sensor::Unknown), ARGUS_SENSOR_UNKNOWN);
+    EXPECT_EQ(static_cast<std::int32_t>(Sensor::Ir), ARGUS_SENSOR_IR);
+    EXPECT_EQ(static_cast<std::int32_t>(Sensor::Eo), ARGUS_SENSOR_EO);
 }
 
 TEST(RequestIdTest, ComparesEveryField) {

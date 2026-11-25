@@ -20,7 +20,7 @@ constexpr std::int64_t kNsPerSecond = 1'000'000'000;
 constexpr std::int64_t kNsPerMs = 1'000'000;
 constexpr std::string_view kStateConfirmed = "CONFIRMED";
 constexpr std::string_view kStatePredicted = "PREDICTED";
-constexpr unsigned char kFirstNonControlCharacter = 0x20;  // 공백 문자
+constexpr std::uint8_t kFirstNonControlCharacter = 0x20;  // 공백 문자
 constexpr std::int32_t kCoordinateDecimals = 1;
 constexpr std::int32_t kMaxDecimals = 8;
 constexpr std::size_t kMinDecimals = 1;
@@ -72,7 +72,7 @@ std::ostream& operator<<(std::ostream& out, Escaped escaped) {
                 out << "&#xD;";
                 break;
             default:
-                if (static_cast<unsigned char>(c) >= kFirstNonControlCharacter) {
+                if (static_cast<std::uint8_t>(c) >= kFirstNonControlCharacter) {
                     out << c;
                 }
                 break;

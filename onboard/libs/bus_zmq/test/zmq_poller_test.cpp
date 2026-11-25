@@ -84,7 +84,7 @@ public:
     UdpLoopbackSocket(UdpLoopbackSocket&&) = delete;
     UdpLoopbackSocket& operator=(UdpLoopbackSocket&&) = delete;
 
-    int fd() const { return fd_; }
+    std::int32_t fd() const { return fd_; }
 
     bool send_to_self(const std::string& text) const {
         const auto* address = reinterpret_cast<const sockaddr*>(&address_);
@@ -100,7 +100,7 @@ public:
     }
 
 private:
-    int fd_;
+    std::int32_t fd_;
     sockaddr_in address_{};
 };
 

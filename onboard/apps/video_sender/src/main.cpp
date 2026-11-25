@@ -90,7 +90,7 @@ std::optional<video_sender::VideoCodec> codec_of(std::string_view name) {
 }
 
 // 명령행 인자를 해석한다. 정의되지 않은 인자나 값이 있으면 값이 없는 optional 을 반환한다
-std::optional<Options> parse_options(int argc, char** argv) {
+std::optional<Options> parse_options(std::int32_t argc, char** argv) {
     Options options;
     for (std::int32_t i = 1; i < argc; ++i) {
         const std::string_view argument{argv[i]};
