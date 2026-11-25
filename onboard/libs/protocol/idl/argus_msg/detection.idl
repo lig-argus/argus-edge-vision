@@ -1,0 +1,20 @@
+// 탐지 결과 하나 (detection.proto 에 대응). perception_observations.idl 이 사용한다
+#ifndef ARGUS_MSG_DETECTION_IDL
+#define ARGUS_MSG_DETECTION_IDL
+
+module argus {
+    module idl {
+        struct Detection {
+            int32 class_id;  // 모델의 클래스 번호. 라벨과의 대응은 모델마다 다르다
+            string label;
+            double confidence;  // 0~1
+            // 원본 영상 픽셀 좌표 (정수로 반올림해 영상 안으로 자른 값). (x1, y1) 왼쪽 위, (x2, y2) 오른쪽 아래
+            int32 x1;
+            int32 y1;
+            int32 x2;
+            int32 y2;
+        };
+    };
+};
+
+#endif /* ARGUS_MSG_DETECTION_IDL */

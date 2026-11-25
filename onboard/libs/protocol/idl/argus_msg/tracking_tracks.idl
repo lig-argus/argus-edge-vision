@@ -1,0 +1,78 @@
+// tracking/tracks: 추적기 → 추종 제어, 영상 송신부, mavlink_gateway (tracking_tracks.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여). .proto 의 중첩 메시지는 module 범위의
+// 구조체로 정의하고 TrackingTracks_ 를 붙인다 (protobuf 가 중첩 메시지에 붙이는 C++ 이름과 같음)
+module argus {
+    module idl {
+        enum TrackState {
+            TRACK_STATE_UNSPECIFIED,
+            TRACK_STATE_CONFIRMED,
+            TRACK_STATE_PREDICTED
+        };
+
+        // 분류 결과. class_id 와 label 의 대응은 모델마다 다르다
+        struct TrackingTracks_Classification {
+            int32 class_id;
+            string label;
+            float confidence;  // 0~1
+        };
+
+        // 원본 영상 픽셀 좌표의 박스. (x1, y1) 왼쪽 위, (x2, y2) 오른쪽 아래
+        struct TrackingTracks_PixelBox {
+            float x1;
+            float y1;
+            float x2;
+            float y2;
+        };
+
+        // 프레임 시각의 기체 위치와 자세. NED
+        struct TrackingTracks_GroundPose {
+            double north_m;
+            double east_m;
+            double down_m;
+            double roll_rad;
+            double pitch_rad;
+            double yaw_rad;
+        };
+
+        // 트랙의 지면 투영
+        struct TrackingTracks_GroundEstimate {
+            double north_m;
+            double east_m;
+            double var_north_m2;
+            double cov_north_east_m2;
+            double var_east_m2;
+            double alignment_s;  // 투영에 사용한 FC 자세와 프레임의 시각 차
+        };
+
+        // 지면 투영에 사용한 박스 기준점
+        struct TrackingTracks_GroundAnchor {
+            double anchor_y_ratio;  // 박스 높이를 1 로 보고 위쪽 끝에서 측정한 기준점의 세로 위치
+            double height_m;        // 기준점의 지면 위 높이
+        };
+
+        struct TrackingTracks_Track {
+            uint32 track_id;  // 1~16,777,215. 추적기 재시작 시 1 부터 (generation 으로 구분)
+            TrackingTracks_Classification classification;
+            TrackingTracks_PixelBox box;
+            TrackState state;
+            boolean real_detection;  // 이 프레임에 실제 탐지가 있었는지 (예측만이면 false)
+            int64 last_real_detection_monotonic_ns;
+            @optional TrackingTracks_GroundEstimate ground;  // FC 자세가 없으면 없음
+            @optional TrackingTracks_GroundAnchor ground_anchor;
+        };
+
+        struct TrackingTracks {
+            string source;      // 카메라 식별 문자열
+            string session_id;  // perception/observations 의 session_id 를 추적기가 복사한 값
+            uint64 frame_id;    // perception/observations 의 frame_id 와 같은 값
+            uint64 fc_epoch;    // FC 연결의 epoch
+            uint32 generation;  // 1~16,777,215. 추적기 재시작과 초기화마다 1 증가
+            int64 sample_monotonic_ns;  // 프레임의 RPi 수신 시각 (CLOCK_MONOTONIC)
+            int64 motion_sample_ns;
+            uint32 image_width;
+            uint32 image_height;
+            @optional TrackingTracks_GroundPose ground_pose;
+            sequence<TrackingTracks_Track> tracks;
+        };
+    };
+};
