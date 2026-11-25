@@ -26,10 +26,11 @@
 #include "argus/core/fd_watcher.hpp"
 #include "argus/core/poller.hpp"
 #include "argus/core/subscription.hpp"
+#include "argus/core/timer_scheduler.hpp"
 
 namespace argus::bus_zmq {
 
-class ZmqPoller : public core::IPoller, public core::IFdWatcher {
+class ZmqPoller : public core::IPoller, public core::IFdWatcher, public core::ITimerScheduler {
 public:
     using Handler = std::function<void()>;
 
@@ -49,13 +50,14 @@ public:
     // deadline_ns 는 IClock::now_monotonic_ns() 와 같은 기준이다. 이미 지난 시각이면 다음
     // process_events() 에서 부른다. handler 가 비어 있으면 등록하지 않고 빈 Subscription 을
     // 반환한다.
-    [[nodiscard]] core::Subscription add_timer_at(std::int64_t deadline_ns, Handler handler);
+    [[nodiscard]] core::Subscription add_timer_at(std::int64_t deadline_ns,
+                                                  Handler handler) override;
 
     // 이벤트가 없으면 최대 wait 동안 기다린다 (가장 이른 타이머 시각이 더 가까우면 그때까지).
     // 이벤트가 있으면 handler 를 차례로 부르고, 남은 이벤트가 없거나 handler 를 부른 시간이 budget
     // 에 이르면 반환한다. 이벤트가 있으면 budget 과 관계없이 handler 를 적어도 하나 부른다 (budget
-    // 이 0 이어도 진행된다). budget 때문에 부르지 못한 handler 는 다음 호출에서 먼저 부른다. 때가
-    // 된 타이머는 budget 과 관계없이 반환 전에 모두 부른다.
+    // 이 0 이어도 진행된다). budget 때문에 부르지 못한 handler 는 다음 호출에서 먼저 부른다. 등록한
+    // 시각(deadline_ns)이 지난 타이머는 budget 과 관계없이 반환 전에 모두 부른다.
     void process_events(std::chrono::milliseconds wait, std::chrono::milliseconds budget) override;
 
 private:
