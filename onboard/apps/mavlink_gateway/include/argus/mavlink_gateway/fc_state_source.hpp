@@ -1,7 +1,7 @@
 // FC 의 최신 상태를 읽는 인터페이스
-// 구현: mavlink_gateway 의 main 이 FC telemetry 수신 클래스와 연결,
+// 구현: FcStateView (FcLinkTracker 와 FcTelemetryReceiver 를 전달),
 //      테스트용 FakeFcStateSource (mavlink_gateway test/)
-// 사용: FcControl
+// 사용: FcControl, 통제기 명령 처리 (다음 작업)
 #ifndef ARGUS_ONBOARD_FC_STATE_SOURCE_HPP_
 #define ARGUS_ONBOARD_FC_STATE_SOURCE_HPP_
 

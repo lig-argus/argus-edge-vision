@@ -97,7 +97,7 @@ classDiagram
     ZmqBus ..> ZmqPoller : 소켓 등록, 요청 timeout
 ```
 
-- `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryPublisher`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 mavlink_gateway 만 쓰므로 `apps/mavlink_gateway/test/` 에 있다.
+- `IMavlinkConnection` 은 UDP 를 숨긴다. 메시지는 `msgid` 로 등록해 받으므로 같은 메시지(HEARTBEAT)를 여러 클래스(`FcTelemetryReceiver`, `GcsLinkMonitor`)가 함께 받는다. 테스트용 `FakeMavlinkConnection` 은 mavlink_gateway 만 쓰므로 `apps/mavlink_gateway/test/` 에 있다.
 - `IBus` 는 프로세스가 붙는 메시지 통로이며 토픽 발행자, 구독자, 요청하는 쪽, 응답하는 쪽을 만든다 (ROS 2 rmw 의 node, DDS 의 DomainParticipant 에 해당). main 에서 하나를 만들어 주입하고, 통신 구현(ZeroMQ, Fast DDS 등)을 교체해도 `IBus` 와 넷은 바뀌지 않는다. 구현별 설정(주소, QoS 프로파일)은 구현 클래스의 생성자 인자다. bus 는 타입 있는 값을 받고, 값을 전송 형식으로 바꾸는 일은 통신 구현이 한다 (`ZmqBus` 는 생성자에 받은 변환 표의 함수로 직렬화한다). 생성 함수는 메시지 타입의 식별(`MessageType`: 이름, C++ 타입)을 필수 인자로 받으며, 구현이 변환 방법을 모르는 타입이면 nullptr 를 반환한다. 인터페이스는 타입을 지운 값(`const void*`)을 전달하고, 호출하는 코드는 `bus/typed.hpp` 의 래퍼(`Publisher<T>`, `Subscriber<T>`, `Requester<Request, Reply>`, `Replier<Request, Reply>`)를 쓴다. 구독 handler 는 값과 함께 발행자가 붙인 순번(`MessageInfo::sequence`)을 받는다. 메시지 정의(`.proto`)와 생성 코드는 `protocol` 모듈에 있다. `publish` 는 기다리지 않으며 보내지 못했을 때만 false 를 반환한다. true 가 모든 구독자의 수신을 뜻하지는 않는다. `request` 는 응답을 기다리지 않고 바로 반환하며 응답은 `on_reply` 로 받는다. 모든 구현이 따라야 하는 contract 는 `bus/bus.hpp` 파일 상단 주석.
 - 모든 handler(토픽 구독, 요청-응답, MAVLink 메시지, 주기 작업)는 `IPoller::process_events()` 안에서, 그 함수를 부른 스레드에서만 불린다. mavlink_gateway 프로세스는 스레드 하나로 돈다 (다른 프로세스는 handler 를 소유 스레드에서 부르는 규칙만 따른다. CONTRIBUTING 0.4). `EventLoop` 가 `main()` 의 반복(소켓 이벤트, 주기 작업, 정지 신호)을 맡는다.
 - `ZmqBus`, `ZmqPoller` 는 `onboard/libs/bus_zmq` 에 있다 (ZeroMQ 로 통신하는 실행 파일만 링크). `ZmqBus` 는 이름(토픽 또는 요청-응답 이름)마다 엔드포인트 하나를 주소표로 받아, 발행자와 응답하는 쪽은 bind 하고 구독자와 요청하는 쪽은 connect 한다. 한 엔드포인트의 발행자들은 PUB 소켓 하나를 함께 쓴다. `ZmqPoller` 는 ZeroMQ 소켓(`add_socket`)과 file descriptor(`add_fd`)를 함께 기다리고, 정한 시각에 한 번 부르는 타이머(`add_timer_at`)로 요청의 timeout 을 판정한다. 규칙은 `bus_zmq/zmq_bus.hpp`, `zmq_poller.hpp` 파일 상단 주석.
@@ -109,13 +109,32 @@ classDiagram
 
 ```mermaid
 classDiagram
-    class FcTelemetryPublisher {
-        +on_message(ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT)
-        +fc_connected() bool
+    class FcGateway {
+        +create(IBus, IMavlinkConnection, IClock, EventLoop, HealthState)$ FcGateway
+        +stop_requester() IStopRequester
+        +lock_release() IFcCommandLockRelease
+        +fc_state() IFcStateSource
     }
+    class FcLinkTracker {
+        +on_fc_message(kind, time_boot_ms) int64
+        +check_timeout()
+        +connected() bool
+        +fc_epoch() uint64
+    }
+    class FcTelemetryReceiver {
+        +subscribe_attitude(handler) Subscription
+        +subscribe_state(handler) Subscription
+        +latest() VehicleState
+    }
+    class FcStateView
     class TimeSync {
-        +request_periodically()
-        +on_timesync(TIMESYNC)
+        +send_request() bool
+        +to_monotonic_ns(fc_time_boot_ms) optional
+    }
+    class BusVehicleTelemetryPublisher {
+        +publish_attitude(Attitude) bool
+        +publish_state(VehicleState) bool
+        +publish_mode_event(FlightModeEvent) bool
     }
     class IFcStateSource {
         <<interface>>
@@ -182,11 +201,26 @@ classDiagram
         +gcs_link bool
     }
 
-    FcTelemetryPublisher ..> IMavlinkConnection : subscribe
-    FcTelemetryPublisher ..> ITopicPublisher : fc/attitude, fc/state
-    FcTelemetryPublisher ..> IClock : 0.5 s 두절
-    FcTelemetryPublisher --> HealthState : FC_CONNECTED
+    FcGateway *-- FcLinkTracker
+    FcGateway *-- TimeSync
+    FcGateway *-- FcTelemetryReceiver
+    FcGateway *-- FcStateView
+    FcGateway *-- FcControl
+    FcGateway *-- BusVehicleTelemetryPublisher
+    FcGateway *-- BusVelocitySetpointSubscriber
+    FcGateway *-- BusFlightModeControlServer
+    FcGateway ..> EventLoop : 주기 작업 등록
+    FcTelemetryReceiver ..> IMavlinkConnection : subscribe
+    FcTelemetryReceiver ..> FcLinkTracker : 수신 시각, fc_epoch
+    FcTelemetryReceiver ..> TimeSync : FC 시각 변환
+    FcLinkTracker ..> IClock : 0.5 s 두절
+    FcLinkTracker --> HealthState : FC_CONNECTED
     TimeSync ..> IMavlinkConnection : TIMESYNC compid 191
+    TimeSync ..> FcLinkTracker : fc_epoch 변경
+    IFcStateSource <|.. FcStateView
+    FcStateView ..> FcLinkTracker : 연결 여부, fc_epoch
+    FcStateView ..> FcTelemetryReceiver : 최신 값
+    BusVehicleTelemetryPublisher ..> ITopicPublisher : fc/attitude, fc/state, fc/mode_event
     BusVelocitySetpointSubscriber ..> ITopicSubscriber : control/setpoint
     BusVelocitySetpointSubscriber ..> IVelocitySetpointSink : send
     BusFlightModeControlServer ..> IReplier : control/mode_request
@@ -207,10 +241,14 @@ classDiagram
 
 | 클래스 | 책임 | 출처 |
 |---|---|---|
-| `FcTelemetryPublisher` | FC 메시지를 받아 수신 시각(`received_monotonic_ns`)을 붙여 `fc/attitude`·`fc/state` 로 발행. ATTITUDE 가 0.5 s 없으면 `FC_CONNECTED = 0` | icd 2장, 6.2, pi 5.1 |
+| `FcGateway` | FC 쪽 객체(`FcLinkTracker`, `TimeSync`, `FcTelemetryReceiver`, `FcStateView`, `FcControl`)를 생성해 서로 연결하고, bus 어댑터 셋과 연결한다. `FcControl::tick` 은 50 ms, `FcLinkTracker::check_timeout` 은 50 ms, `TimeSync::send_request` 는 100 ms 주기로 `EventLoop` 에 등록한다. `fc/state` 의 `offboard_hover` 는 `FcControl::offboard_hover()` 로 채운다. 통제기 명령 처리가 쓰도록 `IStopRequester`, `IFcCommandLockRelease`, `IFcStateSource` 를 내보낸다. 통신 구현과 실제 시계는 알지 못하며 `main` 이 생성해 넘긴다 | pi 5.1, 5.2 |
+| `FcLinkTracker` | FC 메시지의 수신 시각과 `fc_epoch` 를 정한다. ATTITUDE 가 0.5 s 없으면 FC 연결 두절로 보고 `FC_CONNECTED = 0`. 두절 뒤 다시 받은 ATTITUDE 와 FC 재부팅(`time_boot_ms` 감소)에서 `fc_epoch` 를 1 올린다 | icd 6.2, pi 3장 |
+| `FcTelemetryReceiver` | FC 메시지(ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT)를 `vehicle_api` 값으로 바꾸고 수신 시각과 `fc_epoch` 를 붙여 등록된 handler 에 전달한다. 최신 값을 보관한다 | icd 2장, pi 5.1 |
+| `FcStateView` | `FcLinkTracker` 의 연결 여부와 `fc_epoch`, `FcTelemetryReceiver` 의 최신 값을 `IFcStateSource` 로 제공한다. 값을 보관하지 않는다 | icd 6.2, pi 3장 |
 | `TimeSync` | compid 191 로 TIMESYNC 요청·응답 대조, `fc_time_monotonic_ns` 변환값 제공 | icd 1.1, 2장 |
-| `IFcStateSource` | FC 의 최신 상태(연결 여부, `fc_epoch`, 자세와 위치와 비행 상태)를 읽는 인터페이스. `fc_epoch` 가 바뀌면 이전 `fc_epoch` 의 값은 삭제되어 새로 받기 전까지 값이 없다. FC 로 명령을 보내는 클래스들은 telemetry 수신 클래스를 직접 참조하지 않고 이 인터페이스만 참조한다. 구현은 `main` 이 telemetry 수신 클래스와 연결한다. 테스트용 `FakeFcStateSource` 는 `apps/mavlink_gateway/test/` | icd 6.2, pi 3장 |
-| `BusVelocitySetpointSubscriber` | `control/setpoint` 를 구독해 `VelocitySetpoint` 로 바꿔 등록된 handler 에 전달 (`vehicle_api_bus` 모듈). `main` 이 `FcControl` 의 `IVelocitySetpointSink::send` 를 등록한다 | pi 5.1 |
+| `BusVehicleTelemetryPublisher` | `vehicle_api` 값을 `fc/attitude`, `fc/state`, `fc/mode_event` 로 발행 (`vehicle_api_bus` 모듈) | pi 5.1 |
+| `IFcStateSource` | FC 의 최신 상태(연결 여부, `fc_epoch`, 자세와 위치와 비행 상태)를 읽는 인터페이스. `fc_epoch` 가 바뀌면 이전 `fc_epoch` 의 값은 삭제되어 새로 받기 전까지 값이 없다. FC 로 명령을 보내는 클래스들은 telemetry 수신 클래스를 직접 참조하지 않고 이 인터페이스만 참조한다. 구현은 `FcStateView`. 테스트용 `FakeFcStateSource` 는 `apps/mavlink_gateway/test/` | icd 6.2, pi 3장 |
+| `BusVelocitySetpointSubscriber` | `control/setpoint` 를 구독해 `VelocitySetpoint` 로 바꿔 등록된 handler 에 전달 (`vehicle_api_bus` 모듈). `FcGateway` 가 `FcControl` 의 `IVelocitySetpointSink::send` 를 등록한다 | pi 5.1 |
 | `BusFlightModeControlServer` | `control/mode_request` 요청을 받아 `IFlightModeControl` 을 부르고 `FlightModeReply` 로 응답 (`vehicle_api_bus` 모듈) | pi 5.2 |
 | `FcCommandState` | mavlink_gateway 가 FC 로 보내는 명령의 상태. 여섯 중 하나이며 상태마다 그 상태의 값만 가진다: `Idle`(FC 를 제어하지 않음), `Entering`(Offboard 진입 명령을 보내고 FC 의 전환을 기다림. 송신권을 가진 세션, command_id, 진입 기한, FC 의 응답 여부), `Following`(FC 가 Offboard 이고 송신권을 가진 세션이 제어), `CancellingEntry`(진입을 취소했으나 FC 가 Offboard 로 바뀌었을 수 있어 속도 0 을 보내며 확인을 기다림. 취소한 진입의 기한), `Hovering`(FC 가 Offboard 이고 mavlink_gateway 가 제자리 유지. 목표 위치와 yaw), `Locked`(FC 가 요청 없이 Offboard 를 벗어남. 해제 전까지 송신하지 않음). FC 제어 명령 송신권은 `Entering` 과 `Following` 의 세션이고, 외부의 모드 변경 기록은 `Locked` 이다 | icd 4.2, 5장, 6.6 |
 | `fc_command_policy` (함수) | 판단 세 가지를 각각 한 곳에서 한다. ① `fc_mode_belief`: mavlink_gateway 가 판단한 FC 의 모드 넷(Offboard, Offboard 아님, 아직 모름, 받지 못함). 비행 상태는 1 Hz 로 오므로 "아직 모름" 은 정상이고, "받지 못함" 은 FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과다. ② 전환: 요청 없이 일어나는 전환(`advance`: `fc_epoch` 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리 유지 목표의 결정)과 요청별 전환(`on_offboard_request`, `on_hold_request`, `on_onboard_stop`, `on_entry_command_answered`, `on_entry_command_send_failed`, `on_lock_release`). 결과는 다음 상태, 실행할 일(`FcCommandEffects`), 거부 원인(`FcCommandDenial`)이다. ③ `select_setpoint`: 주기마다 보낼 setpoint 하나(없음, 추종 제어의 값, 속도 0, 제자리 유지의 목표). 모든 함수는 입력(`FcObservation`: 시각, `fc_epoch`, FC 연결 여부, 비행 상태, 최신 위치, 유효한 setpoint 를 받은 시각, 연속 송신 시간)만으로 결과를 정하며 MAVLink 와 시계를 쓰지 않는다 | icd 4.2, 5장, 6.2, 6.4, 6.6, pi 6장 |

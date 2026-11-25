@@ -1,7 +1,6 @@
 // TIMESYNC 로 FC 시각과 RPi monotonic clock 의 차를 구한다
 // 규약: docs/spec/icd.md 1.1 (compid 191), 2장 (TIMESYNC)
-// 사용: mavlink_gateway 의 main 이 send_request() 를 주기 작업으로 등록, FcTelemetryReceiver 가
-// 변환값 사용
+// 사용: FcGateway 가 send_request() 를 주기 작업으로 등록, FcTelemetryReceiver 가 변환값 사용
 #ifndef ARGUS_ONBOARD_TIME_SYNC_HPP_
 #define ARGUS_ONBOARD_TIME_SYNC_HPP_
 

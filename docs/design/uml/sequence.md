@@ -61,7 +61,7 @@ sequenceDiagram
     participant trk as UcmcTracker (추적기)
     participant vss as VehicleStateSubscriber (추적기)
     participant ctl as FollowController (추종 제어)
-    participant fct as FcTelemetryPublisher (mavlink_gateway)
+    participant fct as FcTelemetryReceiver (mavlink_gateway)
     participant spr as FcControl (mavlink_gateway)
     participant fc as FC
 
@@ -81,6 +81,7 @@ sequenceDiagram
     end
 ```
 
+- `fct` 의 발행은 `FcGateway` 가 연결한 `BusVehicleTelemetryPublisher` 가 한다 (`class_mavlink_gateway.md` 2절).
 - 추적기와 추종 제어는 FC 에 직접 보내지 않는다. FC 로 가는 것은 모두 mavlink_gateway 를 거친다 (`process_interfaces.md` 2.1).
 - `FcControl` 은 받은 최신 setpoint 를 보관하고, 20 Hz 주기 작업에서 `select_setpoint` 가 고른 하나를 보낸다. `valid_until` 이 지나면 제자리 유지로 바꾼다 (4절).
 
@@ -122,7 +123,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant fc as FC
-    participant fct as FcTelemetryPublisher (mavlink_gateway)
+    participant fct as FcLinkTracker (mavlink_gateway)
     participant spr as FcControl (mavlink_gateway)
     participant ctl as FollowController (추종 제어)
     participant asr as ArgusStatusReporter (mavlink_gateway)

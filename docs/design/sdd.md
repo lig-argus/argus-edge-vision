@@ -15,7 +15,7 @@
 | DD-02 | 프로세스 사이 통신은 주기 값은 ZeroMQ 토픽(발행·구독), 수락 확인이 필요한 요청은 요청-응답으로 하고, 메시지는 protobuf 로 직렬화한다 (`process_interfaces.md` 3장). | 브로커 없는 경량 구조, C++/Python 양쪽 지원. 요청-응답으로 중복·오래된 명령 실행 방지 |
 | DD-03 | 장비·통신 의존 부분은 인터페이스(`IPreprocessor`, `IDetector`, `IVehicleTelemetry`, `IVelocitySetpointSink`, `IFlightModeControlClient`, `IMavlinkConnection`, `bus::IBus`) 뒤에 두고, 테스트는 `Fake*` 구현으로 한다. | NPU·카메라 교체(CHG-01, CHG-06)를 구현 교체만으로 흡수, SITL·기체 없이 gtest 검증 |
 | DD-04 | 환경 프로파일(SITL_POSE / SITL_IMAGE / REAL_IR / REPLAY)에 맞는 구현을 조립한다 (`system_architecture.md`). | 같은 코드로 시뮬레이션·실기체·로그 재생 시험 |
-| DD-05 | FC 링크는 mavlink_gateway 하나만 사용하고, FC로 나가는 명령은 모두 `FcCommandGate` 를 거친다. | 명령 충돌 방지, 안전 검사 일원화 |
+| DD-05 | FC 링크는 mavlink_gateway 하나만 사용하고, FC로 나가는 명령은 모두 `FcControl` 을 거친다. | 명령 충돌 방지, 안전 검사 일원화 |
 | DD-06 | 통제기 영상은 RTSP 세션의 영상 트랙과 ONVIF 메타데이터 트랙으로 보내고, 송수신 모두 GStreamer 를 쓴다 (`video.md`). | 표준 프로토콜, 프레임과 박스의 동기화, 코덱 교체가 파이프라인 요소 교체로 끝남 |
 | DD-07 | 온보드 본체는 C++, AI·전처리는 Python을 쓴다. | 팀 협업상 언어 통일 |
 
@@ -98,10 +98,10 @@ CSC 는 각 CSCI 의 주요 클래스(또는 클래스 묶음)이다. 클래스 
 
 | CSC ID | 클래스 | 책임 | 입력 → 출력 |
 |---|---|---|---|
-| CSC-GW-01 | `FcTelemetryPublisher`, `TimeSync` | FC 메시지 수신과 수신 시각 기록, 두절 판단, FC 시각 변환 | MAVLink → `fc/attitude`, `fc/state` |
-| CSC-GW-02 | `FcCommandGate`, `FcCommandAuthority` | FC 로 나가는 명령이 반드시 거치는 한 곳. 송신권, FC 상태·RC 개입, 유효 시간 순서로 확인 | FC 명령 → 허용 / 거부 |
-| CSC-GW-03 | `ZmqVelocitySetpointReceiver`, `MavlinkVelocitySetpointSink`, `MavlinkFlightModeControl` | setpoint 를 20 Hz 로 FC 에 송신(유효 기한이 지나면 속도 0), 모드 전환 요청과 실제 모드 확인 | `control/setpoint`, `control/mode_request` → SET_POSITION_TARGET_LOCAL_NED, DO_SET_MODE |
-| CSC-GW-04 | `OnboardWatchdog` | 추종 제어의 보고와 관계없이 FC 상태·RC 개입을 직접 확인 | FC 상태 → Hold, FAULT |
+| CSC-GW-01 | `FcTelemetryReceiver`, `FcLinkTracker`, `TimeSync`, `BusVehicleTelemetryPublisher` | FC 메시지 수신과 수신 시각 기록, 두절 판단, FC 시각 변환 | MAVLink → `fc/attitude`, `fc/state` |
+| CSC-GW-02 | `FcControl` | FC 로 명령을 보내는 유일한 클래스. 요청과 20 Hz 주기 작업마다 `fc_command_policy` 의 판단을 실행하고, FC 의 응답(COMMAND_ACK)과 실제 모드 변경을 전달 | 모드 요청, setpoint → DO_SET_MODE, SET_POSITION_TARGET_LOCAL_NED |
+| CSC-GW-03 | `BusVelocitySetpointSubscriber`, `BusFlightModeControlServer` | 추종 제어의 setpoint 와 모드 요청을 bus 에서 받아 `FcControl` 에 전달하고 요청에 응답 | `control/setpoint`, `control/mode_request` → `FcControl`, 응답 |
+| CSC-GW-04 | `fc_command_policy`, `FcCommandState` | 추종 제어의 보고와 관계없이 FC 상태로 판단한다: FC 제어 명령 송신권, FC 연결 두절과 비행 상태의 최신 여부, FC 가 요청 없이 Offboard 를 벗어난 경우(조종사, failsafe)의 송신 중단, 유효 시간이 지난 setpoint 대신 제자리 유지 | FC 상태, 요청 → 다음 상태, 보낼 setpoint, 거부 원인 |
 | CSC-GW-05 | `MavlinkCommandReceiver`, `TrackStartHandler`, `TrackStopHandler`, `ScanStartHandler`, `ControlAuthority` | 통제기 COMMAND_LONG(compid 195) 수신, 제어권·조건 검사, 추종 제어에 요청 | COMMAND_LONG → `follow/command`, COMMAND_ACK |
 | CSC-GW-06 | `ArgusStatusReporter`, `ArgusSensorStatusReporter` | `follow/status`·`tracking/status` 를 통제기 보고 메시지로 변환 | → `ARGUS_STATUS`, `ARGUS_SENSOR_STATUS` |
 | CSC-GW-07 | `GcsLinkMonitor` | 통제기 HEARTBEAT 3 s 두절 판단, 추종·Scan 중이면 TRACK_STOP 과 같은 절차 | HEARTBEAT → 두절 처리 |
@@ -155,7 +155,7 @@ CSC 는 각 CSCI 의 주요 클래스(또는 클래스 묶음)이다. 클래스 
 - 물리 계층: USB(실기체), UDP(PX4 SITL). UART는 탑재 보드 핀 손상으로 사용하지 않는다(CHG-05). RPi 쪽은 mavlink-router 가 FC 장치를 열고, mavlink_gateway 와는 UDP `127.0.0.1:14540` 으로 주고받는다.
 - 메시지는 생성 C 헤더(`common/mavlink`)로 인코드·디코드한다. MAVSDK 는 사용하지 않는다.
 - 수신: ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT, TIMESYNC.
-- 송신: SET_POSITION_TARGET_LOCAL_NED(추종 setpoint), DO_SET_MODE(Offboard·Hold 전환). 모두 `FcCommandGate` 를 거친다.
+- 송신: SET_POSITION_TARGET_LOCAL_NED(추종 setpoint, 제자리 유지), DO_SET_MODE(Offboard 진입). 모두 `FcControl` 이 보낸다. 정지는 Hold 로 바꾸지 않고 Offboard 를 유지한 채 제자리 유지 setpoint 로 한다 (`icd.md` 4.2).
 
 ### 4.3 통제기 인터페이스 (`icd.md` 3·4장, `video.md`)
 

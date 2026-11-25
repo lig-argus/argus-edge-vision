@@ -1,8 +1,8 @@
 // mavlink_gateway 가 FC 로 보내는 명령(Offboard 진입 명령, setpoint)의 송신
 // 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.4, 6.6, docs/spec/process_interfaces.md 3장, 5.1, 5.2
 // 사용: BusFlightModeControlServer 와 BusVelocitySetpointSubscriber (vehicle_api_bus)가 추종 제어의
-//      요청과 setpoint 를 전달. mavlink_gateway 의 main 이 subscribe_mode_events() 를 fc/mode_event
-//      발행에 연결하고 tick() 을 20 Hz 주기 작업으로 등록
+//      요청과 setpoint 를 전달. FcGateway 가 subscribe_mode_events() 를 fc/mode_event 발행에
+//      연결하고 tick() 을 20 Hz 주기 작업으로 등록
 #ifndef ARGUS_ONBOARD_FC_CONTROL_HPP_
 #define ARGUS_ONBOARD_FC_CONTROL_HPP_
 

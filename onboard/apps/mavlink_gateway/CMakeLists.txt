@@ -22,6 +22,7 @@ argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_respo
 add_library(argus_mavlink_gateway_core STATIC
     src/fc_command_policy.cpp
     src/fc_control.cpp
+    src/fc_gateway.cpp
     src/fc_link_tracker.cpp
     src/fc_telemetry_receiver.cpp
     src/mode_command_encoding.cpp
@@ -30,8 +31,18 @@ add_library(argus_mavlink_gateway_core STATIC
     src/time_sync.cpp
     src/udp_mavlink_connection.cpp)
 add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
+# FcGateway 가 bus 인터페이스와 vehicle_api 의 bus 어댑터를 사용한다. 통신 구현(bus_zmq)은 링크하지
+# 않는다 (실행 파일만 링크)
 target_link_libraries(argus_mavlink_gateway_core
-    PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus_onboard_warnings)
+    PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus::bus argus::vehicle_api_bus
+           argus_onboard_warnings)
+
+# 통신 구현(ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
+# (docs/design/uml/class_mavlink_gateway.md 4절)
+add_executable(argus_mavlink_gateway src/main.cpp)
+target_link_libraries(argus_mavlink_gateway
+    PRIVATE argus::mavlink_gateway_core argus::vehicle_api_bus_zmq argus::protocol_names
+            argus_onboard_warnings)
 
 argus_add_test(mavlink_gateway_health_state_test SOURCES test/health_state_test.cpp
                LIBS argus::mavlink_gateway_interfaces)
@@ -57,3 +68,9 @@ argus_add_test(mavlink_gateway_fc_control_test SOURCES test/fc_control_test.cpp
 # FC 명령 송신을 실제 구현으로 연결한 시나리오 테스트
 argus_add_test(mavlink_gateway_fc_command_scenario_test SOURCES test/fc_command_scenario_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_fc_state_view_test SOURCES test/fc_state_view_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+# FC 쪽 객체를 FakeBus 와 연결한 테스트. 추종 제어의 요청은 실제 bus 어댑터로 보낸다
+argus_add_test(mavlink_gateway_fc_gateway_test SOURCES test/fc_gateway_test.cpp
+               LIBS argus::mavlink_gateway_core argus::bus_testing argus::core_testing
+                    argus::protocol_names)
