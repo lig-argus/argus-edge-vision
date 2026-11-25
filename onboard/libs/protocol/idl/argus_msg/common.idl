@@ -1,0 +1,38 @@
+// 여러 메시지가 함께 사용하는 타입 (common.proto 에 대응, docs/spec/process_interfaces.md 3장)
+// DDS 구현(DdsBus)의 IDL 타입 토픽에 사용한다. 필드의 뜻은 .proto 와 같다
+#ifndef ARGUS_MSG_COMMON_IDL
+#define ARGUS_MSG_COMMON_IDL
+
+module argus {
+    module idl {
+        // 요청 하나를 가리키는 값 (common.proto 의 RequestId)
+        struct RequestId {
+            uint64 command_id;
+            string session_id;  // 요청자 세션
+            uint64 seq;
+            uint64 fc_epoch;  // 요청을 만들 때의 FC 연결 epoch
+        };
+
+        struct RequestHeader {
+            RequestId id;
+            int64 valid_until_monotonic_ns;
+        };
+
+        // FC 의 비행 모드 (common.proto 의 FlightMode)
+        enum FlightMode {
+            FLIGHT_MODE_UNKNOWN,
+            FLIGHT_MODE_MANUAL,
+            FLIGHT_MODE_STABILIZED,
+            FLIGHT_MODE_ALTITUDE,
+            FLIGHT_MODE_POSITION,
+            FLIGHT_MODE_OFFBOARD,
+            FLIGHT_MODE_HOLD,
+            FLIGHT_MODE_RETURN,
+            FLIGHT_MODE_LAND,
+            FLIGHT_MODE_TAKEOFF,
+            FLIGHT_MODE_MISSION
+        };
+    };
+};
+
+#endif /* ARGUS_MSG_COMMON_IDL */

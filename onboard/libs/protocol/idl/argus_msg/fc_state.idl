@@ -1,0 +1,49 @@
+// fc/state: mavlink_gateway → 추적기, 추종 제어 (fc_state.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여). local, global 은 IDL 예약어이므로
+// local_position, global_position. .proto 의 중첩 메시지는 module 의 구조체로 정의
+#include "common.idl"
+
+module argus {
+    module idl {
+        struct LocalPosition {
+            double north_m;
+            double east_m;
+            double down_m;
+            double vel_north_m_s;
+            double vel_east_m_s;
+            double vel_down_m_s;
+            int64 received_monotonic_ns;
+            uint64 fc_epoch;
+        };
+
+        struct DownwardDistance {
+            double distance_m;
+            int64 received_monotonic_ns;
+            uint64 fc_epoch;
+        };
+
+        struct GlobalPosition {
+            double lat_deg;
+            double lon_deg;
+            double alt_m;
+            int64 received_monotonic_ns;
+            uint64 fc_epoch;
+        };
+
+        struct FlightStatus {
+            FlightMode mode;
+            boolean armed;
+            boolean in_air;
+            int64 received_monotonic_ns;
+            uint64 fc_epoch;
+            boolean offboard_hover;
+        };
+
+        struct FcState {
+            @optional LocalPosition local_position;
+            @optional DownwardDistance downward_distance;
+            @optional GlobalPosition global_position;
+            @optional FlightStatus status;
+        };
+    };
+};

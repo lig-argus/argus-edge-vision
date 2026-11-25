@@ -1,0 +1,13 @@
+// control/setpoint: 추종 제어 → mavlink_gateway (control_setpoint.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여)
+module argus {
+    module idl {
+        struct ControlSetpoint {
+            double forward_m_s;
+            double right_m_s;
+            double down_m_s;
+            double yaw_rate_rad_s;  // 양수 = 시계 방향
+            int64 valid_until_monotonic_ns;
+        };
+    };
+};

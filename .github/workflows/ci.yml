@@ -174,9 +174,14 @@ jobs:
         run: cmake --preset linux-dds
         working-directory: onboard
       - name: Build
-        run: cmake --build build/onboard --target bus_dds_test bus_dds_transport_test
+        run: >-
+          cmake --build build/onboard --target bus_dds_test bus_dds_transport_test
+          vehicle_api_bus_dds_types_test vehicle_api_bus_dds_end_to_end_test
       - name: Test
-        run: ctest --test-dir build/onboard --output-on-failure -R "DdsBus|FastDdsServiceApi"
+        run: ctest --test-dir build/onboard --output-on-failure -R "DdsBus|FastDdsServiceApi|DdsTypes|DdsEndToEnd"
       - name: clang-tidy
-        # bus_dds 의 소스만 검사한다 (나머지는 onboard 작업이 검사). fastddsgen 생성 소스(test/generated/)는 제외
-        run: run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*' 'bus_dds/(src|test)/[a-z_]+\.cpp'
+        # bus_dds 와 vehicle_api_bus 의 DDS 변환 소스만 검사한다 (나머지는 onboard 작업이 검사).
+        # fastddsgen 생성 소스(generated/)는 제외
+        run: >-
+          run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*'
+          'bus_dds/(src|test)/[a-z_]+\.cpp|vehicle_api_bus/(src|test)/(dds_[a-z_]+|[a-z_]+_idl|idl_common)\.cpp'
