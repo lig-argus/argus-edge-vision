@@ -110,7 +110,7 @@ CSC 는 각 CSCI 의 주요 클래스(또는 클래스 묶음)이다. 클래스 
 
 | CSC ID | 클래스 | 책임 | 입력 → 출력 |
 |---|---|---|---|
-| CSC-VTX-01 | `FrameCollector` | 프레임·탐지 결과·추적 결과를 `(source, session_id, frame_id)` 로 묶음 | 세 토픽 → `CollectedFrame` |
+| CSC-VTX-01 | `FrameCollector`, `VideoBusInput`, `BusFrameSource` | 세 토픽을 bus 에서 구독하고, 프레임, 탐지 결과, 추적 결과를 `(source, session_id, frame_id)` 로 묶음 | 세 토픽 → `CollectedFrame` |
 | CSC-VTX-02 | `OnvifMetadataSerializer`, `MetadataRtpPacketizer` | 추적 결과를 ONVIF XML 로 변환, RTP 패킷으로 분할 | `CollectedFrame` → 메타데이터 RTP |
 | CSC-VTX-03 | `RtspServer`, `VideoSender` | gst-rtsp-server 에 영상·메타데이터 트랙 등록, 프레임마다 영상 먼저 메타데이터 다음으로 송신 | → RTSP 세션 |
 

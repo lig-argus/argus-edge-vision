@@ -1,7 +1,7 @@
 // 비압축 프레임을 공급하는 인터페이스
 // 규약: docs/spec/process_interfaces.md 5.1 vision/frame/gray8, 5.3
-// 구현: (다음 PR) ZmqFrameSource (vision/frame/gray8 구독), FileFrameSource (녹화 파일 재생),
-//      테스트용 FakeFrameSource (apps/video_sender/test)
+// 구현: BusFrameSource (vision/frame/gray8 구독), TestPatternFrameSource (시험용 영상),
+//      테스트용 FakeFrameSource (apps/video_sender/test). 녹화 파일 재생(FileFrameSource)은 미구현
 // 사용: FrameCollector
 #ifndef ARGUS_VIDEO_SENDER_FRAME_SOURCE_HPP_
 #define ARGUS_VIDEO_SENDER_FRAME_SOURCE_HPP_

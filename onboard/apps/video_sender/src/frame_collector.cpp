@@ -45,8 +45,8 @@ void FrameCollector::on_frame(perception_api::Frame frame) {
 }
 
 void FrameCollector::on_observations(perception_api::Observations observations) {
-    PendingFrame& pending =
-        find_or_add_pending(observations.source, std::nullopt, observations.frame_id);
+    PendingFrame& pending = find_or_add_pending(
+        observations.source, session_of(observations.session_id), observations.frame_id);
     pending.observations = std::move(observations);
     release_ready();
 }

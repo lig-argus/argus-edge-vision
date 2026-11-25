@@ -7,8 +7,7 @@
 //
 // 규칙
 // - source 와 frame_id 가 같고 session_id 가 서로 다르지 않은 메시지를 같은 프레임의 메시지로
-//   판단한다. session_id 가 없는 메시지(Observations, session_id 가 비어 있는 Frame 과 Tracks)는
-//   source 와 frame_id 만 비교한다
+//   판단한다. session_id 가 없거나 비어 있는 메시지는 source 와 frame_id 만 비교한다
 // - 프레임, 탐지 결과, 추적 결과가 모두 도착하면 즉시 출력한다
 // - 한 프레임의 메시지 중 최초로 도착한 것으로부터 max_wait 가 지나면, 프레임이 도착해 있는 경우
 //   도착한 메시지만으로 출력하고 프레임이 도착하지 않은 경우 출력하지 않고 폐기한다
@@ -19,8 +18,8 @@
 //   메시지는 발행 순서대로 도착하므로 더 오래된 프레임의 나머지 메시지는 더 도착하지 않는다)
 // - Frame 의 session_id 가 같은 source 의 직전 Frame 과 다르면, 그 source 의 PendingFrame 중
 //   session_id 가 그 값과 다르거나 없는 것을 폐기한다. 신규 session 의 첫 Frame 보다 먼저 도착한
-//   탐지 결과도 session_id 가 없으므로 폐기하며, 그 프레임은 탐지 결과 없이 출력한다 (session_id 가
-//   없는 탐지 결과는 직전 session 의 것과 구분할 수 없다)
+//   탐지 결과와 추적 결과는 session_id 가 신규 session 의 값이면 남고, 없으면 폐기된다 (session_id
+//   가 없는 메시지는 직전 session 의 것과 구분할 수 없다)
 //
 // 스레드: 모든 함수는 한 스레드(core::IPoller::process_events() 를 호출하는 스레드)에서 호출한다
 #ifndef ARGUS_VIDEO_SENDER_FRAME_COLLECTOR_HPP_

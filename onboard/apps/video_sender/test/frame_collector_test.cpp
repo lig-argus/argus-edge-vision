@@ -38,9 +38,15 @@ Frame make_frame(std::uint64_t frame_id, std::string_view session_id = kSession,
     return frame;
 }
 
-Observations make_observations(std::uint64_t frame_id, std::string_view source = kSource) {
+// 탐지 결과는 기본으로 session_id 가 없다 (session_id 를 보내지 않는 발행자의 메시지)
+Observations make_observations(std::uint64_t frame_id,
+                               std::optional<std::string_view> session_id = std::nullopt,
+                               std::string_view source = kSource) {
     Observations observations;
     observations.source = std::string{source};
+    if (session_id.has_value()) {
+        observations.session_id = std::string{session_id.value()};
+    }
     observations.frame_id = frame_id;
     return observations;
 }
@@ -247,7 +253,7 @@ TEST_F(FrameCollectorTest, CompleteFrameDoesNotReleaseOtherSource) {
 
 TEST_F(FrameCollectorTest, DoesNotJoinSameFrameIdOfDifferentSource) {
     collector_.on_frame(make_frame(1));
-    collector_.on_observations(make_observations(1, "camera-eo"));
+    collector_.on_observations(make_observations(1, std::nullopt, "camera-eo"));
     collector_.on_tracks(make_tracks(1, kSession, "camera-eo"));
     EXPECT_TRUE(collected_.empty());
 
@@ -291,6 +297,20 @@ TEST_F(FrameCollectorTest, DoesNotJoinTracksOfDifferentSessionId) {
     EXPECT_FALSE(collected_[0].tracks.has_value());
 }
 
+TEST_F(FrameCollectorTest, DoesNotJoinObservationsOfDifferentSessionId) {
+    collector_.on_frame(make_frame(1));
+    collector_.on_tracks(make_tracks(1));
+    collector_.on_observations(make_observations(1, "session-0"));
+    EXPECT_TRUE(collected_.empty());
+
+    clock_.advance_ns(kMaxWaitNs);
+    collector_.process_timeouts();
+
+    ASSERT_EQ(collected_.size(), 1U);
+    EXPECT_TRUE(collected_[0].tracks.has_value());
+    EXPECT_FALSE(collected_[0].observations.has_value());
+}
+
 TEST_F(FrameCollectorTest, FrameWithNewSessionIdDiscardsPendingOfThatSource) {
     collector_.on_frame(make_frame(7));
     collector_.on_observations(make_observations(1));  // session_id 없음
@@ -318,6 +338,19 @@ TEST_F(FrameCollectorTest, FrameWithNewSessionIdKeepsResultsOfNewSession) {
     ASSERT_EQ(collected_.size(), 1U);
     EXPECT_EQ(collected_[0].frame.session_id, "session-2");
     EXPECT_TRUE(collected_[0].tracks.has_value());
+}
+
+// 탐지 프로세스가 다시 시작된 직후, 신규 session 의 탐지 결과가 첫 프레임보다 먼저 도착한 경우
+TEST_F(FrameCollectorTest, FrameWithNewSessionIdKeepsObservationsOfNewSession) {
+    collector_.on_frame(make_frame(7));
+    collector_.on_observations(make_observations(1, "session-2"));
+
+    collector_.on_frame(make_frame(1, "session-2"));
+    collector_.on_tracks(make_tracks(1, "session-2"));
+
+    ASSERT_EQ(collected_.size(), 1U);
+    EXPECT_EQ(collected_[0].frame.session_id, "session-2");
+    EXPECT_TRUE(collected_[0].observations.has_value());
 }
 
 TEST_F(FrameCollectorTest, OnSessionChangeDiscardsAllPending) {

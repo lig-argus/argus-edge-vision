@@ -72,6 +72,12 @@ struct Detection {
 // 큐에서 버린 프레임은 발행되지 않으므로 frame_id 는 건너뛸 수 있다
 struct Observations {
     std::string source;
+
+    // 탐지 프로세스 실행마다 바뀌는 값 (Frame 의 session_id 와 같은 값). session_id 가 없는
+    // 발행자의 메시지에는 값이 없다. FrameCollector 는 값이 있으면 (source, session_id, frame_id)
+    // 로, 없으면 (source, frame_id) 로 Frame 과 묶는다
+    std::optional<std::string> session_id;
+
     std::uint64_t frame_id = 0;
 
     // 메시지의 received_monotonic_ns (RPi 수신 시각, 노출 시각이 아니다). 추적기가 FC 자세를

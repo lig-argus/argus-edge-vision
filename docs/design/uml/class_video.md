@@ -5,7 +5,7 @@
 | 참조 문서 | `docs/spec/video.md` 1~6장, `docs/spec/process_interfaces.md` 5.3 |
 | 표기 | Mermaid `classDiagram`. `<\|..` 구현, `*--` 소유, `..>` 사용 |
 | 범위 | RPi 영상 송신부 프로세스(1절)와 통제기의 영상 수신·동기화(2절). 화면 표시는 `class_gcs.md` 의 `VideoView` |
-| 코드 | 값 타입 `onboard/libs/perception_api`(프레임, 탐지·추적 결과), 인터페이스 `onboard/apps/video_sender/include`(#41). 구현은 다음 PR |
+| 코드 | 값 타입 `onboard/libs/perception_api`(프레임, 탐지 결과, 추적 결과), bus 어댑터 `onboard/libs/perception_api_bus`, 영상 송신부 `onboard/apps/video_sender` |
 
 ## 1. 영상 송신부 (RPi)
 
@@ -15,7 +15,7 @@ classDiagram
         <<interface>>
         +subscribe(handler) Subscription
     }
-    class ZmqFrameSource
+    class BusFrameSource
     class FileFrameSource
     class TestPatternFrameSource
     class FrameCollector {
@@ -67,11 +67,17 @@ classDiagram
     class VideoSender {
         +send(CollectedFrame)
     }
+    class VideoBusInput {
+        +create(IBus, FrameCollector)$ VideoBusInput
+    }
 
-    IFrameSource <|.. ZmqFrameSource
+    IFrameSource <|.. BusFrameSource
     IFrameSource <|.. FileFrameSource
     IFrameSource <|.. TestPatternFrameSource
-    ZmqFrameSource ..> ITopicSubscriber : vision/frame/gray8
+    BusFrameSource ..> ITopicSubscriber : vision/frame/gray8
+    VideoBusInput *-- BusFrameSource
+    VideoBusInput ..> ITopicSubscriber : perception/observations, tracking/tracks
+    VideoBusInput ..> FrameCollector : on_frame, on_observations, on_tracks
     FrameCollector ..> IClock : max_wait
     FrameCollector ..> CollectedFrame : 출력
     OnvifMetadataSerializer ..> CollectedFrame : 입력
@@ -85,8 +91,9 @@ classDiagram
 
 | 클래스 | 책임 | 출처 |
 |---|---|---|
-| `IFrameSource` / `ZmqFrameSource` / `FileFrameSource` | 비압축 프레임 공급. `subscribe(handler)` 가 `Subscription` 을 반환하고 handler 는 `process_events()` 안에서 불린다. 구현 교체로 토픽·녹화 파일(테스트·재현) 전환. 테스트용 `FakeFrameSource` 는 `apps/video_sender/test/`. 카메라와 탐지 프로세스 없이 송신을 확인하는 시험용 구현 `TestPatternFrameSource` 는 실행 파일의 `--test-pattern` 옵션으로 사용한다 | pi 5.3 |
-| `FrameCollector` | 세 토픽을 `(source, session_id, frame_id)` 로 모은다 (`session_id` 가 없는 메시지는 `(source, frame_id)`, `process_interfaces.md` 7장). 보관 개수·대기 시간 제한, 대기 시간 안에 다 오지 않으면 모인 것만으로 `CollectedFrame` 을 만들고, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음. 입력은 `on_frame()`, `on_observations()`, `on_tracks()` 호출로 받는다. `IFrameSource` 와 bus 를 구독해 이 함수를 호출하는 연결은 `main` 과 bus 입력 연결이 담당한다. 대기 시간이 지난 프레임은 `process_timeouts()` 가 처리하며, 이후 메시지가 도착하지 않아도 마지막 프레임이 출력되도록 `EventLoop::add_periodic()` 에 등록해 호출한다. 같은 `source` 의 출력 순서는 도착 순서다. 기본값은 대기 시간 100 ms, 보관 개수 8 (`FrameCollectorConfig`) | pi 5.3 |
+| `IFrameSource` / `BusFrameSource` / `FileFrameSource` | 비압축 프레임 공급. `BusFrameSource` 는 bus 의 `vision/frame/gray8` 을 구독한다 (통신 구현을 모름). `subscribe(handler)` 가 `Subscription` 을 반환하고 handler 는 `process_events()` 안에서 불린다. 구현 교체로 토픽·녹화 파일(테스트·재현) 전환. 테스트용 `FakeFrameSource` 는 `apps/video_sender/test/`. 카메라와 탐지 프로세스 없이 송신을 확인하는 시험용 구현 `TestPatternFrameSource` 는 실행 파일의 `--test-pattern` 옵션으로 사용한다 | pi 5.3 |
+| `FrameCollector` | 세 토픽을 `(source, session_id, frame_id)` 로 모은다 (`session_id` 가 없는 메시지는 `(source, frame_id)`, `process_interfaces.md` 7장). 보관 개수·대기 시간 제한, 대기 시간 안에 다 오지 않으면 모인 것만으로 `CollectedFrame` 을 만들고, 짝 없는 탐지·추적 결과는 버림, `session_id` 변경 시 비움. 영상 프레임 없는 추적 결과는 보내지 않음. 입력은 `on_frame()`, `on_observations()`, `on_tracks()` 호출로 받는다. `IFrameSource` 와 bus 를 구독해 이 함수를 호출하는 연결은 `VideoBusInput`(bus 입력)과 `main`(`--test-pattern`)이 담당한다. 대기 시간이 지난 프레임은 `process_timeouts()` 가 처리하며, 이후 메시지가 도착하지 않아도 마지막 프레임이 출력되도록 `EventLoop::add_periodic()` 에 등록해 호출한다. 같은 `source` 의 출력 순서는 도착 순서다. 기본값은 대기 시간 100 ms, 보관 개수 8 (`FrameCollectorConfig`) | pi 5.3 |
+| `VideoBusInput` | bus 의 `vision/frame/gray8`(`BusFrameSource`), `perception/observations`, `tracking/tracks` 를 구독해 `FrameCollector` 에 넣는다. 구독자는 `perception_api_bus` 모듈이 만들고, 받는 메시지는 protobuf 정의(`argus_msg/*.proto`)만 해석한다. `bus::IBus` 로만 구독하며 통신 구현(`ZmqBus`)은 `main` 이 만든다. 실행 파일을 인자 없이 실행하면 이 입력을 쓴다 | pi 5.1, 5.3 |
 | `CollectedFrame` | 프레임(항상 있음) + 탐지 결과·추적 결과(optional). `OnvifMetadataSerializer`·`RtspServer` 의 입력 | pi 5.3, video 3.2 |
 | `OnvifMetadataSerializer` | `CollectedFrame` 의 `tracks` → ONVIF XML (`tt:Frame`, `tt:Object`, `argus:` 확장, 좌표 변환). 추적 결과 없는 프레임은 빈 `tt:Frame`. 구체 클래스다: 구현이 ONVIF XML 하나이고(video 1장), 상태가 없고 입력만으로 출력이 정해지므로 테스트에서 대체할 이유가 없다. `class_id` 를 `tt:Type` 의 ONVIF 분류명으로 변환하는 대응(video 8장)은 생성자 인자로 받는다 | video 3장 |
 | `MetadataRtpPacketizer` | XML → RTP 패킷(헤더 12 B, 조각, 마지막 marker=1, 타임스탬프는 `packetize()` 의 인자로 받는다). payload type 과 SSRC 는 기본값 없이 `MetadataRtpConfig` 로 받는다 | video 3.1, 4장 |
@@ -158,7 +165,7 @@ classDiagram
 |---|---|---|
 | S | 1·2절 | 모으기·XML 생성·RTP 패킷화·RTSP·수신·파싱·동기화가 각각 한 클래스 |
 | O | `VideoEncodeConfig`, `VideoDecodeConfig` | 코덱 추가 = 설정 항목 추가. `RtspServer`·`RtspReceiver` 수정 없음 (video 5·6장 "요소만 바꾼다") |
-| L | `ZmqFrameSource` ↔ `FileFrameSource` ↔ `FakeFrameSource` | 같은 `Frame` contract(unix_ns, frame_id, stride)과 같은 호출 규칙(handler 는 `process_events()` 안에서). 녹화 파일로 송신부를 재현 테스트 |
+| L | `BusFrameSource` ↔ `FileFrameSource` ↔ `FakeFrameSource` | 같은 `Frame` contract(unix_ns, frame_id, stride)과 같은 호출 규칙(handler 는 `process_events()` 안에서). 녹화 파일로 송신부를 재현 테스트 |
 | I | `IFrameSource`, `IStreamSink` | 메서드 하나짜리 인터페이스 |
 | D | `VideoSender`, `FrameSynchronizer` | GStreamer 는 `RtspServer`·`RtspReceiver` 안에만. `VideoSender` 는 `IStreamSink` 에만 의존한다. 모으기·동기화 로직은 GStreamer 없이 gtest·Qt Test. 인터페이스는 구현 교체(`IFrameSource`)나 테스트 대체가 필요한 곳에만 두고, 구현이 하나이고 대체할 이유가 없는 직렬화는 구체 클래스로 둔다 |
 
