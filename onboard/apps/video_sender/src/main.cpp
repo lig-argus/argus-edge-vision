@@ -1,14 +1,17 @@
 // 영상 송신부 실행 파일 (argus_video_sender)
 // 규약: docs/spec/video.md 5장, docs/design/uml/class_video.md 1절
 // 입력은 둘 중 하나다.
-// - 인자 없음: bus 의 vision/frame/gray8, perception/observations, tracking/tracks (ZeroMQ.
-//   docs/spec/process_interfaces.md 5.1). 통신 구현과 실제 시계는 이 파일에서만 생성한다
+// - 기본: bus 의 vision/frame/gray8, perception/observations, tracking/tracks
+//   (docs/spec/process_interfaces.md 5.1). 통신 구현과 실제 시계는 이 파일에서만 생성한다
 // - --test-pattern: 카메라와 탐지 프로세스 없이 시험용 영상과 박스
-// 영상 트랙의 코덱은 --codec 으로 정한다. 설정 값은 코드의 기본값(protocol/zmq_endpoints.hpp)을
-// 사용한다
+// 영상 트랙의 코덱은 --codec 으로 정한다. bus 의 통신 구현은 --bus dds|zmq (기본값 dds.
+// ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수 있다), DDS domain 은 --dds-domain 으로
+// 정한다. 설정 값은 코드의 기본값(protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -16,9 +19,11 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <zmq.hpp>
 
+#include "argus/bus/bus.hpp"
 #include "argus/bus_zmq/zmq_bus.hpp"
 #include "argus/bus_zmq/zmq_poller.hpp"
 #include "argus/core/clock.hpp"
@@ -28,6 +33,7 @@
 #include "argus/core/subscription.hpp"
 #include "argus/perception_api/types.hpp"
 #include "argus/perception_api_bus/zmq_codecs.hpp"
+#include "argus/protocol/dds_settings.hpp"
 #include "argus/protocol/topics.hpp"
 #include "argus/protocol/zmq_endpoints.hpp"
 #include "argus/video_sender/collected_frame.hpp"
@@ -40,6 +46,11 @@
 #include "argus/video_sender/video_bus_input.hpp"
 #include "argus/video_sender/video_encode_config.hpp"
 #include "argus/video_sender/video_sender.hpp"
+
+#ifdef ARGUS_HAS_BUS_DDS
+#include "argus/bus_dds/dds_bus.hpp"
+#include "argus/perception_api_bus/dds_types.hpp"
+#endif
 
 namespace {
 
@@ -71,13 +82,36 @@ constexpr std::string_view kTestPatternOption = "--test-pattern";
 constexpr std::string_view kCodecOption = "--codec";
 constexpr std::string_view kCodecJpeg = "jpeg";
 constexpr std::string_view kCodecH264 = "h264";
+constexpr std::string_view kBusOption = "--bus";
+constexpr std::string_view kDdsDomainOption = "--dds-domain";
+constexpr std::string_view kBusDds = "dds";
+constexpr std::string_view kBusZmq = "zmq";
 
 constexpr const char* kLogPrefix = "argus_video_sender: ";
+
+enum class BusKind : std::uint8_t {
+    Dds,
+    Zmq,
+};
 
 struct Options {
     bool test_pattern = false;
     video_sender::VideoCodec codec = video_sender::VideoCodec::H264;
+    BusKind bus = BusKind::Dds;
+    std::uint32_t dds_domain = protocol::kDefaultDdsDomain;
 };
+
+// domain 은 0~232 (DDS 의 포트 규칙에서 쓸 수 있는 범위)
+std::optional<std::uint32_t> dds_domain_of(const char* text) {
+    constexpr std::uint32_t kMaxDomain = 232;
+    std::uint32_t value = 0;
+    const char* const end = text + std::strlen(text);
+    const auto [last, error] = std::from_chars(text, end, value);
+    if (error != std::errc{} || last != end || last == text || value > kMaxDomain) {
+        return std::nullopt;
+    }
+    return value;
+}
 
 std::optional<video_sender::VideoCodec> codec_of(std::string_view name) {
     if (name == kCodecJpeg) {
@@ -102,6 +136,21 @@ std::optional<Options> parse_options(std::int32_t argc, char** argv) {
                 return std::nullopt;
             }
             options.codec = codec.value();
+        } else if (argument == kBusOption && i + 1 < argc) {
+            const std::string_view value{argv[++i]};
+            if (value == kBusDds) {
+                options.bus = BusKind::Dds;
+            } else if (value == kBusZmq) {
+                options.bus = BusKind::Zmq;
+            } else {
+                return std::nullopt;
+            }
+        } else if (argument == kDdsDomainOption && i + 1 < argc) {
+            const std::optional<std::uint32_t> domain = dds_domain_of(argv[++i]);
+            if (!domain.has_value()) {
+                return std::nullopt;
+            }
+            options.dds_domain = domain.value();
         } else {
             return std::nullopt;
         }
@@ -111,12 +160,16 @@ std::optional<Options> parse_options(std::int32_t argc, char** argv) {
 
 void print_usage() {
     std::cerr << "사용법: argus_video_sender [" << kTestPatternOption << "] [" << kCodecOption
-              << " " << kCodecH264 << "|" << kCodecJpeg << "]\n"
-              << "  인자 없음  bus 의 프레임, 탐지 결과, 추적 결과를 송신\n"
+              << " " << kCodecH264 << "|" << kCodecJpeg << "] [" << kBusOption << " " << kBusDds
+              << "|" << kBusZmq << "] [" << kDdsDomainOption << " N]\n"
+              << "  기본  bus 의 프레임, 탐지 결과, 추적 결과를 송신\n"
               << "  " << kTestPatternOption
               << "  카메라와 탐지 프로세스 없이 시험용 영상과 박스를 송신\n"
               << "  " << kCodecOption << "  영상 트랙의 코덱. 지정하지 않으면 " << kCodecH264
-              << "\n";
+              << "\n"
+              << "  " << kBusOption << "  bus 의 통신 구현. 지정하지 않으면 " << kBusDds << "\n"
+              << "  " << kDdsDomainOption << "  DDS domain (0~232). 지정하지 않으면 "
+              << protocol::kDefaultDdsDomain << "\n";
 }
 
 // 등록할 소켓이 없으므로 wait 동안 대기만 한다 (--test-pattern 에서 사용)
@@ -225,29 +278,55 @@ bus_zmq::ZmqEndpointTable endpoints() {
     };
 }
 
-std::int32_t run_with_bus(video_sender::VideoCodec codec) {
+// options 의 통신 구현으로 bus 를 만든다. 만들지 못하면 원인을 기록하고 nullptr 를 반환한다
+std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_t& context,
+                                           bus_zmq::ZmqPoller& poller, const core::IClock& clock,
+                                           const bus_zmq::ZmqEndpointTable& table) {
+    if (options.bus == BusKind::Zmq) {
+        return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table,
+                                                 argus::perception_api_bus::zmq_codecs());
+    }
+#ifdef ARGUS_HAS_BUS_DDS
+    // 원인은 DdsBus 가 기록한다
+    return argus::bus_dds::DdsBus::create(poller, poller, clock, options.dds_domain,
+                                          argus::perception_api_bus::dds_types());
+#else
+    std::cerr << kLogPrefix << "DDS 없이 빌드됨 (ARGUS_BUILD_BUS_DDS=OFF). " << kBusOption << " "
+              << kBusZmq << " 로 실행해야 한다\n";
+    return nullptr;
+#endif
+}
+
+std::int32_t run_with_bus(const Options& options) {
     const core::SteadyClock clock;
     zmq::context_t context;
     bus_zmq::ZmqPoller poller{clock};
     const bus_zmq::ZmqEndpointTable table = endpoints();
-    bus_zmq::ZmqBus bus{context, poller, clock, table, argus::perception_api_bus::zmq_codecs()};
+    const std::unique_ptr<argus::bus::IBus> bus = make_bus(options, context, poller, clock, table);
+    if (!bus) {
+        return EXIT_FAILURE;
+    }
     core::EventLoop loop{poller, clock, kHandlerBudget};
     core::stop_on_signals(&loop);
 
-    SenderPipeline pipeline{clock, codec};
+    SenderPipeline pipeline{clock, options.codec};
     if (!pipeline.start()) {
         return EXIT_FAILURE;
     }
     // pipeline 과 bus 보다 뒤에 선언하여 먼저 소멸시킨다
     const std::unique_ptr<video_sender::VideoBusInput> input =
-        video_sender::VideoBusInput::create(bus, pipeline.collector());
+        video_sender::VideoBusInput::create(*bus, pipeline.collector());
     if (!input) {
         pipeline.stop();
-        return EXIT_FAILURE;  // 원인은 ZmqBus 가 기록한다
+        return EXIT_FAILURE;  // 원인은 bus 구현이 기록한다
     }
     const core::PeriodicTimer timeout_timer = pipeline.start_timeout_checks(loop);
-    for (const auto& [name, endpoint] : table) {
-        std::cout << kLogPrefix << name << " " << endpoint << "\n";
+    if (options.bus == BusKind::Dds) {
+        std::cout << kLogPrefix << "bus DDS domain " << options.dds_domain << "\n";
+    } else {
+        for (const auto& [name, endpoint] : table) {
+            std::cout << kLogPrefix << name << " " << endpoint << "\n";
+        }
     }
 
     loop.run();
@@ -267,7 +346,7 @@ int main(int argc, char** argv) {
         if (options.value().test_pattern) {
             return run_with_test_pattern(options.value().codec);
         }
-        return run_with_bus(options.value().codec);
+        return run_with_bus(options.value());
     } catch (const std::exception& error) {
         std::cerr << kLogPrefix << error.what() << "\n";
     } catch (...) {

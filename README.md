@@ -94,6 +94,14 @@ cmake -S /tmp/fastdds -B /tmp/fastdds/build -G Ninja -DCMAKE_BUILD_TYPE=Release 
 
 빌드할 때는 preset `macos-dds`(macOS) 또는 `linux-dds`(Ubuntu)를 사용한다. 두 preset 은 `macos`, `linux` 에 `$HOME/.local/fastdds` 경로와 `ARGUS_BUILD_BUS_DDS=ON` 을 더한 것이다. IDL 타입의 C++ 코드는 fastddsgen 으로 생성해 커밋하므로 빌드에는 fastddsgen(Java)이 필요 없다. IDL 을 바꾸는 경우에만 Fast DDS 3.6.2 와 짝인 fastddsgen 4.3.0 이 필요하다 (생성 명령은 `onboard/libs/bus_dds/CMakeLists.txt` 의 주석).
 
+DDS 빌드의 실행 파일은 통신 구현으로 DDS 를 기본으로 사용한다. ZeroMQ 로 실행하려면 `--bus zmq` 를 준다. `ARGUS_BUILD_BUS_DDS` 를 끄고 빌드한 실행 파일은 `--bus zmq` 로만 실행할 수 있다 (`docs/spec/process_interfaces.md` 3장).
+
+```bash
+build/onboard/apps/mavlink_gateway/argus_mavlink_gateway                    # DDS, domain 0
+build/onboard/apps/mavlink_gateway/argus_mavlink_gateway --dds-domain 5     # DDS, domain 5
+build/onboard/apps/mavlink_gateway/argus_mavlink_gateway --bus zmq          # ZeroMQ
+```
+
 ## 통제기 빌드 (`gcs/`)
 
 Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.

@@ -37,9 +37,16 @@ target_link_libraries(argus_mavlink_gateway_core
     PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus::bus argus::vehicle_api_bus
            argus_onboard_warnings)
 
-# 통신 구현(ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
+# 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
 # (docs/design/uml/class_mavlink_gateway.md 4절)
 add_executable(argus_mavlink_gateway src/main.cpp)
+# DDS 빌드에서만 DDS 구현을 링크한다. main.cpp 는 ARGUS_HAS_BUS_DDS 로 --bus dds 를 켠다.
+# vehicle_api_bus_zmq 보다 먼저 적는다. include 경로가 적은 순서대로 붙는데, cppzmq 의 include 경로(macOS
+# Homebrew 는 /opt/homebrew/include)에 다른 버전의 Fast DDS 헤더가 있으면 그 헤더가 먼저 잡힌다
+if(ARGUS_BUILD_BUS_DDS)
+    target_link_libraries(argus_mavlink_gateway PRIVATE argus::vehicle_api_bus_dds)
+    target_compile_definitions(argus_mavlink_gateway PRIVATE ARGUS_HAS_BUS_DDS)
+endif()
 target_link_libraries(argus_mavlink_gateway
     PRIVATE argus::mavlink_gateway_core argus::vehicle_api_bus_zmq argus::protocol_names
             argus_onboard_warnings)
