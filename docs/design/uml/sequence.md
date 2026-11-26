@@ -15,9 +15,9 @@ sequenceDiagram
     participant cmd as CommandSender (gcs)
     participant disp as MavlinkCommandReceiver (mavlink_gateway)
     participant ts as TrackStartHandler (mavlink_gateway)
-    participant fcc as ZmqFollowControlClient (mavlink_gateway)
-    participant fss as ZmqFollowStatusSubscriber (mavlink_gateway)
-    participant srv as ZmqFollowControlServer (추종 제어)
+    participant fcc as BusFollowControlClient (mavlink_gateway)
+    participant fss as BusFollowStatusSubscriber (mavlink_gateway)
+    participant srv as BusFollowControlServer (추종 제어)
     participant ctl as FollowController (추종 제어)
     participant mode as FcControl (mavlink_gateway)
     participant fc as FC

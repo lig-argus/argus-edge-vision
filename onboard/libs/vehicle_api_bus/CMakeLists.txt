@@ -17,6 +17,7 @@ add_library(argus_vehicle_api_bus STATIC
             src/bus_flight_mode_control_server.cpp
             src/bus_follow_control_client.cpp
             src/bus_follow_control_server.cpp
+            src/bus_follow_status_subscriber.cpp
             src/bus_vehicle_telemetry_publisher.cpp
             src/bus_vehicle_telemetry_subscriber.cpp
             src/bus_velocity_setpoint_publisher.cpp
@@ -35,6 +36,7 @@ add_library(argus_vehicle_api_bus_zmq STATIC
             src/control_setpoint_codec.cpp
             src/fc_telemetry_codec.cpp
             src/follow_command_codec.cpp
+            src/follow_status_codec.cpp
             src/zmq_codecs.cpp)
 add_library(argus::vehicle_api_bus_zmq ALIAS argus_vehicle_api_bus_zmq)
 # protocol 은 PRIVATE 이다. 생성된 메시지 타입은 src/ 안에서만 쓰고 헤더에 나오지 않는다.
@@ -52,6 +54,8 @@ argus_add_test(vehicle_api_bus_vehicle_telemetry_test SOURCES test/vehicle_telem
                LIBS argus::vehicle_api_bus argus::bus_testing argus::protocol_names)
 argus_add_test(vehicle_api_bus_flight_mode_control_test SOURCES test/flight_mode_control_test.cpp
                LIBS argus::vehicle_api_bus argus::bus_testing argus::vehicle_api_testing)
+argus_add_test(vehicle_api_bus_follow_status_test SOURCES test/follow_status_test.cpp
+               LIBS argus::vehicle_api_bus argus::bus_testing argus::core_testing argus::protocol_names)
 argus_add_test(vehicle_api_bus_follow_control_test SOURCES test/follow_control_test.cpp
                LIBS argus::vehicle_api_bus argus::bus_testing argus::vehicle_api_testing)
 # 변환 표 테스트는 메시지 본문을 직접 확인하므로 protocol 도 링크한다
@@ -69,6 +73,7 @@ if(ARGUS_BUILD_BUS_DDS)
                 src/dds_types.cpp
                 src/fc_telemetry_idl.cpp
                 src/follow_command_idl.cpp
+                src/follow_status_idl.cpp
                 src/idl_common.cpp)
     add_library(argus::vehicle_api_bus_dds ALIAS argus_vehicle_api_bus_dds)
     # protocol_idl 은 PRIVATE 이다. 생성된 IDL 타입은 src/ 안에서만 사용하고 헤더에 나오지 않는다
@@ -82,5 +87,6 @@ if(ARGUS_BUILD_BUS_DDS)
                         argus::vehicle_api_bus_zmq)
     # 어댑터를 DdsBus 에 붙여 값이 오가는지 확인한다
     argus_add_test(vehicle_api_bus_dds_end_to_end_test SOURCES test/dds_end_to_end_test.cpp
-                   LIBS argus::protocol_idl argus::vehicle_api_bus_dds argus::vehicle_api_testing)
+                   LIBS argus::protocol_idl argus::protocol_names argus::vehicle_api_bus_dds
+                        argus::vehicle_api_testing)
 endif()

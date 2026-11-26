@@ -10,6 +10,8 @@
 #include "argus/vehicle_api/flight_mode_control_client.hpp"
 #include "argus/vehicle_api/follow_control.hpp"
 #include "argus/vehicle_api/follow_control_client.hpp"
+#include "argus/vehicle_api/follow_status_events.hpp"
+#include "argus/vehicle_api/follow_status_source.hpp"
 #include "argus/vehicle_api/vehicle_telemetry.hpp"
 #include "argus/vehicle_api/velocity_setpoint_sink.hpp"
 
@@ -34,6 +36,36 @@ TEST(SensorTest, MatchesMavlinkArgusSensor) {
     EXPECT_EQ(static_cast<std::int32_t>(Sensor::Unknown), ARGUS_SENSOR_UNKNOWN);
     EXPECT_EQ(static_cast<std::int32_t>(Sensor::Ir), ARGUS_SENSOR_IR);
     EXPECT_EQ(static_cast<std::int32_t>(Sensor::Eo), ARGUS_SENSOR_EO);
+}
+
+TEST(MissionStateTest, MatchesMavlinkArgusMissionState) {
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::Idle), ARGUS_MISSION_STATE_IDLE);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::Preparing), ARGUS_MISSION_STATE_PREPARING);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::FollowActive),
+              ARGUS_MISSION_STATE_FOLLOW_ACTIVE);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::HoldTransition),
+              ARGUS_MISSION_STATE_HOLD_TRANSITION);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::HoldWait), ARGUS_MISSION_STATE_HOLD_WAIT);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::ScanActive), ARGUS_MISSION_STATE_SCAN_ACTIVE);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::Manual), ARGUS_MISSION_STATE_MANUAL);
+    EXPECT_EQ(static_cast<std::int32_t>(MissionState::Fault), ARGUS_MISSION_STATE_FAULT);
+}
+
+TEST(TargetStateTest, MatchesMavlinkArgusTargetState) {
+    EXPECT_EQ(static_cast<std::int32_t>(TargetState::None), ARGUS_TARGET_STATE_NONE);
+    EXPECT_EQ(static_cast<std::int32_t>(TargetState::Confirmed), ARGUS_TARGET_STATE_CONFIRMED);
+    EXPECT_EQ(static_cast<std::int32_t>(TargetState::Predicted), ARGUS_TARGET_STATE_PREDICTED);
+    EXPECT_EQ(static_cast<std::int32_t>(TargetState::Lost), ARGUS_TARGET_STATE_LOST);
+}
+
+TEST(FollowStatusTest, DefaultsToUnknownStatesWithoutOptionalValues) {
+    const FollowStatus status;
+
+    EXPECT_EQ(status.mission_state, MissionState::Unknown);
+    EXPECT_EQ(status.target_state, TargetState::Unknown);
+    EXPECT_FALSE(status.selected.has_value());
+    EXPECT_TRUE(status.command_results.empty());
+    EXPECT_FALSE(status.scan.has_value());
 }
 
 TEST(RequestIdTest, ComparesEveryField) {

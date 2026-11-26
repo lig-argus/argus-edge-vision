@@ -14,6 +14,7 @@
 #include "argus/vehicle_api_testing/fake_flight_mode_control_client.hpp"
 #include "argus/vehicle_api_testing/fake_follow_control.hpp"
 #include "argus/vehicle_api_testing/fake_follow_control_client.hpp"
+#include "argus/vehicle_api_testing/fake_follow_status_source.hpp"
 #include "argus/vehicle_api_testing/fake_vehicle_telemetry.hpp"
 #include "argus/vehicle_api_testing/fake_velocity_setpoint_sink.hpp"
 
@@ -177,6 +178,45 @@ TEST(FakeVehicleTelemetryTest, EmitFlightModeEventCallsEverySubscribedHandler) {
 
     EXPECT_EQ(first, (std::vector<FlightMode>{FlightMode::Offboard, FlightMode::Hold}));
     EXPECT_EQ(second, std::vector<FlightMode>{FlightMode::Offboard});
+}
+
+TEST(FakeFollowStatusSourceTest, LatestIsEmptyUntilSimulated) {
+    const FakeFollowStatusSource source;
+
+    EXPECT_FALSE(source.latest().has_value());
+}
+
+TEST(FakeFollowStatusSourceTest, SimulateStatusKeepsLatestAndCallsSubscribedHandlers) {
+    FakeFollowStatusSource source;
+    std::vector<vehicle_api::MissionState> first;
+    std::vector<vehicle_api::MissionState> second;
+    const core::Subscription first_subscription =
+        source.subscribe([&first](const vehicle_api::ReceivedFollowStatus& received) {
+            first.push_back(received.status.mission_state);
+        });
+    core::Subscription second_subscription =
+        source.subscribe([&second](const vehicle_api::ReceivedFollowStatus& received) {
+            second.push_back(received.status.mission_state);
+        });
+
+    vehicle_api::FollowStatus status;
+    status.mission_state = vehicle_api::MissionState::FollowActive;
+    source.simulate_status(status, 100);
+
+    second_subscription.reset();  // 등록을 풀면 더 받지 않는다
+    status.mission_state = vehicle_api::MissionState::Idle;
+    source.simulate_status(status, 200);
+
+    ASSERT_TRUE(source.latest().has_value());
+    const vehicle_api::ReceivedFollowStatus latest =
+        source.latest().value_or(vehicle_api::ReceivedFollowStatus{});
+    EXPECT_EQ(latest.status.mission_state, vehicle_api::MissionState::Idle);
+    EXPECT_EQ(latest.arrived_monotonic_ns, 200);
+    EXPECT_EQ(first,
+              (std::vector<vehicle_api::MissionState>{vehicle_api::MissionState::FollowActive,
+                                                      vehicle_api::MissionState::Idle}));
+    EXPECT_EQ(second,
+              std::vector<vehicle_api::MissionState>{vehicle_api::MissionState::FollowActive});
 }
 
 TEST(FakeVelocitySetpointSinkTest, RecordsSentSetpointsInOrder) {

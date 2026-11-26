@@ -8,9 +8,8 @@
 #include "codec_common.hpp"
 
 namespace argus::vehicle_api_bus {
-namespace {
 
-msg::Sensor to_message(vehicle_api::Sensor sensor) {
+msg::Sensor sensor_to_message(vehicle_api::Sensor sensor) {
     switch (sensor) {
         case vehicle_api::Sensor::Unknown:
             return msg::SENSOR_UNKNOWN;
@@ -22,8 +21,7 @@ msg::Sensor to_message(vehicle_api::Sensor sensor) {
     return msg::SENSOR_UNKNOWN;
 }
 
-// 이 코드에 정의되지 않은 값(메시지를 만든 프로그램이 더 새 버전인 경우)은 Unknown 으로 바꾼다
-vehicle_api::Sensor from_message(msg::Sensor sensor) {
+vehicle_api::Sensor sensor_from_message(msg::Sensor sensor) {
     switch (sensor) {
         case msg::SENSOR_IR:
             return vehicle_api::Sensor::Ir;
@@ -33,6 +31,37 @@ vehicle_api::Sensor from_message(msg::Sensor sensor) {
             return vehicle_api::Sensor::Unknown;
     }
 }
+
+msg::FollowOutcome outcome_to_message(vehicle_api::FollowOutcome outcome) {
+    switch (outcome) {
+        case vehicle_api::FollowOutcome::InProgress:
+            return msg::FOLLOW_OUTCOME_IN_PROGRESS;
+        case vehicle_api::FollowOutcome::Succeeded:
+            return msg::FOLLOW_OUTCOME_SUCCEEDED;
+        case vehicle_api::FollowOutcome::Rejected:
+            return msg::FOLLOW_OUTCOME_REJECTED;
+        case vehicle_api::FollowOutcome::Failed:
+            return msg::FOLLOW_OUTCOME_FAILED;
+    }
+    return msg::FOLLOW_OUTCOME_UNSPECIFIED;
+}
+
+std::optional<vehicle_api::FollowOutcome> outcome_from_message(msg::FollowOutcome outcome) {
+    switch (outcome) {
+        case msg::FOLLOW_OUTCOME_IN_PROGRESS:
+            return vehicle_api::FollowOutcome::InProgress;
+        case msg::FOLLOW_OUTCOME_SUCCEEDED:
+            return vehicle_api::FollowOutcome::Succeeded;
+        case msg::FOLLOW_OUTCOME_REJECTED:
+            return vehicle_api::FollowOutcome::Rejected;
+        case msg::FOLLOW_OUTCOME_FAILED:
+            return vehicle_api::FollowOutcome::Failed;
+        default:
+            return std::nullopt;
+    }
+}
+
+namespace {
 
 msg::StopReason to_message(vehicle_api::StopReason reason) {
     switch (reason) {
@@ -59,35 +88,6 @@ std::optional<vehicle_api::StopReason> from_message(msg::StopReason reason) {
     }
 }
 
-msg::FollowOutcome to_message(vehicle_api::FollowOutcome outcome) {
-    switch (outcome) {
-        case vehicle_api::FollowOutcome::InProgress:
-            return msg::FOLLOW_OUTCOME_IN_PROGRESS;
-        case vehicle_api::FollowOutcome::Succeeded:
-            return msg::FOLLOW_OUTCOME_SUCCEEDED;
-        case vehicle_api::FollowOutcome::Rejected:
-            return msg::FOLLOW_OUTCOME_REJECTED;
-        case vehicle_api::FollowOutcome::Failed:
-            return msg::FOLLOW_OUTCOME_FAILED;
-    }
-    return msg::FOLLOW_OUTCOME_UNSPECIFIED;
-}
-
-std::optional<vehicle_api::FollowOutcome> from_message(msg::FollowOutcome outcome) {
-    switch (outcome) {
-        case msg::FOLLOW_OUTCOME_IN_PROGRESS:
-            return vehicle_api::FollowOutcome::InProgress;
-        case msg::FOLLOW_OUTCOME_SUCCEEDED:
-            return vehicle_api::FollowOutcome::Succeeded;
-        case msg::FOLLOW_OUTCOME_REJECTED:
-            return vehicle_api::FollowOutcome::Rejected;
-        case msg::FOLLOW_OUTCOME_FAILED:
-            return vehicle_api::FollowOutcome::Failed;
-        default:
-            return std::nullopt;
-    }
-}
-
 double nan_if_empty(const std::optional<double>& value) {
     return value.value_or(std::numeric_limits<double>::quiet_NaN());
 }
@@ -102,7 +102,7 @@ struct ActionEncoder {
 
     void operator()(const vehicle_api::TrackTarget& target) const {
         msg::FollowCommand::TrackStart& track_start = *message.mutable_track_start();
-        track_start.set_sensor(to_message(target.sensor));
+        track_start.set_sensor(sensor_to_message(target.sensor));
         track_start.set_generation(target.generation);
         track_start.set_class_id(target.class_id);
         track_start.set_track_id(target.track_id);
@@ -138,7 +138,7 @@ std::optional<FollowCommandRequest> decode_follow_command(const bus_zmq::Bytes& 
     switch (message.action_case()) {
         case msg::FollowCommand::kTrackStart: {
             vehicle_api::TrackTarget target;
-            target.sensor = from_message(message.track_start().sensor());
+            target.sensor = sensor_from_message(message.track_start().sensor());
             target.generation = message.track_start().generation();
             target.class_id = message.track_start().class_id();
             target.track_id = message.track_start().track_id();
@@ -172,7 +172,7 @@ std::optional<FollowCommandRequest> decode_follow_command(const bus_zmq::Bytes& 
 bus_zmq::Bytes encode_follow_result(const vehicle_api::FollowResult& result) {
     msg::FollowResult message;
     to_message(result.id, *message.mutable_id());
-    message.set_outcome(to_message(result.outcome));
+    message.set_outcome(outcome_to_message(result.outcome));
     message.set_request_accepted(result.request_accepted);
     message.set_reason(result.reason);
     return to_bytes(message);
@@ -183,7 +183,8 @@ std::optional<vehicle_api::FollowResult> decode_follow_result(const bus_zmq::Byt
     if (!parse(body, message) || !message.has_id()) {
         return std::nullopt;
     }
-    const std::optional<vehicle_api::FollowOutcome> outcome = from_message(message.outcome());
+    const std::optional<vehicle_api::FollowOutcome> outcome =
+        outcome_from_message(message.outcome());
     if (!outcome) {
         return std::nullopt;
     }

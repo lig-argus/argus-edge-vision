@@ -59,6 +59,9 @@ inline const bus::MessageType kFcModeEventType =
 // control/setpoint
 inline const bus::MessageType kControlSetpointType =
     bus::message_type<vehicle_api::VelocitySetpoint>("argus.msg.ControlSetpoint"sv);
+// follow/status
+inline const bus::MessageType kFollowStatusType =
+    bus::message_type<vehicle_api::FollowStatus>("argus.msg.FollowStatus"sv);
 
 // 요청-응답
 // control/mode_request 의 요청과 응답

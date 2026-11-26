@@ -380,6 +380,14 @@ classDiagram
         <<interface>>
         +latest() optional~VideoStreamInfo~
     }
+    class IFollowStatusSource {
+        <<interface>>
+        +latest() optional~ReceivedFollowStatus~
+    }
+    class IFollowStatusEvents {
+        <<interface>>
+        +subscribe(handler) Subscription
+    }
     class gcs_forward_policy {
         <<function>>
         +decide(ForwardObservation, message) ForwardDecision
@@ -404,6 +412,7 @@ classDiagram
     ControlAuthority ..> control_authority_policy : 판단
     ControlAuthority ..> GcsRegistry : HEARTBEAT
     ControlAuthority ..> IFcCommandStatus
+    ControlAuthority ..> IFollowStatusSource : 추종, 스캔 중
     MavlinkCommandReceiver ..> GcsRegistry : COMMAND_LONG 수신
     MavlinkCommandReceiver ..> IGcsLink : COMMAND_ACK, STATUSTEXT 를 보낸 통제기에만
     MavlinkCommandReceiver *-- IMavlinkCommandHandler
@@ -425,8 +434,10 @@ classDiagram
     EndRcOverrideHandler ..> IStopRequester : 제자리 유지
     GcsLinkMonitor ..> GcsRegistry : 주인의 HEARTBEAT 시각
     GcsLinkMonitor ..> IStopRequester : 두절 시 정지
+    GcsLinkMonitor ..> IFollowStatusSource : 추종, 스캔 중
     GcsLinkMonitor --> HealthState : GCS_LINK
     ArgusStatusReporter ..> IControlAuthority : control_sysid
+    ArgusStatusReporter ..> IFollowStatusEvents : 임무 상태, 표적, 스캔 (변경 시 보고)
     ArgusStatusReporter ..> IGcsLink : ARGUS_STATUS broadcast
     ArgusSensorStatusReporter ..> IGcsLink : ARGUS_SENSOR_STATUS broadcast
     ArgusSensorStatusReporter ..> SensorSourceMap
@@ -454,7 +465,8 @@ classDiagram
 | `GcsLinkMonitor` | 주인의 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`, 추종과 스캔 중이면 `IStopRequester` 로 정지. 두절 판단의 시각은 `GcsRegistry` 의 기록 | B | icd 6.1 |
 | `ArgusStatusReporter` | `follow/status` 의 임무 상태, 표적 상태, 선택 표적, 스캔 진행과 `IControlAuthority::controller()`(→ `control_sysid`), `HealthState` 로 ARGUS_STATUS 를 모든 통제기에 1 Hz + 변경 시. `follow/status` 3 s 두절 → FAULT 보고와 정지 요청 | C | icd 3.1, 6.4 |
 | `ArgusSensorStatusReporter`, `SensorSourceMap` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시. `source` 문자열 ↔ `ARGUS_SENSOR` 대응은 `SensorSourceMap`(mavlink_gateway 설정) | C | icd 3.1, pi 3장 |
-| `BusFollowStatusSubscriber`, `BusTrackingStatusSubscriber` | `follow/status`, `tracking/status` 를 구독해 최신 값 보관과 전달 (`vehicle_api_bus`, `perception_api_bus` 모듈. `BusVehicleTelemetrySubscriber` 와 같은 모양) | C | pi 5.1.2, 5.1.3 |
+| `IFollowStatusSource`, `IFollowStatusEvents`, `BusFollowStatusSubscriber` | `follow/status` 를 구독해 최신 값과 받은 시각(mavlink_gateway 의 시계) 보관(`IFollowStatusSource::latest()`), 받을 때마다 handler 호출(`IFollowStatusEvents::subscribe()`). 조회와 알림을 인터페이스 둘로 나눠, 최신 값만 조회하는 `ControlAuthority`, `GcsLinkMonitor`(추종, 스캔 중 판단)는 알림에 의존하지 않는다 (`vehicle_api`, `vehicle_api_bus` 모듈) | B | pi 5.1.2 |
+| `BusTrackingStatusSubscriber` | `tracking/status` 를 구독해 최신 값 보관과 전달 (`perception_api_bus` 모듈. `BusVehicleTelemetrySubscriber` 와 같은 모양) | C | pi 5.1.3 |
 | `TrackStartHandler`, `TrackStopHandler`, `ScanStartHandler` | 조건 ①(제어권, `IControlAuthority`) ③④⑤ 와 범위 검사 → `NOT_IN_CONTROL`, DENIED, TEMPORARILY_REJECTED 또는 `IFollowControlClient`(`BusFollowControlClient`) 호출. MAVLink param 변환 함수와 조건 판정 함수를 나눈다. IN_PROGRESS 의 `progress` 는 `follow/status` 의 스캔 진행 | D | icd 4.2 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | D | icd 4.2 ④ |
 | `gcs_forward_policy` (함수) | 통제기 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(결과 값), mavlink_gateway 가 처리(HOLD → 제자리 유지). 입력은 `ForwardObservation`(보낸 통제기의 제어권, 메시지 종류와 인자, FC 모드, armed, 비행 중, 전역 위치 유효, setpoint 송신 중, 추종 또는 스캔 중, 착륙 잠금, 조종사 개입 중). icd 5.2 표를 이 함수 하나에 둔다 | E | icd 5.2 |

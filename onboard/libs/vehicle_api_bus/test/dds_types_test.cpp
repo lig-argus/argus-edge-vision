@@ -21,6 +21,7 @@
 #include "argus_msg/fc_mode_event.hpp"
 #include "argus_msg/fc_state.hpp"
 #include "argus_msg/follow_command.hpp"
+#include "argus_msg/follow_status.hpp"
 
 namespace argus::vehicle_api_bus {
 namespace {
@@ -28,6 +29,7 @@ namespace {
 using bus_zmq::Bytes;
 using vehicle_api::FollowOutcome;
 using vehicle_api::FollowResult;
+using vehicle_api::FollowStatus;
 
 class DdsTypesTest : public ::testing::Test {
 protected:
@@ -287,6 +289,130 @@ TEST_F(DdsTypesTest, FollowResultWithUnspecifiedOutcomeCannotBeConverted) {
     sample.outcome(idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED);
 
     EXPECT_EQ(from_sample<FollowResult>(sample), std::nullopt);
+}
+
+vehicle_api::TrackTarget sample_target(std::uint32_t track_id) {
+    vehicle_api::TrackTarget target;
+    target.sensor = vehicle_api::Sensor::Eo;
+    target.generation = 3;
+    target.class_id = 2;
+    target.track_id = track_id;
+    target.label = "person";
+    return target;
+}
+
+TEST_F(DdsTypesTest, FollowStatusKeepsEveryField) {
+    FollowStatus status;
+    status.session_id = "session-f";
+    status.controller_session = "controller-f";
+    status.client_session = "client-f";
+    status.onboard_session = "onboard-g";
+    status.uid = "uid-1";
+    status.fc_epoch = 4;
+    status.received_monotonic_ns = 9'000'000;
+    status.mission_state = vehicle_api::MissionState::HoldTransition;
+    status.target_state = vehicle_api::TargetState::Predicted;
+    status.selected = sample_target(17);
+    vehicle_api::FollowCommandResult track_start;
+    track_start.command_id = vehicle_api::CommandId{42};
+    track_start.action = vehicle_api::FollowAction::TrackStart;
+    track_start.outcome = FollowOutcome::Succeeded;
+    track_start.request_accepted = true;
+    track_start.target = sample_target(17);
+    vehicle_api::FollowCommandResult search;
+    search.command_id = vehicle_api::CommandId{43};
+    search.action = vehicle_api::FollowAction::Search;
+    search.outcome = FollowOutcome::Failed;
+    search.request_accepted = true;
+    search.reason = "timeout";
+    status.command_results = {track_start, search};
+    status.command_epoch = 5;
+    status.command_sent = true;
+    vehicle_api::ScanProgress scan;
+    scan.yaw_rate_rad_s = 0.3;
+    scan.sweep_rad = 6.0;
+    scan.timeout_s = 30.0;
+    scan.progress_deg = 90.0;
+    scan.remaining_s = 15.0;
+    status.scan = scan;
+
+    expect_same_proto_body<FollowStatus, idl::FollowStatus>(status);
+}
+
+TEST_F(DdsTypesTest, FollowStatusKeepsEmptyOptionalValues) {
+    FollowStatus status;
+    status.mission_state = vehicle_api::MissionState::Idle;
+    status.scan = vehicle_api::ScanProgress{};  // remaining_s 없음
+
+    const std::optional<FollowStatus> returned =
+        through_idl<FollowStatus, idl::FollowStatus>(status);
+
+    ASSERT_TRUE(returned.has_value());
+    const FollowStatus received = returned.value_or(FollowStatus{});
+    EXPECT_FALSE(received.selected.has_value());
+    EXPECT_TRUE(received.command_results.empty());
+    ASSERT_TRUE(received.scan.has_value());
+    EXPECT_FALSE(received.scan.value_or(vehicle_api::ScanProgress{}).remaining_s.has_value());
+    expect_same_proto_body<FollowStatus, idl::FollowStatus>(status);
+}
+
+TEST_F(DdsTypesTest, EveryMissionAndTargetStateKeepsItsValue) {
+    for (const vehicle_api::MissionState state :
+         {vehicle_api::MissionState::Idle, vehicle_api::MissionState::Preparing,
+          vehicle_api::MissionState::FollowActive, vehicle_api::MissionState::HoldTransition,
+          vehicle_api::MissionState::HoldWait, vehicle_api::MissionState::ScanActive,
+          vehicle_api::MissionState::Manual, vehicle_api::MissionState::Fault,
+          vehicle_api::MissionState::Unknown}) {
+        FollowStatus status;
+        status.mission_state = state;
+        expect_same_proto_body<FollowStatus, idl::FollowStatus>(status);
+    }
+    for (const vehicle_api::TargetState state :
+         {vehicle_api::TargetState::None, vehicle_api::TargetState::Confirmed,
+          vehicle_api::TargetState::Predicted, vehicle_api::TargetState::Lost,
+          vehicle_api::TargetState::Unknown}) {
+        FollowStatus status;
+        status.target_state = state;
+        expect_same_proto_body<FollowStatus, idl::FollowStatus>(status);
+    }
+}
+
+TEST_F(DdsTypesTest, FollowStatusUnspecifiedEnumValuesBecomeUnknown) {
+    idl::FollowStatus sample;
+    sample.mission_state(idl::MissionState::MISSION_STATE_UNSPECIFIED);
+    sample.target_state(idl::TargetState::TARGET_STATE_UNSPECIFIED);
+    idl::FollowStatus_CommandResult entry;
+    entry.action(idl::FollowAction::FOLLOW_ACTION_UNSPECIFIED);
+    entry.outcome(idl::FollowOutcome::FOLLOW_OUTCOME_SUCCEEDED);
+    sample.command_results().push_back(entry);
+
+    const std::optional<FollowStatus> status = from_sample<FollowStatus>(sample);
+
+    ASSERT_TRUE(status.has_value());
+    const FollowStatus received = status.value_or(FollowStatus{});
+    EXPECT_EQ(received.mission_state, vehicle_api::MissionState::Unknown);
+    EXPECT_EQ(received.target_state, vehicle_api::TargetState::Unknown);
+    ASSERT_EQ(received.command_results.size(), 1U);
+    EXPECT_EQ(received.command_results[0].action, vehicle_api::FollowAction::Unknown);
+}
+
+TEST_F(DdsTypesTest, FollowStatusDropsCommandResultWithUnspecifiedOutcome) {
+    idl::FollowStatus sample;
+    idl::FollowStatus_CommandResult dropped;
+    dropped.command_id(1);
+    dropped.outcome(idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED);
+    idl::FollowStatus_CommandResult kept;
+    kept.command_id(2);
+    kept.outcome(idl::FollowOutcome::FOLLOW_OUTCOME_IN_PROGRESS);
+    sample.command_results().push_back(dropped);
+    sample.command_results().push_back(kept);
+
+    const std::optional<FollowStatus> status = from_sample<FollowStatus>(sample);
+
+    ASSERT_TRUE(status.has_value());
+    const FollowStatus received = status.value_or(FollowStatus{});
+    ASSERT_EQ(received.command_results.size(), 1U);
+    EXPECT_EQ(received.command_results[0].command_id, vehicle_api::CommandId{2});
 }
 
 }  // namespace
