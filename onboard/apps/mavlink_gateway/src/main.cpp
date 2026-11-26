@@ -2,9 +2,8 @@
 // 규약: docs/design/uml/class_mavlink_gateway.md 2절, 4절
 // 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계를 생성하는 유일한 곳이다. 그 밖의 코드는
 // 인터페이스로만 사용한다. 구성은 FC 쪽(FcGateway)과 통제기 쪽(통제기 연결, 제어권, 명령 수신, 두절
-// 감시)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig, protocol/dds_settings.hpp,
-// protocol/zmq_endpoints.hpp)을 사용한다
-// 인자
+// 감시, 요청 메시지 응답)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig,
+// protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다 인자
 // - --bus dds|zmq: 통신 구현. 기본값 dds. ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수
 // 있다
 // - --dds-domain N: DDS domain. 기본값 protocol::kDefaultDdsDomain
@@ -24,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <zmq.hpp>
 
 #include "argus/bus/bus.hpp"
@@ -40,19 +40,24 @@
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
 #include "argus/mavlink_gateway/request_header_factory.hpp"
+#include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
 #include "argus/mavlink_gateway/udp_gcs_link.hpp"
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
+#include "argus/mavlink_gateway/video_stream_information.hpp"
 #include "argus/protocol/dds_settings.hpp"
 #include "argus/protocol/topics.hpp"
 #include "argus/protocol/zmq_endpoints.hpp"
 #include "argus/vehicle_api_bus/bus_follow_control_client.hpp"
 #include "argus/vehicle_api_bus/bus_follow_status_subscriber.hpp"
 #include "argus/vehicle_api_bus/zmq_codecs.hpp"
+#include "argus/video_api_bus/bus_video_stream_info_subscriber.hpp"
+#include "argus/video_api_bus/zmq_codecs.hpp"
 
 #ifdef ARGUS_HAS_BUS_DDS
 #include "argus/bus_dds/dds_bus.hpp"
 #include "argus/vehicle_api_bus/dds_types.hpp"
+#include "argus/video_api_bus/dds_types.hpp"
 #endif
 
 namespace {
@@ -162,8 +167,8 @@ std::string make_session_id() {
 }
 
 // mavlink_gateway 가 쓰는 이름의 ZeroMQ 엔드포인트 (process_interfaces.md 5.1, 5.2).
-// fc/* 와 control/mode_request 는 bind, control/setpoint, follow/status, follow/command 는 connect
-// 한다 (ZmqBus 가 역할로 정함)
+// fc/* 와 control/mode_request 는 bind, control/setpoint, follow/status, follow/command,
+// video/stream_info 는 connect 한다 (ZmqBus 가 역할로 정함)
 bus_zmq::ZmqEndpointTable endpoints() {
     const std::string fc_state{protocol::kDefaultFcStateEndpoint};
     return {
@@ -177,6 +182,8 @@ bus_zmq::ZmqEndpointTable endpoints() {
         {std::string(protocol::kFollowStatus), std::string(protocol::kDefaultControlStateEndpoint)},
         {std::string(protocol::kFollowCommand),
          std::string(protocol::kDefaultFollowCommandEndpoint)},
+        {std::string(protocol::kVideoStreamInfo),
+         std::string(protocol::kDefaultVideoStreamInfoEndpoint)},
     };
 }
 
@@ -203,13 +210,18 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
                                            bus_zmq::ZmqPoller& poller, const core::IClock& clock,
                                            const bus_zmq::ZmqEndpointTable& table) {
     if (options.bus == BusKind::Zmq) {
-        return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table,
-                                                 argus::vehicle_api_bus::zmq_codecs());
+        bus_zmq::ZmqCodecTable codecs = argus::vehicle_api_bus::zmq_codecs();
+        bus_zmq::ZmqCodecTable video_codecs = argus::video_api_bus::zmq_codecs();
+        codecs.merge(video_codecs);
+        return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table, std::move(codecs));
     }
 #ifdef ARGUS_HAS_BUS_DDS
+    argus::bus_dds::DdsTypeTable types = argus::vehicle_api_bus::dds_types();
+    argus::bus_dds::DdsTypeTable video_types = argus::video_api_bus::dds_types();
+    types.merge(video_types);
     // 원인은 DdsBus 가 기록한다
     return argus::bus_dds::DdsBus::create(poller, poller, clock, options.dds_domain,
-                                          argus::vehicle_api_bus::dds_types());
+                                          std::move(types));
 #else
     std::cerr << kLogPrefix << "DDS 없이 빌드됨 (ARGUS_BUILD_BUS_DDS=OFF). " << kBusOption << " "
               << kBusZmq << " 로 실행해야 한다\n";
@@ -225,9 +237,11 @@ struct GcsSide {
     mavlink_gateway::InactiveLandingLock landing_lock;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowStatusSubscriber> follow_status;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowControlClient> follow_control;
+    std::unique_ptr<argus::video_api_bus::BusVideoStreamInfoSubscriber> video_stream_info;
     std::unique_ptr<mavlink_gateway::RequestHeaderFactory> request_headers;
     std::unique_ptr<mavlink_gateway::ControlAuthority> authority;
     std::unique_ptr<mavlink_gateway::RequestOperatorControlHandler> request_control_handler;
+    std::unique_ptr<mavlink_gateway::RequestMessageHandler> request_message_handler;
     std::unique_ptr<mavlink_gateway::MavlinkCommandReceiver> receiver;
     std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
     core::PeriodicTimer receiver_timer;
@@ -243,7 +257,8 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     gcs.link = mavlink_gateway::UdpGcsLink::create(poller, config);
     gcs.follow_status = argus::vehicle_api_bus::BusFollowStatusSubscriber::create(bus, clock);
     gcs.follow_control = argus::vehicle_api_bus::BusFollowControlClient::create(bus);
-    if (!gcs.link || !gcs.follow_status || !gcs.follow_control) {
+    gcs.video_stream_info = argus::video_api_bus::BusVideoStreamInfoSubscriber::create(bus, clock);
+    if (!gcs.link || !gcs.follow_status || !gcs.follow_control || !gcs.video_stream_info) {
         return false;
     }
     gcs.registry = std::make_unique<mavlink_gateway::GcsRegistry>(*gcs.link, clock);
@@ -259,6 +274,18 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
         *gcs.registry, *gcs.link, clock, *gcs.authority, gcs.activity);
     gcs.receiver->add_handler(*gcs.request_control_handler,
                               mavlink_gateway::RequestOperatorControlHandler::kRules);
+    gcs.request_message_handler =
+        std::make_unique<mavlink_gateway::RequestMessageHandler>(*gcs.link);
+    const argus::video_api::IVideoStreamInfoSource* const video_source =
+        gcs.video_stream_info.get();
+    const mavlink_gateway::IGcsLink* const link = gcs.link.get();
+    gcs.request_message_handler->add_message(
+        MAVLINK_MSG_ID_VIDEO_STREAM_INFORMATION,
+        [video_source, link](const mavlink_gateway::CommandRequest& request) {
+            return mavlink_gateway::build_video_stream_information(request, *video_source, *link);
+        });
+    gcs.receiver->add_handler(*gcs.request_message_handler,
+                              mavlink_gateway::RequestMessageHandler::kRules);
     gcs.monitor =
         std::make_unique<mavlink_gateway::GcsLinkMonitor>(mavlink_gateway::GcsLinkMonitorInputs{
             *gcs.registry, *gcs.authority, clock, *gcs.follow_status, *gcs.follow_control,
