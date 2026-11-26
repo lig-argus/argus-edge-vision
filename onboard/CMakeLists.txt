@@ -61,6 +61,8 @@ add_subdirectory(libs/perception_api_bus)
 add_subdirectory(libs/vehicle_api)
 add_subdirectory(libs/vehicle_api_testing)
 add_subdirectory(libs/vehicle_api_bus)
+add_subdirectory(libs/video_api)
+add_subdirectory(libs/video_api_bus)
 
 # 실행 파일 (프로세스 하나에 폴더 하나)
 add_subdirectory(apps/mavlink_gateway)

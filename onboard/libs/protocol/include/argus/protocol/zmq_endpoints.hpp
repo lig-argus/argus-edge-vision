@@ -22,6 +22,8 @@ inline constexpr std::string_view kDefaultFollowCommandEndpoint = "tcp://127.0.0
 inline constexpr std::string_view kDefaultVisionEndpoint = "tcp://127.0.0.1:6374";
 // PUB: tracking/tracks, tracking/status (추적기가 bind)
 inline constexpr std::string_view kDefaultTrackingEndpoint = "tcp://127.0.0.1:6375";
+// PUB: video/stream_info (영상 송신부가 bind)
+inline constexpr std::string_view kDefaultVideoStreamInfoEndpoint = "tcp://127.0.0.1:6376";
 
 }  // namespace argus::protocol
 
