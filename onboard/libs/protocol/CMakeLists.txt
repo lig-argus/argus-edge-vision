@@ -40,6 +40,7 @@ protobuf_generate(TARGET argus_protocol LANGUAGE cpp
                          proto/argus_msg/vision_frame_gray8.proto
                          proto/argus_msg/vision_npu_input_jpeg.proto
                          proto/argus_msg/vision_overlay_jpeg.proto
+                         proto/argus_msg/video_stream_info.proto
                   IMPORT_DIRS proto
                   PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_include_directories(argus_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -59,7 +60,7 @@ if(ARGUS_BUILD_BUS_DDS)
     find_package(fastdds 3 REQUIRED)
     set(argus_idl_names common control_mode_request control_setpoint detection fc_attitude fc_mode_event
                         fc_state follow_command follow_status perception_observations tracking_status
-                        tracking_tracks vision_frame_gray8)
+                        tracking_tracks video_stream_info vision_frame_gray8)
     set(argus_idl_sources "")
     foreach(name IN LISTS argus_idl_names)
         list(APPEND argus_idl_sources idl/generated/argus_msg/${name}PubSubTypes.cxx

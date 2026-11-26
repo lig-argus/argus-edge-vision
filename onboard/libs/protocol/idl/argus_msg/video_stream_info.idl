@@ -1,0 +1,37 @@
+// video/stream_info: 영상 송신부 → mavlink_gateway (video_stream_info.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여). .proto 의 중첩 메시지는 module 범위의
+// 구조체로 정의하고 VideoStreamInfo_ 를 붙인다 (메시지이름_역할 규칙)
+#include "follow_command.idl"
+
+module argus {
+    module idl {
+        // 영상 트랙의 코덱
+        enum VideoCodec {
+            VIDEO_CODEC_UNSPECIFIED,
+            VIDEO_CODEC_H264,
+            VIDEO_CODEC_JPEG
+        };
+
+        // 스트림 하나. 필드의 뜻은 video_stream_info.proto
+        struct VideoStreamInfo_Stream {
+            uint32 stream_id;  // 1부터
+            Sensor sensor;
+            string name;
+            uint32 rtsp_port;  // RTSP 서버가 실제로 연 포트
+            string rtsp_path;  // "/" 로 시작
+            uint32 width;
+            uint32 height;
+            double framerate_hz;
+            VideoCodec codec;
+            uint32 bitrate_bps;  // 모르면 0
+            double hfov_deg;     // 모르면 0
+            boolean running;     // 최근 1 초 안에 프레임을 받아 내보냈으면 true
+        };
+
+        struct VideoStreamInfo {
+            string source;                 // 발행자 식별 문자열
+            int64 published_monotonic_ns;  // 발행 시각 (CLOCK_MONOTONIC)
+            sequence<VideoStreamInfo_Stream> streams;
+        };
+    };
+};

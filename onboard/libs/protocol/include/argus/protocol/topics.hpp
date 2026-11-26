@@ -51,6 +51,9 @@ inline constexpr std::int32_t kControlSetpointQueueDepth = kDefaultQueueDepth;
 // 추종 제어 → mavlink_gateway
 inline constexpr std::string_view kFollowStatus = "follow/status";
 inline constexpr std::int32_t kFollowStatusQueueDepth = kDefaultQueueDepth;
+// 영상 송신부 → mavlink_gateway
+inline constexpr std::string_view kVideoStreamInfo = "video/stream_info";
+inline constexpr std::int32_t kVideoStreamInfoQueueDepth = kDefaultQueueDepth;
 
 // 요청-응답 (요청 → 응답)
 // 추종 제어 → mavlink_gateway

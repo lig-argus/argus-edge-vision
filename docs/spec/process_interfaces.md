@@ -74,7 +74,7 @@ flowchart LR
 - 통신 구현의 선택: 실행 파일은 실행 인자 `--bus dds|zmq` 로 통신 구현을 고른다. 기본값은 DDS(`DdsBus`)이고, `ARGUS_BUILD_BUS_DDS` 를 끄고 빌드한 실행 파일은 ZeroMQ 만 사용할 수 있다. DDS domain 은 `--dds-domain` (기본값 0, `onboard/libs/protocol/include/argus/protocol/dds_settings.hpp`)이며, 같은 domain 의 프로세스끼리만 통신하므로 RPi 의 모든 프로세스가 같은 값을 사용한다.
 - ZeroMQ 구현: 토픽은 PUB/SUB, 요청-응답은 REQ/REP. multipart 구성 `[0] 토픽`, `[1] protobuf 본문`, 필요하면 `[2] 바이너리`(프레임 픽셀과 같이 큰 값은 본문과 따로 보낸다). 주소는 `onboard/libs/protocol/include/argus/protocol/zmq_endpoints.hpp`.
 - 직렬화: protobuf (proto3). 메시지 정의는 `onboard/libs/protocol/proto/argus_msg/<토픽 이름>.proto`(package `argus.msg`) 하나이며, 여러 토픽이 함께 쓰는 타입은 별도 파일로 두고 `import "argus_msg/<이름>.proto"` 로 부른다. C++ 코드는 CMake 가 빌드 때, Python 코드는 `tools/generate_proto.sh` 가 생성한다 (README "onboard 구조와 빌드"). 5장의 필드 표는 .proto 와 같아야 하고, 다르면 .proto 가 맞다.
-- DDS 구현(`DdsBus`)의 메시지 정의: IDL 타입 토픽으로 보낸다. 정의는 `onboard/libs/protocol/idl/argus_msg/<토픽 이름>.idl`(module `argus::idl`) 이며 필드의 뜻과 단위는 같은 이름의 `.proto` 와 같다. `.proto` 와 다른 점(seq 없음, oneof 대신 enum 또는 union 등)은 각 `.idl` 의 머리 주석에 기록한다. C++ 코드는 `tools/generate_idl.sh` 가 fastddsgen 으로 생성해 `onboard/libs/protocol/idl/generated/` 에 커밋한다. 현재 IDL 은 `vision/frame/gray8`, `perception/observations`, `tracking/tracks`, `tracking/status`, `follow/status`, `fc/attitude`, `fc/state`, `fc/mode_event`, `control/setpoint`, `control/mode_request`, `follow/command` 에만 있다. `vision/frame/gray8` 의 픽셀은 ZeroMQ 의 바이너리 프레임 대신 표본의 `pixels` 멤버로 보낸다.
+- DDS 구현(`DdsBus`)의 메시지 정의: IDL 타입 토픽으로 보낸다. 정의는 `onboard/libs/protocol/idl/argus_msg/<토픽 이름>.idl`(module `argus::idl`) 이며 필드의 뜻과 단위는 같은 이름의 `.proto` 와 같다. `.proto` 와 다른 점(seq 없음, oneof 대신 enum 또는 union 등)은 각 `.idl` 의 머리 주석에 기록한다. C++ 코드는 `tools/generate_idl.sh` 가 fastddsgen 으로 생성해 `onboard/libs/protocol/idl/generated/` 에 커밋한다. 현재 IDL 은 `vision/frame/gray8`, `perception/observations`, `tracking/tracks`, `tracking/status`, `follow/status`, `video/stream_info`, `fc/attitude`, `fc/state`, `fc/mode_event`, `control/setpoint`, `control/mode_request`, `follow/command` 에만 있다. `vision/frame/gray8` 의 픽셀은 ZeroMQ 의 바이너리 프레임 대신 표본의 `pixels` 멤버로 보낸다.
 - 공통 필드: 모든 메시지에 `source`(카메라 원본 식별 문자열. MAVLink 의 `ARGUS_SENSOR` enum 과의 대응표는 mavlink_gateway 설정), `seq`(발행자가 발행마다 1 씩 올린 번호. 발행자마다 1 부터 시작하고, 받는 쪽은 건너뛴 번호로 유실을 센다), RPi `CLOCK_MONOTONIC` 기준 `*_monotonic_ns`. 메시지 타입을 나타내는 필드(`schema` 문자열)는 두지 않는다. 타입은 토픽 이름(요청-응답은 요청 이름)이 정하고 받는 쪽은 그 토픽의 생성 클래스로 바로 파싱한다. 값이 항상 같은 문자열(`clock_domain`, `coordinate_frame` 등)은 메시지에 넣지 않고 이 문서에 적는다.
 - 요청(REQ) 공통 필드: `command_id`(요청마다 고유), `session_id`(요청자 세션), `seq`, `fc_epoch`(요청을 만들 때 mavlink_gateway 가 `fc/attitude`·`fc/state` 에 발행하고 있는 현재 값, 아래), `valid_until_monotonic_ns`(이 시각이 지나면 실행하지 않음). 받는 쪽은 이 값들을 결과에 그대로 남긴다. C++ 값 타입에서는 `valid_until_monotonic_ns` 를 뺀 네 필드를 `RequestId` 로 묶어 요청(`RequestHeader.id`)과 결과(`FollowResult.id`)가 같은 멤버를 가진다 (`onboard/libs/vehicle_api/include/argus/vehicle_api/types.hpp`). 응답(REP): 같은 `command_id`, `result`(ACCEPTED·REJECTED·FAILED), `reason`.
 - `fc_epoch`: FC 연결의 epoch(uint64). mavlink_gateway 가 FC 와 연결을 새로 맺거나 FC 재부팅을 감지할 때마다 1 증가시킨다. `fc/attitude`·`fc/state` 메시지와 요청이 같은 FC 연결·같은 FC 부팅 구간에서 나온 것인지 확인하는 데 쓴다. 추적기 `generation` 과 같은 방식이지만 세는 대상(추적기 재시작이 아니라 FC 연결·FC 부팅)이 다르다. FC 시각, MAVLink 패킷 번호와도 다르다.
@@ -123,7 +123,7 @@ flowchart LR
 | `fc/state` | mavlink_gateway → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, offboard_hover(mavlink_gateway 가 Offboard 상태에서 제자리 유지 setpoint 를 송신 중인지. 기체가 실제로 정지한 상태는 비행 모드가 Hold 이거나, Offboard 이면서 이 값이 true 인 경우). 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → mavlink_gateway | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
 | `follow/status` | 추종 제어 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/follow_status.proto` (5.1.2). 임무 상태(8개), 표적 상태(4개), 선택 표적, 명령 결과, Scan 진행. `ARGUS_STATUS` 보고에 사용 |
-| `video/stream_info` | 영상 송신부 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/video_stream_info.proto` (정의는 구현 때 추가). 스트림마다 stream_id, 센서, RTSP 포트와 경로, 해상도, FPS, 코덱, 비트 전송률, 송신 중 여부. RTSP 주소의 호스트는 넣지 않는다 (통제기가 접속할 주소는 통제기 쪽 네트워크를 아는 mavlink_gateway 가 정함). `VIDEO_STREAM_INFORMATION` 응답에 사용. 늦게 시작한 구독자도 받도록 1 Hz 로 다시 발행한다 |
+| `video/stream_info` | 영상 송신부 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/video_stream_info.proto` (5.1.6). 영상 송신부가 실제로 송신하는 스트림의 정보. `VIDEO_STREAM_INFORMATION` 응답에 사용. 늦게 시작한 구독자도 받도록 1 Hz 로 다시 발행한다 |
 | `fc/mode_event` | mavlink_gateway → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
 - 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
@@ -217,6 +217,21 @@ flowchart LR
 
 - `session_id` 는 `vision/overlay/jpeg`, `vision/npu_input/jpeg` 헤더의 session_id 와 같은 값이다.
 - 같은 프레임의 탐지 결과와 묶는 키는 `(source, session_id, frame_id)` 다. session_id 가 비어 있는 메시지는 `(source, frame_id)` 로 묶으며, 탐지 프로세스가 다시 시작된 직후에는 이전 실행의 메시지와 섞일 수 있다 **[미결 14]**.
+
+#### 5.1.6 `video/stream_info` 필드 (`video_stream_info.proto` 의 `VideoStreamInfo`)
+
+| 필드 | 타입 | 뜻 |
+|---|---|---|
+| `source`, `seq`, `published_monotonic_ns` | string, uint64, int64 | 3장 공통 필드 |
+| `streams[].stream_id` | uint32 | 1부터. `VIDEO_STREAM_INFORMATION.stream_id` |
+| `streams[].sensor` | `Sensor` | 영상의 센서 (IR, EO) |
+| `streams[].name` | string | 스트림 이름 |
+| `streams[].rtsp_port`, `rtsp_path` | uint32, string | RTSP 서버가 실제로 연 포트와 경로. 주소의 호스트는 없음 (mavlink_gateway 가 통제기 쪽 주소로 정함) |
+| `streams[].width`, `height`, `framerate_hz` | uint32, uint32, double | 송신 해상도와 FPS |
+| `streams[].codec` | `VideoCodec` | H.264 또는 JPEG |
+| `streams[].bitrate_bps` | uint32 | 인코더 설정의 비트 전송률. 모르면 0 |
+| `streams[].hfov_deg` | double | 수평 화각. 모르면 0 |
+| `streams[].running` | bool | 최근 1 초 안에 bus 에서 프레임을 받아 RTSP 서버로 내보냈으면 true. 서버만 열려 있고 프레임이 오지 않으면 false. 1 초는 통제기의 영상 정지 판단(`video.md` 미결 7)과 같은 값 |
 
 ### 5.2 요청-응답 (REQ/REP)
 
