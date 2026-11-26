@@ -101,7 +101,7 @@ std::optional<double> empty_if_nan(double value) {
 
 // std::variant 의 타입마다 표본의 action(union)을 채운다
 struct ActionToIdl {
-    idl::FollowAction& action;
+    idl::FollowCommand_Action& action;
 
     void operator()(const vehicle_api::TrackTarget& target) const {
         idl::FollowCommand_TrackStart track_start;
@@ -134,9 +134,9 @@ void to_idl_follow_command(const FollowCommandRequest& request, idl::FollowComma
 }
 
 bool from_idl_follow_command(const idl::FollowCommand& sample, FollowCommandRequest& request) {
-    const idl::FollowAction& action = sample.action();
+    const idl::FollowCommand_Action& action = sample.action();
     switch (action._d()) {
-        case idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START: {
+        case idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START: {
             vehicle_api::TrackTarget target;
             target.sensor = from_idl(action.track_start().sensor());
             target.generation = action.track_start().generation();
@@ -146,7 +146,7 @@ bool from_idl_follow_command(const idl::FollowCommand& sample, FollowCommandRequ
             request.action = target;
             break;
         }
-        case idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP: {
+        case idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP: {
             const std::optional<vehicle_api::StopReason> reason = from_idl(action.stop().reason());
             if (!reason) {
                 return false;
@@ -154,7 +154,7 @@ bool from_idl_follow_command(const idl::FollowCommand& sample, FollowCommandRequ
             request.action = *reason;
             break;
         }
-        case idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH: {
+        case idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH: {
             vehicle_api::ScanRequest scan;
             scan.yaw_range_rad = empty_if_nan(action.search().yaw_range_rad());
             scan.yaw_rate_rad_s = empty_if_nan(action.search().yaw_rate_rad_s());

@@ -694,27 +694,27 @@ private:
 
 };
 /*!
- * @brief This class represents the enumeration FollowActionKind defined by the user in the IDL file.
+ * @brief This class represents the enumeration FollowCommand_ActionCase defined by the user in the IDL file.
  * @ingroup follow_command
  */
-enum class FollowActionKind : int32_t
+enum class FollowCommand_ActionCase : int32_t
 {
-    FOLLOW_ACTION_KIND_TRACK_START,
-    FOLLOW_ACTION_KIND_STOP,
-    FOLLOW_ACTION_KIND_SEARCH
+    FOLLOW_COMMAND_ACTION_CASE_TRACK_START,
+    FOLLOW_COMMAND_ACTION_CASE_STOP,
+    FOLLOW_COMMAND_ACTION_CASE_SEARCH
 };
 /*!
- * @brief This class represents the union FollowAction defined by the user in the IDL file.
+ * @brief This class represents the union FollowCommand_Action defined by the user in the IDL file.
  * @ingroup follow_command
  */
-class FollowAction
+class FollowCommand_Action
 {
 public:
 
     /*!
      * @brief Default constructor.
      */
-    eProsima_user_DllExport FollowAction()
+    eProsima_user_DllExport FollowCommand_Action()
     {
         selected_member_ = 0x00000001;
         member_destructor_ = [&]()
@@ -728,7 +728,7 @@ public:
     /*!
      * @brief Default destructor.
      */
-    eProsima_user_DllExport ~FollowAction()
+    eProsima_user_DllExport ~FollowCommand_Action()
     {
         if (member_destructor_)
         {
@@ -738,10 +738,10 @@ public:
 
     /*!
      * @brief Copy constructor.
-     * @param x Reference to the object FollowAction that will be copied.
+     * @param x Reference to the object FollowCommand_Action that will be copied.
      */
-    eProsima_user_DllExport FollowAction(
-            const FollowAction& x)
+    eProsima_user_DllExport FollowCommand_Action(
+            const FollowCommand_Action& x)
     {
         m__d = x.m__d;
 
@@ -764,10 +764,10 @@ public:
 
     /*!
      * @brief Move constructor.
-     * @param x Reference to the object FollowAction that will be copied.
+     * @param x Reference to the object FollowCommand_Action that will be copied.
      */
-    eProsima_user_DllExport FollowAction(
-            FollowAction&& x) noexcept
+    eProsima_user_DllExport FollowCommand_Action(
+            FollowCommand_Action&& x) noexcept
     {
         m__d = x.m__d;
 
@@ -790,10 +790,10 @@ public:
 
     /*!
      * @brief Copy assignment.
-     * @param x Reference to the object FollowAction that will be copied.
+     * @param x Reference to the object FollowCommand_Action that will be copied.
      */
-    eProsima_user_DllExport FollowAction& operator =(
-            const FollowAction& x)
+    eProsima_user_DllExport FollowCommand_Action& operator =(
+            const FollowCommand_Action& x)
     {
         m__d = x.m__d;
 
@@ -818,10 +818,10 @@ public:
 
     /*!
      * @brief Move assignment.
-     * @param x Reference to the object FollowAction that will be copied.
+     * @param x Reference to the object FollowCommand_Action that will be copied.
      */
-    eProsima_user_DllExport FollowAction& operator =(
-            FollowAction&& x) noexcept
+    eProsima_user_DllExport FollowCommand_Action& operator =(
+            FollowCommand_Action&& x) noexcept
     {
         m__d = x.m__d;
 
@@ -846,10 +846,10 @@ public:
 
     /*!
      * @brief Comparison operator.
-     * @param x FollowAction object to compare.
+     * @param x FollowCommand_Action object to compare.
      */
     eProsima_user_DllExport bool operator ==(
-            const FollowAction& x) const
+            const FollowCommand_Action& x) const
     {
         bool ret_value {false};
 
@@ -887,10 +887,10 @@ public:
 
     /*!
      * @brief Comparison operator.
-     * @param x FollowAction object to compare.
+     * @param x FollowCommand_Action object to compare.
      */
     eProsima_user_DllExport bool operator !=(
-            const FollowAction& x) const
+            const FollowCommand_Action& x) const
     {
         return !(*this == x);
     }
@@ -901,27 +901,27 @@ public:
      * @exception eprosima::fastcdr::exception::BadParamException This exception is thrown if the new value doesn't correspond to the selected union member.
      */
     eProsima_user_DllExport void _d(
-            FollowActionKind __d)
+            FollowCommand_ActionCase __d)
     {
         bool valid_discriminator = false;
 
         switch (__d)
         {
-                        case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START:
+                        case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                             if (0x00000001 == selected_member_)
                             {
                                 valid_discriminator = true;
                             }
                             break;
 
-                        case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP:
+                        case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP:
                             if (0x00000002 == selected_member_)
                             {
                                 valid_discriminator = true;
                             }
                             break;
 
-                        case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH:
+                        case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                             if (0x00000003 == selected_member_)
                             {
                                 valid_discriminator = true;
@@ -942,7 +942,7 @@ public:
      * @brief This function returns the value of the discriminator.
      * @return Value of the discriminator
      */
-    eProsima_user_DllExport FollowActionKind _d() const
+    eProsima_user_DllExport FollowCommand_ActionCase _d() const
     {
         return m__d;
     }
@@ -955,7 +955,7 @@ public:
             const FollowCommand_TrackStart& _track_start)
     {
         track_start_() = _track_start;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START;
     }
 
     /*!
@@ -966,7 +966,7 @@ public:
             FollowCommand_TrackStart&& _track_start)
     {
         track_start_() = _track_start;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START;
     }
 
     /*!
@@ -1008,7 +1008,7 @@ public:
             const FollowCommand_Stop& _stop)
     {
         stop_() = _stop;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP;
     }
 
     /*!
@@ -1019,7 +1019,7 @@ public:
             FollowCommand_Stop&& _stop)
     {
         stop_() = _stop;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP;
     }
 
     /*!
@@ -1061,7 +1061,7 @@ public:
             const FollowCommand_Search& _search)
     {
         search_() = _search;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH;
     }
 
     /*!
@@ -1072,7 +1072,7 @@ public:
             FollowCommand_Search&& _search)
     {
         search_() = _search;
-        m__d = argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH;
+        m__d = argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH;
     }
 
     /*!
@@ -1183,7 +1183,7 @@ private:
             }
 
 
-    FollowActionKind m__d {argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START};
+    FollowCommand_ActionCase m__d {argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START};
 
     union
     {
@@ -1335,7 +1335,7 @@ public:
      * @param _action New value to be copied in member action
      */
     eProsima_user_DllExport void action(
-            const FollowAction& _action)
+            const FollowCommand_Action& _action)
     {
         m_action = _action;
     }
@@ -1345,7 +1345,7 @@ public:
      * @param _action New value to be moved in member action
      */
     eProsima_user_DllExport void action(
-            FollowAction&& _action)
+            FollowCommand_Action&& _action)
     {
         m_action = std::move(_action);
     }
@@ -1354,7 +1354,7 @@ public:
      * @brief This function returns a constant reference to member action
      * @return Constant reference to member action
      */
-    eProsima_user_DllExport const FollowAction& action() const
+    eProsima_user_DllExport const FollowCommand_Action& action() const
     {
         return m_action;
     }
@@ -1363,7 +1363,7 @@ public:
      * @brief This function returns a reference to member action
      * @return Reference to member action
      */
-    eProsima_user_DllExport FollowAction& action()
+    eProsima_user_DllExport FollowCommand_Action& action()
     {
         return m_action;
     }
@@ -1373,7 +1373,7 @@ public:
 private:
 
     RequestHeader m_header;
-    FollowAction m_action;
+    FollowCommand_Action m_action;
 
 };
 /*!

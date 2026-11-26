@@ -355,7 +355,7 @@ void serialize_key(
 template<>
 eProsima_user_DllExport size_t calculate_serialized_size(
         eprosima::fastcdr::CdrSizeCalculator& calculator,
-        const argus::idl::FollowAction& data,
+        const argus::idl::FollowCommand_Action& data,
         size_t& current_alignment)
 {
     using namespace argus::idl;
@@ -374,17 +374,17 @@ eProsima_user_DllExport size_t calculate_serialized_size(
 
     switch (data._d())
     {
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                     calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(1),
                                 data.track_start(), current_alignment);
                     break;
 
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP:
                     calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(2),
                                 data.stop(), current_alignment);
                     break;
 
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                     calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(3),
                                 data.search(), current_alignment);
                     break;
@@ -402,7 +402,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
 template<>
 eProsima_user_DllExport void serialize(
         eprosima::fastcdr::Cdr& scdr,
-        const argus::idl::FollowAction& data)
+        const argus::idl::FollowCommand_Action& data)
 {
     using namespace argus::idl;
 
@@ -416,15 +416,15 @@ eProsima_user_DllExport void serialize(
 
     switch (data._d())
     {
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                     scdr << eprosima::fastcdr::MemberId(1) << data.track_start();
                     break;
 
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP:
                     scdr << eprosima::fastcdr::MemberId(2) << data.stop();
                     break;
 
-                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH:
+                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                     scdr << eprosima::fastcdr::MemberId(3) << data.search();
                     break;
 
@@ -438,7 +438,7 @@ eProsima_user_DllExport void serialize(
 template<>
 eProsima_user_DllExport void deserialize(
         eprosima::fastcdr::Cdr& cdr,
-        argus::idl::FollowAction& data)
+        argus::idl::FollowCommand_Action& data)
 {
     using namespace argus::idl;
 
@@ -450,12 +450,12 @@ eProsima_user_DllExport void deserialize(
                 bool ret_value = true;
                 if (0 == mid.id)
                 {
-                    argus::idl::FollowActionKind discriminator;
+                    argus::idl::FollowCommand_ActionCase discriminator;
                     dcdr >> discriminator;
 
                     switch (discriminator)
                     {
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                                                     {
                                                         argus::idl::FollowCommand_TrackStart track_start_value;
                                                         data.track_start(std::move(track_start_value));
@@ -463,7 +463,7 @@ eProsima_user_DllExport void deserialize(
                                                         break;
                                                     }
 
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP:
                                                     {
                                                         argus::idl::FollowCommand_Stop stop_value;
                                                         data.stop(std::move(stop_value));
@@ -471,7 +471,7 @@ eProsima_user_DllExport void deserialize(
                                                         break;
                                                     }
 
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                                                     {
                                                         argus::idl::FollowCommand_Search search_value;
                                                         data.search(std::move(search_value));
@@ -488,15 +488,15 @@ eProsima_user_DllExport void deserialize(
                 {
                     switch (data._d())
                     {
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                                                     dcdr >> data.track_start();
                                                     break;
 
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP:
                                                     dcdr >> data.stop();
                                                     break;
 
-                                                case argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH:
+                                                case argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                                                     dcdr >> data.search();
                                                     break;
 
