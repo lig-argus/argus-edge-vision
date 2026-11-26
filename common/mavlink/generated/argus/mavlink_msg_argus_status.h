@@ -19,11 +19,12 @@ typedef struct __mavlink_argus_status_t {
  uint8_t control_sysid; /*<  제어권을 가진 통제기의 system id (250~253). 없으면 0. 모든 통제기에 같은 값을 보내며, 통제기는 자기 sysid 와 비교한다.*/
  float scan_yaw_done_rad; /*< [rad] 스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.*/
  float scan_remaining_s; /*< [s] 스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.*/
+ uint8_t control_flags; /*<  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).*/
 }) mavlink_argus_status_t;
 
-#define MAVLINK_MSG_ID_ARGUS_STATUS_LEN 29
+#define MAVLINK_MSG_ID_ARGUS_STATUS_LEN 30
 #define MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN 21
-#define MAVLINK_MSG_ID_45000_LEN 29
+#define MAVLINK_MSG_ID_45000_LEN 30
 #define MAVLINK_MSG_ID_45000_MIN_LEN 21
 
 #define MAVLINK_MSG_ID_ARGUS_STATUS_CRC 133
@@ -35,7 +36,7 @@ typedef struct __mavlink_argus_status_t {
 #define MAVLINK_MESSAGE_INFO_ARGUS_STATUS { \
     45000, \
     "ARGUS_STATUS", \
-    11, \
+    12, \
     {  { "time_boot_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_argus_status_t, time_boot_ms) }, \
          { "cpu_temp", NULL, MAVLINK_TYPE_FLOAT, 0, 4, offsetof(mavlink_argus_status_t, cpu_temp) }, \
          { "target_id", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
@@ -47,12 +48,13 @@ typedef struct __mavlink_argus_status_t {
          { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 20, offsetof(mavlink_argus_status_t, control_sysid) }, \
          { "scan_yaw_done_rad", NULL, MAVLINK_TYPE_FLOAT, 0, 21, offsetof(mavlink_argus_status_t, scan_yaw_done_rad) }, \
          { "scan_remaining_s", NULL, MAVLINK_TYPE_FLOAT, 0, 25, offsetof(mavlink_argus_status_t, scan_remaining_s) }, \
+         { "control_flags", NULL, MAVLINK_TYPE_UINT8_T, 0, 29, offsetof(mavlink_argus_status_t, control_flags) }, \
          } \
 }
 #else
 #define MAVLINK_MESSAGE_INFO_ARGUS_STATUS { \
     "ARGUS_STATUS", \
-    11, \
+    12, \
     {  { "time_boot_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_argus_status_t, time_boot_ms) }, \
          { "cpu_temp", NULL, MAVLINK_TYPE_FLOAT, 0, 4, offsetof(mavlink_argus_status_t, cpu_temp) }, \
          { "target_id", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_argus_status_t, target_id) }, \
@@ -64,6 +66,7 @@ typedef struct __mavlink_argus_status_t {
          { "control_sysid", NULL, MAVLINK_TYPE_UINT8_T, 0, 20, offsetof(mavlink_argus_status_t, control_sysid) }, \
          { "scan_yaw_done_rad", NULL, MAVLINK_TYPE_FLOAT, 0, 21, offsetof(mavlink_argus_status_t, scan_yaw_done_rad) }, \
          { "scan_remaining_s", NULL, MAVLINK_TYPE_FLOAT, 0, 25, offsetof(mavlink_argus_status_t, scan_remaining_s) }, \
+         { "control_flags", NULL, MAVLINK_TYPE_UINT8_T, 0, 29, offsetof(mavlink_argus_status_t, control_flags) }, \
          } \
 }
 #endif
@@ -85,10 +88,11 @@ typedef struct __mavlink_argus_status_t {
  * @param control_sysid  제어권을 가진 통제기의 system id (250~253). 없으면 0. 모든 통제기에 같은 값을 보내며, 통제기는 자기 sysid 와 비교한다.
  * @param scan_yaw_done_rad [rad] 스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.
  * @param scan_remaining_s [s] 스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.
+ * @param control_flags  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
-                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s)
+                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s, uint8_t control_flags)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
@@ -103,6 +107,7 @@ static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t 
     _mav_put_uint8_t(buf, 20, control_sysid);
     _mav_put_float(buf, 21, scan_yaw_done_rad);
     _mav_put_float(buf, 25, scan_remaining_s);
+    _mav_put_uint8_t(buf, 29, control_flags);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -118,6 +123,7 @@ static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t 
     packet.control_sysid = control_sysid;
     packet.scan_yaw_done_rad = scan_yaw_done_rad;
     packet.scan_remaining_s = scan_remaining_s;
+    packet.control_flags = control_flags;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #endif
@@ -144,10 +150,11 @@ static inline uint16_t mavlink_msg_argus_status_pack(uint8_t system_id, uint8_t 
  * @param control_sysid  제어권을 가진 통제기의 system id (250~253). 없으면 0. 모든 통제기에 같은 값을 보내며, 통제기는 자기 sysid 와 비교한다.
  * @param scan_yaw_done_rad [rad] 스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.
  * @param scan_remaining_s [s] 스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.
+ * @param control_flags  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, uint8_t component_id, mavlink_status_t *_status, mavlink_message_t* msg,
-                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s)
+                               uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s, uint8_t control_flags)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
@@ -162,6 +169,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, u
     _mav_put_uint8_t(buf, 20, control_sysid);
     _mav_put_float(buf, 21, scan_yaw_done_rad);
     _mav_put_float(buf, 25, scan_remaining_s);
+    _mav_put_uint8_t(buf, 29, control_flags);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -177,6 +185,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, u
     packet.control_sysid = control_sysid;
     packet.scan_yaw_done_rad = scan_yaw_done_rad;
     packet.scan_remaining_s = scan_remaining_s;
+    packet.control_flags = control_flags;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #endif
@@ -206,11 +215,12 @@ static inline uint16_t mavlink_msg_argus_status_pack_status(uint8_t system_id, u
  * @param control_sysid  제어권을 가진 통제기의 system id (250~253). 없으면 0. 모든 통제기에 같은 값을 보내며, 통제기는 자기 sysid 와 비교한다.
  * @param scan_yaw_done_rad [rad] 스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.
  * @param scan_remaining_s [s] 스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.
+ * @param control_flags  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uint8_t component_id, uint8_t chan,
                                mavlink_message_t* msg,
-                                   uint32_t time_boot_ms,float cpu_temp,uint32_t target_id,uint32_t target_generation,uint8_t health,uint8_t mission_state,uint8_t target_state,uint8_t active_sensor,uint8_t control_sysid,float scan_yaw_done_rad,float scan_remaining_s)
+                                   uint32_t time_boot_ms,float cpu_temp,uint32_t target_id,uint32_t target_generation,uint8_t health,uint8_t mission_state,uint8_t target_state,uint8_t active_sensor,uint8_t control_sysid,float scan_yaw_done_rad,float scan_remaining_s,uint8_t control_flags)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
@@ -225,6 +235,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uin
     _mav_put_uint8_t(buf, 20, control_sysid);
     _mav_put_float(buf, 21, scan_yaw_done_rad);
     _mav_put_float(buf, 25, scan_remaining_s);
+    _mav_put_uint8_t(buf, 29, control_flags);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #else
@@ -240,6 +251,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uin
     packet.control_sysid = control_sysid;
     packet.scan_yaw_done_rad = scan_yaw_done_rad;
     packet.scan_remaining_s = scan_remaining_s;
+    packet.control_flags = control_flags;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);
 #endif
@@ -258,7 +270,7 @@ static inline uint16_t mavlink_msg_argus_status_pack_chan(uint8_t system_id, uin
  */
 static inline uint16_t mavlink_msg_argus_status_encode(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack(system_id, component_id, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s);
+    return mavlink_msg_argus_status_pack(system_id, component_id, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s, argus_status->control_flags);
 }
 
 /**
@@ -272,7 +284,7 @@ static inline uint16_t mavlink_msg_argus_status_encode(uint8_t system_id, uint8_
  */
 static inline uint16_t mavlink_msg_argus_status_encode_chan(uint8_t system_id, uint8_t component_id, uint8_t chan, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack_chan(system_id, component_id, chan, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s);
+    return mavlink_msg_argus_status_pack_chan(system_id, component_id, chan, msg, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s, argus_status->control_flags);
 }
 
 /**
@@ -286,7 +298,7 @@ static inline uint16_t mavlink_msg_argus_status_encode_chan(uint8_t system_id, u
  */
 static inline uint16_t mavlink_msg_argus_status_encode_status(uint8_t system_id, uint8_t component_id, mavlink_status_t* _status, mavlink_message_t* msg, const mavlink_argus_status_t* argus_status)
 {
-    return mavlink_msg_argus_status_pack_status(system_id, component_id, _status, msg,  argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s);
+    return mavlink_msg_argus_status_pack_status(system_id, component_id, _status, msg,  argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s, argus_status->control_flags);
 }
 
 /**
@@ -304,10 +316,11 @@ static inline uint16_t mavlink_msg_argus_status_encode_status(uint8_t system_id,
  * @param control_sysid  제어권을 가진 통제기의 system id (250~253). 없으면 0. 모든 통제기에 같은 값을 보내며, 통제기는 자기 sysid 와 비교한다.
  * @param scan_yaw_done_rad [rad] 스캔 중 지금까지 회전한 yaw. 스캔 중이 아니면 NaN.
  * @param scan_remaining_s [s] 스캔이 끝나기까지 남은 시간. 스캔 중이 아니거나 모르면 NaN.
+ * @param control_flags  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).
  */
 #ifdef MAVLINK_USE_CONVENIENCE_FUNCTIONS
 
-static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s)
+static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s, uint8_t control_flags)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ARGUS_STATUS_LEN];
@@ -322,6 +335,7 @@ static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_
     _mav_put_uint8_t(buf, 20, control_sysid);
     _mav_put_float(buf, 21, scan_yaw_done_rad);
     _mav_put_float(buf, 25, scan_remaining_s);
+    _mav_put_uint8_t(buf, 29, control_flags);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, buf, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #else
@@ -337,6 +351,7 @@ static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_
     packet.control_sysid = control_sysid;
     packet.scan_yaw_done_rad = scan_yaw_done_rad;
     packet.scan_remaining_s = scan_remaining_s;
+    packet.control_flags = control_flags;
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, (const char *)&packet, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #endif
@@ -350,7 +365,7 @@ static inline void mavlink_msg_argus_status_send(mavlink_channel_t chan, uint32_
 static inline void mavlink_msg_argus_status_send_struct(mavlink_channel_t chan, const mavlink_argus_status_t* argus_status)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
-    mavlink_msg_argus_status_send(chan, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s);
+    mavlink_msg_argus_status_send(chan, argus_status->time_boot_ms, argus_status->cpu_temp, argus_status->target_id, argus_status->target_generation, argus_status->health, argus_status->mission_state, argus_status->target_state, argus_status->active_sensor, argus_status->control_sysid, argus_status->scan_yaw_done_rad, argus_status->scan_remaining_s, argus_status->control_flags);
 #else
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, (const char *)argus_status, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #endif
@@ -364,7 +379,7 @@ static inline void mavlink_msg_argus_status_send_struct(mavlink_channel_t chan, 
   is usually the receive buffer for the channel, and allows a reply to an
   incoming message with minimum stack space usage.
  */
-static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s)
+static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t time_boot_ms, float cpu_temp, uint32_t target_id, uint32_t target_generation, uint8_t health, uint8_t mission_state, uint8_t target_state, uint8_t active_sensor, uint8_t control_sysid, float scan_yaw_done_rad, float scan_remaining_s, uint8_t control_flags)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char *buf = (char *)msgbuf;
@@ -379,6 +394,7 @@ static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, 
     _mav_put_uint8_t(buf, 20, control_sysid);
     _mav_put_float(buf, 21, scan_yaw_done_rad);
     _mav_put_float(buf, 25, scan_remaining_s);
+    _mav_put_uint8_t(buf, 29, control_flags);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, buf, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #else
@@ -394,6 +410,7 @@ static inline void mavlink_msg_argus_status_send_buf(mavlink_message_t *msgbuf, 
     packet->control_sysid = control_sysid;
     packet->scan_yaw_done_rad = scan_yaw_done_rad;
     packet->scan_remaining_s = scan_remaining_s;
+    packet->control_flags = control_flags;
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ARGUS_STATUS, (const char *)packet, MAVLINK_MSG_ID_ARGUS_STATUS_MIN_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_LEN, MAVLINK_MSG_ID_ARGUS_STATUS_CRC);
 #endif
@@ -516,6 +533,16 @@ static inline float mavlink_msg_argus_status_get_scan_remaining_s(const mavlink_
 }
 
 /**
+ * @brief Get field control_flags from argus_status message
+ *
+ * @return  통제기 명령의 제한 상태 (착륙 잠금, 조종사 개입 중).
+ */
+static inline uint8_t mavlink_msg_argus_status_get_control_flags(const mavlink_message_t* msg)
+{
+    return _MAV_RETURN_uint8_t(msg,  29);
+}
+
+/**
  * @brief Decode a argus_status message into a struct
  *
  * @param msg The message to decode
@@ -535,6 +562,7 @@ static inline void mavlink_msg_argus_status_decode(const mavlink_message_t* msg,
     argus_status->control_sysid = mavlink_msg_argus_status_get_control_sysid(msg);
     argus_status->scan_yaw_done_rad = mavlink_msg_argus_status_get_scan_yaw_done_rad(msg);
     argus_status->scan_remaining_s = mavlink_msg_argus_status_get_scan_remaining_s(msg);
+    argus_status->control_flags = mavlink_msg_argus_status_get_control_flags(msg);
 #else
         uint8_t len = msg->len < MAVLINK_MSG_ID_ARGUS_STATUS_LEN? msg->len : MAVLINK_MSG_ID_ARGUS_STATUS_LEN;
         memset(argus_status, 0, MAVLINK_MSG_ID_ARGUS_STATUS_LEN);

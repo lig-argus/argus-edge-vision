@@ -96,8 +96,9 @@ flowchart LR
 | 메시지 (id) | 송신 → 수신 | 주기 | 용도 |
 |---|---|---|---|
 | HEARTBEAT (0) | 모든 MAVLink 노드 → 전체 | 1 Hz | 생존·비행 모드·armed 상태. 통제기는 `custom_mode` 로 PX4 모드를 해석한다 (부록 A). mavlink_gateway 는 compid 195 로만 통제기와 FC 에 보낸다: `type` MAV_TYPE_ONBOARD_CONTROLLER, `autopilot` MAV_AUTOPILOT_INVALID, `system_status` 는 FC 와 연결되어 있으면(`ARGUS_HEALTH_FC_CONNECTED`) MAV_STATE_ACTIVE, 아니면 MAV_STATE_CRITICAL. compid 191 은 FC telemetry 수신과 TIMESYNC 요청 전용이라 보내지 않는다 |
-| SYS_STATUS (1) | FC → 전체 | 1 Hz | 센서 상태, 배터리 |
+| SYS_STATUS (1) | FC → 전체 | 1 Hz | 센서 상태, 배터리. mavlink_gateway 는 통제기로의 복귀 조건(5.4)에 RC 수신기(`MAV_SYS_STATUS_SENSOR_RC_RECEIVER` 의 present 와 health), local 위치 추정(`MAV_SYS_STATUS_SENSOR_XY_POSITION_CONTROL` 의 present 와 health), 자세 추정(`MAV_SYS_STATUS_AHRS` 의 health. PX4 는 present 비트를 켜지 않는다)을 쓴다. PX4 v1.16 의 USB 연결 기본 스트림(ONBOARD)은 5 Hz |
 | GPS_RAW_INT (24) | FC → 전체 | 1 Hz | 위성 수, fix 종류 |
+| RC_CHANNELS (65) | FC → mavlink_gateway | 20 Hz (PX4 v1.16 의 USB 연결 기본 스트림 ONBOARD) | 조종기 채널 값. mavlink_gateway 가 통제기로의 복귀 조건(5.4)의 스틱 중립을 판단한다 |
 | ATTITUDE (30) | FC → 전체 | **30 Hz 이상** | 자세. mavlink_gateway 가 ATTITUDE 메시지마다 수신 시각을 붙여 추적기·추종 제어에 넘긴다. 2026-10-15 기체 실측 약 100 Hz 수신 |
 | LOCAL_POSITION_NED (32) | FC → 전체 | 30 Hz | local NED 위치·속도. 추적기의 지면 투영. 2026-10-15 기체 실측 약 30 Hz 수신 |
 | GLOBAL_POSITION_INT (33) | FC → 전체 | 30 Hz | 위치·고도·속도. 2026-10-15 실측에서 미수신 → 스트림 설정 확인 [미결 D5] |
@@ -131,10 +132,10 @@ flowchart LR
 
 | 메시지 (id) | 송신 → 수신 | 주기 | 수신자가 하는 일 |
 |---|---|---|---|
-| ARGUS_STATUS (45000) | mavlink_gateway → 통제기 | 1 Hz, 그리고 `mission_state`·`target_state`·`health`·`active_sensor` 가 바뀌면 즉시 1회 | 통제기: 임무 상태·표적 상태·연결 상태 표시. 6.1 의 두절 판단에 사용 |
+| ARGUS_STATUS (45000) | mavlink_gateway → 통제기 | 1 Hz, 그리고 `mission_state`·`target_state`·`health`·`active_sensor`·`control_flags` 가 바뀌면 즉시 1회 | 통제기: 임무 상태·표적 상태·연결 상태·명령 제한 표시. 6.1 의 두절 판단에 사용 |
 | ARGUS_SENSOR_STATUS (45001) | mavlink_gateway → 통제기 | 센서마다 1 Hz, `flags` 가 바뀌면 즉시 1회 | 통제기: 센서별 상태 표시, FOLLOWABLE 로 표적 선택 가능 여부 결정 |
 
-- `ARGUS_STATUS` 의 필드: `mission_state`(부록 B, 8개), `target_state`(부록 B, 4개), `target_id`·`target_generation`(선택된 표적. 없으면 0), `active_sensor`, `health`, `control_sysid`(제어권을 가진 통제기의 sysid. 없으면 0, 5.1), `time_boot_ms`, `cpu_temp`, `scan_yaw_done_rad`(스캔 중 지금까지 회전한 yaw, rad. 스캔 중이 아니면 NaN), `scan_remaining_s`(스캔이 끝나기까지 남은 시간, s. p3 timeout 과 남은 회전량 중 먼저 오는 쪽. 스캔 중이 아니거나 모르면 NaN). 값은 추종 제어가 mavlink_gateway 에 주는 상태를 그대로 옮긴다. 통제기는 `mission_state` 가 SCAN_ACTIVE 이고 값이 NaN 이 아닐 때만 두 스캔 값을 진행 막대와 남은 시간으로 표시한다. 이 두 필드는 확장 필드라 보내지 않는 송신자의 값이 MAVLink 2 규칙으로 0 으로 복원되므로, 0 을 "남은 시간 0 초" 로 읽지 않는다.
+- `ARGUS_STATUS` 의 필드: `mission_state`(부록 B, 8개), `target_state`(부록 B, 4개), `target_id`·`target_generation`(선택된 표적. 없으면 0), `active_sensor`, `health`, `control_sysid`(제어권을 가진 통제기의 sysid. 없으면 0, 5.1), `control_flags`(착륙 잠금 LANDING_LOCKED 5.3, 조종사 개입 중 PILOT_IN_CONTROL 5.4. 비트가 1 이면 착륙 외의 명령을 거부한다. 통제기는 PILOT_IN_CONTROL 일 때 `MAV_CMD_ARGUS_END_RC_OVERRIDE` 버튼을 보인다. 확장 필드), `time_boot_ms`, `cpu_temp`, `scan_yaw_done_rad`(스캔 중 지금까지 회전한 yaw, rad. 스캔 중이 아니면 NaN), `scan_remaining_s`(스캔이 끝나기까지 남은 시간, s. p3 timeout 과 남은 회전량 중 먼저 오는 쪽. 스캔 중이 아니거나 모르면 NaN). 값은 추종 제어가 mavlink_gateway 에 주는 상태를 그대로 옮긴다. 통제기는 `mission_state` 가 SCAN_ACTIVE 이고 값이 NaN 이 아닐 때만 두 스캔 값을 진행 막대와 남은 시간으로 표시한다. 이 두 필드는 확장 필드라 보내지 않는 송신자의 값이 MAVLink 2 규칙으로 0 으로 복원되므로, 0 을 "남은 시간 0 초" 로 읽지 않는다.
 - 프레임별 탐지 결과(ARGUS_DETECTION, 45001)는 MAVLink 로 보내지 않고 삭제한다. ARGUS_SENSOR_STATUS 를 45002 에서 45001 로 당긴다 (#21). 1.0 확정 뒤에는 메시지 id 를 재사용·변경하지 않는다. mavlink_gateway·추종 제어는 RPi 내부 토픽으로, 통제기는 영상 메타데이터 트랙(`docs/spec/video.md`)으로 받는다.
 - `ARGUS_SENSOR_STATUS.flags` 의 TRACKING 은 그 센서의 탐지 결과에 추적기가 track_id 를 붙인다는 뜻이다. FOLLOWABLE 센서만 표적 선택이 가능하다.
 - 통제기가 영상 위에 그리는 바운딩 박스와 운용자가 고르는 표적은 영상 메타데이터 트랙의 추적 결과(`tracking/tracks` 기준)다. 표적의 식별자는 (sensor, generation, class_id, track_id) 네 값이다.
@@ -158,7 +159,7 @@ flowchart LR
 - mavlink_gateway 는 명령을 동시에 하나만 처리한다. 진행 중(PREPARING, HOLD_TRANSITION, SCAN_ACTIVE)에 번호가 다른 명령을 받으면 다음과 같이 답한다. 같은 MAV_CMD, 또는 다른 시작 명령(TRACK_START, SCAN_START)은 handler 를 부르지 않고 TEMPORARILY_REJECTED (MAVLink command protocol: 진행 중 같은 명령은 바쁨, 병렬 처리를 지원하지 않으면 새 명령도 바쁨). 시작 명령이 진행 중일 때 받은 TRACK_STOP 은 받는다: 진행 중이던 명령의 최종 ACK 를 CANCELLED 로 보낸 뒤 TRACK_STOP 을 처리한다. 정지 명령은 진행 중인 시작 명령을 취소하는 반대 동작이므로 바쁨으로 거부하지 않는다. 통제기는 ACK 의 `command` 로 어느 명령의 결과인지 구분한다. 진행 중인 시작 명령을 새 내용으로 바꾸려면 끝난 뒤 다시 보낸다. `COMMAND_CANCEL` 은 사용하지 않는다 (MAVLink 정의가 "Work in Progress" 로 표시한 메시지이고 PX4, ArduPilot, MAVSDK, QGroundControl 이 구현하지 않는다).
 - IN_PROGRESS 를 받은 뒤에는 통제기가 재전송하지 않으므로, 그 뒤의 최종 ACK 가 유실되면 통제기는 위 3 초 규칙으로 "응답 없음" 을 표시한다. 운용자는 실제 상태를 `ARGUS_STATUS` 의 `mission_state` 로 확인한다.
 - `COMMAND_ACK.result` 의 뜻: ACCEPTED 실행함 / IN_PROGRESS 진행 중(뒤에 최종 결과가 한 번 더 온다) / DENIED 값이 잘못됨(재시도해도 같음) / TEMPORARILY_REJECTED 상태 때문에 지금은 안 됨(나중에 가능) / FAILED 시도했으나 실패 / CANCELLED 진행 중에 받은 TRACK_STOP 으로 취소됨 / UNSUPPORTED 모르는 명령. 4.2 의 조건 중 상태 조건(비행 중, FOLLOWABLE, `mission_state`, FC 모드)은 TEMPORARILY_REJECTED, 값 조건(트랙 없음, generation 불일치, 매개변수 범위)은 DENIED 이다. 제어권 없음은 제어권을 얻으면 같은 명령이 성공하므로 상태 조건과 같이 TEMPORARILY_REJECTED 로 답하고, 원인을 구분할 수 있도록 STATUSTEXT "제어권 없음" 을 함께 보낸다. MAVLink 의 `MAV_RESULT_NOT_IN_CONTROL` 은 사용하지 않는다 (MAVLink 정의가 work in progress 로 표시한 값이고 PX4, ArduPilot, QGroundControl 의 배포 버전이 구현하지 않는다. 아래 `COMMAND_CANCEL` 과 같은 이유).
-- mavlink_gateway 는 DENIED, FAILED 와 제어권 없음의 TEMPORARILY_REJECTED 때 이유를 `STATUSTEXT` 로 같이 보낸다. FC 로 전달하지 않고 직접 답하는 경우(5.2)에는 상태 조건의 TEMPORARILY_REJECTED 에도 이유를 보낸다 (예: "setpoint 송신 중", "착륙 잠금", "조종사 조종 중", "FC 상태 모름").
+- mavlink_gateway 는 DENIED, FAILED 와 제어권 없음, 착륙 잠금("착륙 잠금", 5.3), 조종사 개입 중("조종사 개입 중", 5.4), `MAV_CMD_ARGUS_END_RC_OVERRIDE` 의 조건 불충족(4.4)의 TEMPORARILY_REJECTED 때 이유를 `STATUSTEXT` 로 같이 보낸다. FC 로 전달하지 않고 직접 답하는 경우(5.2)에는 상태 조건의 TEMPORARILY_REJECTED 에도 이유를 보낸다 (예: "setpoint 송신 중", "착륙 잠금", "조종사 개입 중", "FC 상태 모름").
 - 명령 매개변수는 float 다. 정수 값(track_id, generation 등)은 2^24−1 = 16,777,215 까지만 정확하게 전달되므로, 그 범위를 넘는 값은 쓰지 않는다.
 - 4.2 명령의 검사 분담: mavlink_gateway 는 ① 제어권, ③ 센서의 FOLLOWABLE, ④ 최신 추적 결과의 표적, 매개변수 범위를 검사한다. 추종 제어는 ② FC armed 이고 비행 중, ⑤ `mission_state`, ⑥ 기체의 정지 상태를 검사하고 명령을 실행한다 (`docs/spec/process_interfaces.md` 5.2). DENIED 조건(④, 매개변수 범위)을 모두 mavlink_gateway 가 검사하므로, 추종 제어의 거부(`follow/result` 의 REJECTED)는 TEMPORARILY_REJECTED 로 전달한다. 추종 제어가 1 초 안에 응답하지 않으면 FAILED, 수락 뒤 `follow/status` 를 3 초 동안 받지 못하면 FAILED 로 답한다.
 
@@ -229,9 +230,10 @@ sequenceDiagram
 | 명령 | 매개변수 | 응답 |
 |---|---|---|
 | MAV_CMD_ARGUS_REQUEST_OPERATOR_CONTROL (45010) | p1 동작 (0 해제, 1 요청), p2 와 p3 은 사용하지 않음(NaN, MAVLink 32100 의 넘겨받기 허용, 대기 시간 자리), p4 요청하는 통제기의 sysid (0 이면 보낸 통제기. MAVLink 32100 과 같음), p7 명령 번호 | p4 가 0 도 보낸 통제기의 sysid 도 아니면 DENIED. 요청: 부여하면 ACCEPTED, 5.1 의 거부 조건이면 TEMPORARILY_REJECTED. 해제: 제어권을 가진 통제기가 보내면 ACCEPTED, 아니면 DENIED |
-| MAV_CMD_ARGUS_END_RC_OVERRIDE (45011) | p7 명령 번호 | 5.4 의 조건을 모두 확인하면 ACCEPTED 뒤 제자리 유지 시작. 조건 불충족 TEMPORARILY_REJECTED, 제어권 없음 TEMPORARILY_REJECTED (STATUSTEXT "제어권 없음") |
+| MAV_CMD_ARGUS_END_RC_OVERRIDE (45011) | p7 명령 번호 | 제어권 없음 TEMPORARILY_REJECTED (STATUSTEXT "제어권 없음"). 조종사 개입 중이 아니거나 5.4 의 조건 불충족이면 TEMPORARILY_REJECTED (STATUSTEXT 로 불충족 조건). 조건을 모두 충족하면 FC 모드가 Hold 이면 바로 ACCEPTED, Position 이면 IN_PROGRESS 를 먼저 보내고 Offboard 제자리 유지에 들어가면 ACCEPTED, 들어가지 못하면 FAILED (절차는 5.4) |
 
 - 명령 번호, 재전송 판단은 4.1 과 같다.
+- 착륙 잠금(5.3)과 조종사 개입 중(5.4)에도 두 명령은 받는다. 45010 은 해제(p1 0)만 허용하고 요청은 5.1 의 거부 조건으로 TEMPORARILY_REJECTED, 45011 은 복귀가 목적이다.
 - 제어권을 가진 통제기에 넘겨줄지 묻는 절차는 없다. mavlink_gateway 가 5.1 의 조건으로 부여하거나 거부한다. 따라서 비행 중에는 제어권을 가진 통제기가 두절(6.1)된 뒤에만 다른 통제기에 넘어간다.
 
 ## 5. 제어권과 송신 규칙
@@ -246,6 +248,7 @@ sequenceDiagram
   - 제어권을 가진 통제기의 HEARTBEAT 가 3 초 이내에 있었고 기체가 비행 중인 경우
   - 명령이 진행 중이거나 추종, 스캔 중인 경우
   - 착륙 잠금 상태인 경우 (5.3)
+  - 조종사 개입 중인 경우 (5.4)
 - 제어권이 없는 통제기: FC 의 telemetry 와 `ARGUS_STATUS` 는 받는다. 명령을 보내면 mavlink_gateway 가 TEMPORARILY_REJECTED (STATUSTEXT "제어권 없음") 로 답하고 FC 로 전달하지 않는다.
 - mavlink_gateway 는 `ARGUS_STATUS.control_sysid` 에 제어권을 가진 통제기의 sysid 를 넣어 모든 통제기에 같게 보낸다 (없으면 0). 통제기는 이 값을 자기 sysid 와 비교해 제어권 여부를 표시하고, 제어권이 없으면 명령 버튼을 막고 "제어권 없음" 을 표시한다 (MAVLink `CONTROL_STATUS.gcs_main` 과 같은 방식).
 
@@ -277,23 +280,35 @@ mavlink_gateway 는 제어권을 가진 통제기가 보낸 아래 메시지만 
 
 ### 5.3 착륙 잠금
 
-- 통제기의 착륙 명령을 전달하면 mavlink_gateway 는 착륙 잠금 상태가 된다. 진행 중인 명령을 취소하고 setpoint 송신을 멈춘다.
-- 착륙 잠금 상태에서는 착륙 외의 명령을 모두 거부한다.
-- 잠금은 다음 두 경우에 푼다.
-  - 기체가 지상에 있고 시동이 꺼진 것을 확인한 경우
+- 통제기의 착륙 명령을 FC 로 전달하면 mavlink_gateway 는 착륙 잠금 상태가 된다. 잠금을 시작할 때 다음을 한다.
+  - 진행 중인 argus 명령의 최종 응답을 CANCELLED 로 보낸다.
+  - 추종 또는 스캔 중이면 추종 제어에 정지를 요청한다.
+  - FC 제어 명령 송신권과 진행 중인 Offboard 진입을 폐기하고 추종 제어의 setpoint 를 FC 로 보내지 않는다. FC 가 Offboard 일 수 있는 동안은 제자리 유지 setpoint 를 계속 보내고, FC 가 Offboard 가 아님을 HEARTBEAT 로 확인하면 송신을 끝낸다 (4.2 의 송신 종료 조건과 같음). 이유: Offboard 중 setpoint 가 끊기면 PX4 는 `COM_OF_LOSS_T`(1 s) 뒤 failsafe 로 넘어간다. 이 Offboard 이탈은 통제기의 모드 변경으로 보고하며(`fc/mode_event` 의 원인), 그 사이의 Offboard 진입 요청은 거부한다.
+- 착륙 잠금 상태에서는 착륙 외의 명령을 모두 거부한다 (TEMPORARILY_REJECTED, STATUSTEXT "착륙 잠금"). 예외는 45010 의 해제, `MAV_CMD_REQUEST_MESSAGE`, 45011 이다 (4.4).
+- 잠금은 다음 경우에 푼다.
+  - FC 가 착륙 명령에 ACCEPTED 가 아닌 최종 결과로 답한 경우. IN_PROGRESS 는 판단에 쓰지 않고, 응답이 없으면 잠금을 유지한다. PX4 는 비행 종료(termination) 상태가 아니면 착륙 명령을 항상 수락한다
+  - 잠금 시작 뒤에 받은 HEARTBEAT 에서 시동이 꺼진 것을 확인한 경우 (지상이고 시동 꺼짐). PX4 는 비행 중 강제가 아닌 시동 끔을 거부하고, 착지를 감지하면 `COM_DISARM_LAND`(기본 2 s) 뒤 시동을 끈다. 비행 여부(E11 ②)는 쓰지 않는다
   - 조종사가 조종기로 기체를 넘겨받은 뒤, 통제기가 5.4 의 복귀 절차를 마친 경우. 이유: 조종사가 착륙을 취소하고 기체를 다시 띄웠을 때, 통제기가 착륙할 때까지 명령을 보낼 수 없게 되는 것을 막기 위함
 - 잠금 중에도 조종사의 조종기 입력에는 영향이 없다.
 
 ### 5.4 조종사(RC)의 개입과 통제기로의 복귀
 
-- 조종사의 개입이 항상 우선한다. mavlink_gateway 는 FC 가 조종사의 개입을 알리거나(STATUSTEXT) Offboard 에서 벗어난 것을 보면 "조종사 개입 중" 으로 판정하고 setpoint 송신을 멈춘다.
-- 조종사 개입 중에는 착륙을 제외한 통제기의 명령을 거부한다.
-- 통제기가 기체를 다시 넘겨받으려면 `MAV_CMD_ARGUS_END_RC_OVERRIDE`(4.4)를 보낸다. mavlink_gateway 는 아래 조건을 모두 확인한 뒤 제자리 유지를 시작한다.
-  - FC 모드가 실제로 Hold 또는 Position
-  - 스틱 4축이 FC 의 RC 보정값(`RCn_TRIM` ± `RCn_DZ`) 안에서 설정값으로 정한 시간 이상 유지됨
-  - RC 수신기 정상, 위치와 자세 추정 유효
-  - 진행 중인 명령, 착륙, 추종, 스캔 없음
-- 절차 중 조종사의 개입이나 모드 이탈이 보이면 바로 포기하고 FC 로 모드 명령을 보내지 않는다.
+- 조종사의 개입이 항상 우선한다. mavlink_gateway 는 시동이 걸린 기체의 FC 모드(HEARTBEAT)가 수동 모드(Position, Altitude, Stabilized, Manual)로 바뀌었고, 그 모드로 바꾸는 통제기의 `MAV_CMD_DO_SET_MODE` 를 바뀌기 전 3 s 안에 FC 로 전달하지 않았으면 "조종사 개입 중" 으로 판정한다. Offboard 에서 벗어난 것이면 setpoint 송신은 4.2 의 규칙대로 멈춘다.
+  - 근거: PX4 의 스틱 개입(`COM_RC_OVERRIDE`)은 Position 으로 바꾸고(위치 추정이 없으면 Altitude, 그다음 Stabilized), Land 를 포함한 자동 모드에 적용된다. Offboard 에서의 스틱 개입은 기본값에서 꺼져 있어 조종사는 모드 스위치로 넘겨받는다. FC 의 failsafe 는 Hold, Return, Land 로 바꾼다 (PX4 v1.16 `Commander::manualControlCheck`, failsafe).
+  - FC 의 STATUSTEXT 는 판정에 쓰지 않는다. 이유: PX4 v1.16 의 문구("Pilot took over using sticks" 뒤에 탭 문자)는 버전마다 다를 수 있고, failsafe 중의 개입에서는 STATUSTEXT 를 보내지 않으며, 통제기 형식의 HEARTBEAT 를 받은 링크에만 보낸다.
+  - 한계: 이미 Position 모드에서 통제기가 가상 조종(`MANUAL_CONTROL`) 중일 때 조종사가 스틱을 움직이는 것은 모드가 바뀌지 않아 판정하지 않는다. 이 경우의 우선순위는 PX4 의 `COM_RC_IN_MODE` 가 정한다.
+- 조종사 개입 중에는 착륙을 제외한 통제기의 명령을 거부한다 (TEMPORARILY_REJECTED, STATUSTEXT "조종사 개입 중"). 예외는 5.3 과 같다.
+- 개입은 통제기의 복귀 절차가 끝나거나 HEARTBEAT 에서 시동이 꺼진 것을 확인하면 끝난다.
+- 통제기가 기체를 다시 넘겨받으려면 `MAV_CMD_ARGUS_END_RC_OVERRIDE`(4.4)를 보낸다. mavlink_gateway 는 아래 조건을 순서대로 확인한다.
+  - FC 모드가 실제로 Hold 또는 Position (3 s 이내에 받은 HEARTBEAT)
+  - 스틱 4축이 중립인 상태가 1 s 이상 유지됨. 축마다 RC_CHANNELS 의 채널 값을 -1~1 로 정규화한 값이 중앙 ± 0.1 안이면 중립이다. 0.1 은 PX4 Position 모드가 입력 없음으로 보는 범위(`MPC_HOLD_DZ` 기본값)와 같다. 롤, 피치, 요의 중앙은 `RCn_TRIM`, 스로틀의 중앙은 (`RCn_MIN` + `RCn_MAX`) / 2 이다 (스로틀의 TRIM 은 보통 아래 끝값이고, Position 모드는 스로틀 중앙을 고도 유지로 쓴다). 채널 번호(`RC_MAP_*`), MIN, MAX, TRIM, 역방향 여부(`RCn_REV`)는 기체 FC 의 값과 같게 mavlink_gateway 설정에 둔다 (mavlink_gateway 는 FC 파라미터를 읽지 않는다, 2장). RC_CHANNELS 는 받은 뒤 0.5 s(PX4 `COM_RC_LOSS_T` 기본값) 이내인 값만 쓴다. 이유: PX4 는 스틱을 움직일 때만 개입으로 보므로, 조종사가 스틱을 잡고 있는 동안 기체를 가져가지 않도록 확인한다
+  - RC 수신기 정상, 위치와 자세 추정 유효 (1 s 이내에 받은 SYS_STATUS, 2장)
+  - 진행 중인 명령, 추종, 스캔, mavlink_gateway 의 Offboard 진입 없음. 착륙(FC 모드 Land)은 첫 조건에서 거부된다
+- 조건을 모두 충족하면 제자리 유지를 시작한다.
+  - FC 모드가 Hold 이면 정지 상태(4.2)이므로 FC 로 아무것도 보내지 않고 개입을 끝낸다.
+  - FC 모드가 Position 이면, 그때의 local 위치와 yaw(0.2 s 이내의 값)를 목표로 하는 위치 setpoint 를 1 s 동안 보낸 뒤 Offboard 진입 명령을 보내고, HEARTBEAT 로 Offboard 를 확인하면 개입을 끝낸다. 확인 시간(3 s)과 진입 취소 규칙은 4.2 의 Offboard 진입과 같다. 이유: PX4 의 Hold 는 전역 위치(GPS)가 필요해 실내에서 쓸 수 없고, Position 모드는 정지 상태가 아니어서 복귀 뒤 TRACK_START 조건 ⑥ 을 만족하지 못한다.
+  - FC 가 요청 없이 Offboard 를 벗어난 기록(6장 MANUAL 의 송신 차단)도 이 명령으로 해제한다.
+- 절차 중 진입 명령을 보내기 전에 조종사의 개입(스틱 중립이 깨짐, RC 수신기나 추정 이상)이나 FC 모드 이탈이 보이면 바로 포기하고 FC 로 모드 명령을 보내지 않는다 (FAILED, 개입 유지).
 - 넘겨받은 뒤의 상태는 제자리 유지이다. 추종은 추종 시작 명령을 새로 받아야 시작한다.
 
 ### 5.5 송신 규칙

@@ -38,7 +38,7 @@ static void mavlink_test_argus_status(uint8_t system_id, uint8_t component_id, m
         uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
         uint16_t i;
     mavlink_argus_status_t packet_in = {
-        963497464,45.0,963497880,963498088,53,120,187,254,65,164.0,192.0
+        963497464,45.0,963497880,963498088,53,120,187,254,65,164.0,192.0,156
     };
     mavlink_argus_status_t packet1, packet2;
         memset(&packet1, 0, sizeof(packet1));
@@ -53,6 +53,7 @@ static void mavlink_test_argus_status(uint8_t system_id, uint8_t component_id, m
         packet1.control_sysid = packet_in.control_sysid;
         packet1.scan_yaw_done_rad = packet_in.scan_yaw_done_rad;
         packet1.scan_remaining_s = packet_in.scan_remaining_s;
+        packet1.control_flags = packet_in.control_flags;
         
         
 #ifdef MAVLINK_STATUS_FLAG_OUT_MAVLINK1
@@ -67,12 +68,12 @@ static void mavlink_test_argus_status(uint8_t system_id, uint8_t component_id, m
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_argus_status_pack(system_id, component_id, &msg , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s );
+    mavlink_msg_argus_status_pack(system_id, component_id, &msg , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s , packet1.control_flags );
     mavlink_msg_argus_status_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_argus_status_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s );
+    mavlink_msg_argus_status_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s , packet1.control_flags );
     mavlink_msg_argus_status_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
@@ -85,7 +86,7 @@ static void mavlink_test_argus_status(uint8_t system_id, uint8_t component_id, m
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
         
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_argus_status_send(MAVLINK_COMM_1 , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s );
+    mavlink_msg_argus_status_send(MAVLINK_COMM_1 , packet1.time_boot_ms , packet1.cpu_temp , packet1.target_id , packet1.target_generation , packet1.health , packet1.mission_state , packet1.target_state , packet1.active_sensor , packet1.control_sysid , packet1.scan_yaw_done_rad , packet1.scan_remaining_s , packet1.control_flags );
     mavlink_msg_argus_status_decode(last_msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 

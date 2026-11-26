@@ -24,7 +24,7 @@ ControlDecision on_request(const ControlObservation& observation, std::uint8_t s
     }
     const bool denied = (controller_alive(observation) && observation.flying) ||
                         observation.command_in_progress || observation.follow_in_progress ||
-                        observation.landing_locked;
+                        observation.landing_locked || observation.pilot_in_control;
     if (denied) {
         return {observation.controller, MAV_RESULT_TEMPORARILY_REJECTED};
     }

@@ -32,10 +32,13 @@ constexpr std::size_t kFollowing = 2;
 constexpr std::size_t kCancellingEntry = 3;
 constexpr std::size_t kHovering = 4;
 constexpr std::size_t kLocked = 5;
+constexpr std::size_t kLanding = 6;
+constexpr std::size_t kHoverEntering = 7;
 
 const char* name_of(std::size_t index) {
-    static const std::array<const char*, 6> kNames = {
-        "Idle", "Entering", "Following", "CancellingEntry", "Hovering", "Locked"};
+    static const std::array<const char*, 8> kNames = {
+        "Idle",     "Entering", "Following", "CancellingEntry",
+        "Hovering", "Locked",   "Landing",   "HoverEntering"};
     return kNames.at(index);
 }
 
@@ -372,7 +375,10 @@ TEST(FcCommandPolicyTest, RulesHoldForEveryStateAndObservation) {
                                                 CancellingEntry{kDeadlineNs},
                                                 Hovering{},
                                                 Hovering{HoverTarget{}},
-                                                Locked{}};
+                                                Locked{},
+                                                Landing{},
+                                                Landing{HoverTarget{}, true, std::nullopt},
+                                                Landing{std::nullopt, false, kDeadlineNs}};
     const std::vector<Change> changes = {nullptr,      no_status,      stale_status,
                                          disconnected, new_epoch,      no_setpoint,
                                          no_pose,      after_deadline, status_after_deadline};
@@ -712,11 +718,208 @@ TEST(FcCommandPolicyTest, AuthorityBelongsToSessionOfEnteringAndFollowing) {
 }
 
 TEST(FcCommandPolicyTest, HasReasonTextForEveryDenial) {
-    for (std::int32_t value = 1; value <= static_cast<std::int32_t>(FcCommandDenial::SendFailed);
+    for (std::int32_t value = 1; value <= static_cast<std::int32_t>(FcCommandDenial::PoseStale);
          ++value) {
         EXPECT_FALSE(to_string(static_cast<FcCommandDenial>(value)).empty()) << value;
     }
     EXPECT_TRUE(to_string(FcCommandDenial::None).empty());
+}
+
+// ---- 착륙 명령 전달 (icd 5.3)
+
+HoverEntering hover_entering(std::optional<std::int64_t> deadline_ns = std::nullopt,
+                             bool acknowledged = false) {
+    HoverEntering state;
+    state.target = HoverTarget{6.0, 7.0, -8.0, 0.3};
+    state.fc_epoch = kEpoch;
+    state.started_ns = kNowNs - 100'000'000;
+    state.start_mode = FlightMode::Position;
+    state.deadline_ns = deadline_ns;
+    state.acknowledged = acknowledged;
+    return state;
+}
+
+TEST(FcCommandLandingTest, ReleaseDropsAuthorityAndKeepsHoldingWhileFcMayBeOffboard) {
+    struct Row {
+        const char* name;
+        FcCommandState state;
+        std::size_t expected;
+        bool was_offboard;
+        std::optional<std::int64_t> entry_deadline_ns;
+    };
+    const std::vector<Row> rows = {
+        {"Idle", Idle{}, kIdle, false, std::nullopt},
+        {"Entering", entering(true), kLanding, false, kDeadlineNs},
+        {"Following", following(), kLanding, true, std::nullopt},
+        {"CancellingEntry", CancellingEntry{kDeadlineNs}, kLanding, false, kDeadlineNs},
+        {"Hovering", Hovering{HoverTarget{}}, kLanding, true, std::nullopt},
+        {"Locked", Locked{}, kLocked, false, std::nullopt},
+        {"Landing", Landing{}, kLanding, false, std::nullopt},
+        {"HoverEntering", hover_entering(kDeadlineNs), kLanding, false, kDeadlineNs},
+    };
+    for (const Row& row : rows) {
+        SCOPED_TRACE(row.name);
+        const FcCommandStep step = on_landing_release(row.state);
+
+        EXPECT_STREQ(name_of(step.state.index()), name_of(row.expected));
+        EXPECT_EQ(authority_session(step.state), nullptr);
+        if (const auto* landing = std::get_if<Landing>(&step.state)) {
+            EXPECT_EQ(landing->was_offboard, row.was_offboard);
+            EXPECT_EQ(landing->entry_deadline_ns, row.entry_deadline_ns);
+        }
+    }
+}
+
+TEST(FcCommandLandingTest, ReleaseKeepsHoverTargetAndEndsHoverEntry) {
+    const FcCommandStep from_hovering =
+        on_landing_release(Hovering{HoverTarget{4.0, 5.0, -6.0, 0.2}});
+    EXPECT_DOUBLE_EQ(std::get<Landing>(from_hovering.state).target.value_or(HoverTarget{}).east_m,
+                     5.0);
+
+    const FcCommandStep from_entry = on_landing_release(hover_entering());
+    EXPECT_EQ(from_entry.effects.hover_entered, std::optional<bool>(false));
+}
+
+TEST(FcCommandLandingTest, EndsWithoutLockWhenFcLeavesOffboard) {
+    const FcCommandStep step =
+        advance(Landing{HoverTarget{}, true, std::nullopt}, observed(FlightMode::Land), kConfig);
+
+    EXPECT_EQ(step.state.index(), kIdle);
+    EXPECT_EQ(step.effects.exited_to.value_or(FlightMode::Unknown), FlightMode::Land);
+    EXPECT_TRUE(step.effects.exit_requested);
+}
+
+TEST(FcCommandLandingTest, ReportsNoExitWhenFcWasNeverOffboard) {
+    const FcCommandStep step = advance(Landing{}, observed(FlightMode::Land), kConfig);
+
+    EXPECT_EQ(step.state.index(), kIdle);
+    EXPECT_FALSE(step.effects.exited_to.has_value());
+}
+
+TEST(FcCommandLandingTest, KeepsHoldingWhileOffboardOrUnknown) {
+    for (const Change& change :
+         std::vector<Change>{nullptr, stale_status, disconnected, new_epoch}) {
+        const FcCommandStep step =
+            advance(Landing{}, observed(FlightMode::Offboard, change), kConfig);
+        EXPECT_EQ(step.state.index(), kLanding);
+        EXPECT_NE(select_setpoint(step.state, observed(FlightMode::Offboard, change), kConfig).kind,
+                  SetpointKind::None);
+    }
+    const FcCommandStep offboard = advance(Landing{}, observed(FlightMode::Offboard), kConfig);
+    EXPECT_TRUE(std::get<Landing>(offboard.state).was_offboard);
+    EXPECT_TRUE(std::get<Landing>(offboard.state).target.has_value());
+}
+
+TEST(FcCommandLandingTest, UsesOnlyStatusAfterCancelledEntryDeadline) {
+    const Landing landing{std::nullopt, false, kDeadlineNs};
+    EXPECT_EQ(advance(landing, observed(FlightMode::Land, after_deadline), kConfig).state.index(),
+              kLanding);
+    EXPECT_EQ(
+        advance(landing, observed(FlightMode::Land, status_after_deadline), kConfig).state.index(),
+        kIdle);
+}
+
+TEST(FcCommandLandingTest, RefusesOffboardRequest) {
+    const FcRequestStep step =
+        on_offboard_request(Landing{}, observed(FlightMode::Offboard), request(), kConfig);
+    EXPECT_EQ(step.denial, FcCommandDenial::Landing);
+    EXPECT_EQ(step.state.index(), kLanding);
+}
+
+// ---- 복귀 명령의 제자리 유지 진입 (icd 5.4)
+
+TEST(FcCommandHoverEntryTest, StartsFromIdleOrLockedWithFreshPose) {
+    for (const FcCommandState& state : std::vector<FcCommandState>{Idle{}, Locked{}}) {
+        const FcRequestStep step =
+            on_hover_entry_request(state, observed(FlightMode::Position), kConfig);
+        ASSERT_EQ(step.denial, FcCommandDenial::None);
+        const auto& entering = std::get<HoverEntering>(step.state);
+        EXPECT_DOUBLE_EQ(entering.target.north_m, 1.0);
+        EXPECT_EQ(entering.start_mode, FlightMode::Position);
+        EXPECT_EQ(entering.started_ns, kNowNs);
+        EXPECT_FALSE(entering.deadline_ns.has_value());
+    }
+}
+
+TEST(FcCommandHoverEntryTest, RefusesWhenBusyUnknownOrPoseStale) {
+    EXPECT_EQ(on_hover_entry_request(Hovering{}, observed(FlightMode::Position), kConfig).denial,
+              FcCommandDenial::Busy);
+    EXPECT_EQ(on_hover_entry_request(Idle{}, observed(FlightMode::Offboard), kConfig).denial,
+              FcCommandDenial::Busy);
+    EXPECT_EQ(on_hover_entry_request(Idle{}, observed(FlightMode::Position, stale_status), kConfig)
+                  .denial,
+              FcCommandDenial::FcStatusStale);
+    EXPECT_EQ(
+        on_hover_entry_request(Idle{}, observed(FlightMode::Position, no_pose), kConfig).denial,
+        FcCommandDenial::PoseStale);
+}
+
+TEST(FcCommandHoverEntryTest, SendsPositionTargetThenEntryCommandAfterPrestream) {
+    const HoverEntering entering = hover_entering();
+    const SetpointChoice choice =
+        select_setpoint(entering, observed(FlightMode::Position), kConfig);
+    EXPECT_EQ(choice.kind, SetpointKind::Position);
+    EXPECT_DOUBLE_EQ(choice.target.east_m, 7.0);
+
+    const FcCommandStep waiting = advance(entering, observed(FlightMode::Position), kConfig);
+    EXPECT_FALSE(waiting.effects.send_entry_command);
+
+    const auto after_prestream = [](FcObservation& observation) {
+        observation.now_ns = kNowNs - 100'000'000 + kConfig.prestream_ns;
+    };
+    const FcCommandStep sending =
+        advance(entering, observed(FlightMode::Position, after_prestream), kConfig);
+    EXPECT_TRUE(sending.effects.send_entry_command);
+    EXPECT_EQ(std::get<HoverEntering>(sending.state).deadline_ns,
+              std::optional<std::int64_t>(kNowNs - 100'000'000 + kConfig.prestream_ns +
+                                          kConfig.entry_confirm_ns));
+}
+
+TEST(FcCommandHoverEntryTest, GivesUpBeforeEntryCommandWhenModeChanges) {
+    const FcCommandStep step = advance(hover_entering(), observed(FlightMode::Altitude), kConfig);
+    EXPECT_EQ(step.state.index(), kIdle);
+    EXPECT_EQ(step.effects.hover_entered, std::optional<bool>(false));
+
+    const FcCommandStep aborted = on_hover_entry_abort(hover_entering());
+    EXPECT_EQ(aborted.state.index(), kIdle);
+    EXPECT_EQ(aborted.effects.hover_entered, std::optional<bool>(false));
+    // 진입 명령을 보낸 뒤에는 포기하지 않는다
+    EXPECT_EQ(on_hover_entry_abort(hover_entering(kDeadlineNs)).state.index(), kHoverEntering);
+}
+
+TEST(FcCommandHoverEntryTest, EntersHoveringWhenAcknowledgedAndOffboard) {
+    const FcCommandStep acknowledged = on_entry_command_answered(hover_entering(kDeadlineNs), true);
+    const FcCommandStep step = advance(acknowledged.state, observed(FlightMode::Offboard), kConfig);
+
+    EXPECT_EQ(step.state.index(), kHovering);
+    EXPECT_DOUBLE_EQ(std::get<Hovering>(step.state).target.value_or(HoverTarget{}).north_m, 6.0);
+    EXPECT_EQ(step.effects.hover_entered, std::optional<bool>(true));
+}
+
+TEST(FcCommandHoverEntryTest, FailsOnRejectionTimeoutSendFailureOrStop) {
+    const FcCommandStep rejected = on_entry_command_answered(hover_entering(kDeadlineNs), false);
+    EXPECT_EQ(rejected.state.index(), kCancellingEntry);
+    EXPECT_EQ(rejected.effects.hover_entered, std::optional<bool>(false));
+
+    const FcCommandStep timed_out = advance(
+        hover_entering(kDeadlineNs, true), observed(FlightMode::Position, after_deadline), kConfig);
+    EXPECT_EQ(timed_out.state.index(), kCancellingEntry);
+    EXPECT_EQ(timed_out.effects.hover_entered, std::optional<bool>(false));
+
+    const FcCommandStep unsent = on_entry_command_send_failed(hover_entering(kDeadlineNs));
+    EXPECT_EQ(unsent.state.index(), kIdle);
+    EXPECT_EQ(unsent.effects.hover_entered, std::optional<bool>(false));
+
+    const FcRequestStep stopped = on_onboard_stop(hover_entering(kDeadlineNs));
+    EXPECT_EQ(stopped.state.index(), kCancellingEntry);
+    EXPECT_EQ(stopped.effects.hover_entered, std::optional<bool>(false));
+}
+
+TEST(FcCommandHoverEntryTest, RefusesOffboardRequestDuringEntry) {
+    EXPECT_EQ(
+        on_offboard_request(hover_entering(), observed(FlightMode::Position), request(), kConfig)
+            .denial,
+        FcCommandDenial::HoverEntry);
 }
 
 }  // namespace

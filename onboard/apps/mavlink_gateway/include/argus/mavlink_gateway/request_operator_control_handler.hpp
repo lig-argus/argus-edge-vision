@@ -16,8 +16,10 @@ namespace argus::mavlink_gateway {
 // 그 밖에는 IControlRequests 의 결과를 최종 결과로 바로 보낸다
 class RequestOperatorControlHandler : public IMavlinkCommandHandler {
 public:
-    // 명령 번호 규칙을 적용하고, 제어권이 없는 통제기도 보낼 수 있다 (요청이 이 명령의 목적)
-    static constexpr CommandRules kRules{true, false, CommandKind::Other};
+    // 명령 번호 규칙을 적용하고, 제어권이 없는 통제기도 보낼 수 있다 (요청이 이 명령의 목적).
+    // 착륙 잠금이나 조종사 개입 중에도 받는다: 해제는 허용하고, 요청은 ControlAuthority 가 거부한다
+    // (icd 5.1)
+    static constexpr CommandRules kRules{true, false, CommandKind::Other, true};
 
     // requests 는 이 객체보다 오래 유지되어야 한다
     explicit RequestOperatorControlHandler(IControlRequests& requests) : requests_(requests) {}

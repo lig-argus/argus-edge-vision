@@ -154,6 +154,8 @@ classDiagram
         +lock_release() IFcCommandLockRelease
         +command_status() IFcCommandStatus
         +landing_release() IFcLandingRelease
+        +hover_entry() IFcHoverEntry
+        +rc_status() IFcRcStatusSource
         +fc_state() IFcStateSource
         +fc_epoch_source() IFcEpochSource
     }
@@ -169,6 +171,12 @@ classDiagram
         +latest() VehicleState
     }
     class FcStateView
+    class FcRcStatusReceiver
+    class IFcRcStatusSource {
+        <<interface>>
+        +rc_channels() optional~RcChannels~
+        +sensor_health() optional~FcSensorHealth~
+    }
     class TimeSync {
         +send_request() bool
         +to_monotonic_ns(fc_time_boot_ms) optional
@@ -213,7 +221,11 @@ classDiagram
     }
     class IFcLandingRelease {
         <<interface>>
-        +release_for_landing() bool
+        +release_for_landing()
+    }
+    class IFcHoverEntry {
+        <<interface>>
+        +request_hover_entry(still_allowed, done) string_view
     }
     class FcControl {
         +subscribe_mode_events(handler) Subscription
@@ -229,6 +241,9 @@ classDiagram
         +on_hold_request(FcCommandState, FcObservation, RequestHeader) FcRequestStep
         +on_onboard_stop(FcCommandState) FcRequestStep
         +on_lock_release(FcCommandState, FcObservation) FcRequestStep
+        +on_landing_release(FcCommandState) FcCommandStep
+        +on_hover_entry_request(FcCommandState, FcObservation) FcRequestStep
+        +on_hover_entry_abort(FcCommandState) FcCommandStep
         +select_setpoint(FcCommandState, FcObservation) SetpointChoice
     }
     class FcCommandState {
@@ -239,6 +254,8 @@ classDiagram
         CancellingEntry
         Hovering
         Locked
+        Landing
+        HoverEntering
     }
     class SetpointInbox {
         +put(VelocitySetpoint, now_ns)
@@ -257,6 +274,7 @@ classDiagram
     FcGateway *-- TimeSync
     FcGateway *-- FcTelemetryReceiver
     FcGateway *-- FcStateView
+    FcGateway *-- FcRcStatusReceiver
     FcGateway *-- FcControl
     FcGateway *-- BusVehicleTelemetryPublisher
     FcGateway *-- BusVelocitySetpointSubscriber
@@ -270,6 +288,9 @@ classDiagram
     TimeSync ..> IMavlinkConnection : TIMESYNC compid 191
     TimeSync ..> FcLinkTracker : fc_epoch 변경
     IFcStateSource <|.. FcStateView
+    IFcRcStatusSource <|.. FcRcStatusReceiver
+    FcRcStatusReceiver ..> IMavlinkConnection : RC_CHANNELS, SYS_STATUS
+    FcRcStatusReceiver ..> FcLinkTracker : 수신 시각, fc_epoch
     FcStateView ..> FcLinkTracker : 연결 여부, fc_epoch
     FcStateView ..> FcTelemetryReceiver : 최신 값
     BusVehicleTelemetryPublisher ..> ITopicPublisher : fc/attitude, fc/state, fc/mode_event
@@ -283,6 +304,7 @@ classDiagram
     IFcCommandLockRelease <|.. FcControl
     IFcCommandStatus <|.. FcControl
     IFcLandingRelease <|.. FcControl
+    IFcHoverEntry <|.. FcControl
     FcControl ..> fc_command_policy : 판단
     FcControl *-- FcCommandState : 상태 하나
     FcControl *-- SetpointInbox
@@ -295,22 +317,24 @@ classDiagram
 
 | 클래스 | 책임 | 출처 |
 |---|---|---|
-| `FcGateway` | FC 쪽 객체(`FcLinkTracker`, `TimeSync`, `FcTelemetryReceiver`, `FcStateView`, `FcControl`)를 생성해 서로 연결하고, bus 어댑터 셋과 연결한다. `FcControl::tick` 은 50 ms, `FcLinkTracker::check_timeout` 은 50 ms, `TimeSync::send_request` 는 100 ms 주기로 `EventLoop` 에 등록한다. `fc/state` 의 `offboard_hover` 는 `FcControl::offboard_hover()` 로 채운다. 통제기 쪽 객체가 쓰도록 `IStopRequester`, `IFcCommandLockRelease`, `IFcCommandStatus`, `IFcStateSource`, `IFcEpochSource` 를 내보낸다. 통신 구현과 실제 시계는 알지 못하며 `main` 이 생성해 넘긴다 | pi 5.1, 5.2 |
+| `FcGateway` | FC 쪽 객체(`FcLinkTracker`, `TimeSync`, `FcTelemetryReceiver`, `FcStateView`, `FcControl`)를 생성해 서로 연결하고, bus 어댑터 셋과 연결한다. `FcControl::tick` 은 50 ms, `FcLinkTracker::check_timeout` 은 50 ms, `TimeSync::send_request` 는 100 ms 주기로 `EventLoop` 에 등록한다. `fc/state` 의 `offboard_hover` 는 `FcControl::offboard_hover()` 로 채운다. 통제기 쪽 객체가 쓰도록 `IStopRequester`, `IFcCommandLockRelease`, `IFcCommandStatus`, `IFcLandingRelease`, `IFcHoverEntry`, `IFcStateSource`, `IFcEpochSource`, `IFcRcStatusSource` 를 내보낸다. 통신 구현과 실제 시계는 알지 못하며 `main` 이 생성해 넘긴다 | pi 5.1, 5.2 |
 | `FcLinkTracker` | FC 메시지의 수신 시각과 `fc_epoch` 를 정한다. ATTITUDE 가 0.5 s 없으면 FC 연결 두절로 보고 `FC_CONNECTED = 0`. 두절 뒤 다시 받은 ATTITUDE 와 FC 재부팅(`time_boot_ms` 감소)에서 `fc_epoch` 를 1 올린다 | icd 6.2, pi 3장 |
 | `FcTelemetryReceiver` | FC 메시지(ATTITUDE, LOCAL_POSITION_NED, GLOBAL_POSITION_INT, DISTANCE_SENSOR, HEARTBEAT)를 `vehicle_api` 값으로 바꾸고 수신 시각과 `fc_epoch` 를 붙여 등록된 handler 에 전달한다. 최신 값을 보관한다 | icd 2장, pi 5.1 |
+| `FcRcStatusReceiver`, `IFcRcStatusSource` | FC 의 RC_CHANNELS(채널 값)와 SYS_STATUS(RC 수신기, local 위치 추정, 자세 추정의 비트)를 받아 수신 시각, `fc_epoch` 와 함께 최신 값을 보관한다. FC 연결 상태와 `fc_epoch` 는 바꾸지 않으며, `fc_epoch` 가 바뀌면 이전 값을 지운다. 통제기로의 복귀 조건(`RcOverrideMonitor`)이 조회한다 | icd 2장, 5.4 |
 | `FcStateView` | `FcLinkTracker` 의 연결 여부와 `fc_epoch`, `FcTelemetryReceiver` 의 최신 값을 `IFcStateSource` 로 제공한다. 값을 보관하지 않는다 | icd 6.2, pi 3장 |
 | `TimeSync` | compid 191 로 TIMESYNC 요청·응답 대조, `fc_time_monotonic_ns` 변환값 제공 | icd 1.1, 2장 |
 | `BusVehicleTelemetryPublisher` | `vehicle_api` 값을 `fc/attitude`, `fc/state`, `fc/mode_event` 로 발행 (`vehicle_api_bus` 모듈) | pi 5.1 |
 | `IFcStateSource` | FC 의 최신 상태(연결 여부, `fc_epoch`, 자세와 위치와 비행 상태)를 읽는 인터페이스. `fc_epoch` 가 바뀌면 이전 `fc_epoch` 의 값은 삭제되어 새로 받기 전까지 값이 없다. FC 로 명령을 보내는 클래스들은 telemetry 수신 클래스를 직접 참조하지 않고 이 인터페이스만 참조한다. 구현은 `FcStateView`. 테스트용 `FakeFcStateSource` 는 `apps/mavlink_gateway/test/` | icd 6.2, pi 3장 |
 | `BusVelocitySetpointSubscriber` | `control/setpoint` 를 구독해 `VelocitySetpoint` 로 바꿔 등록된 handler 에 전달 (`vehicle_api_bus` 모듈). `FcGateway` 가 `FcControl` 의 `IVelocitySetpointSink::send` 를 등록한다 | pi 5.1 |
 | `BusFlightModeControlServer` | `control/mode_request` 요청을 받아 `IFlightModeControl` 을 부르고 `FlightModeReply` 로 응답 (`vehicle_api_bus` 모듈) | pi 5.2 |
-| `FcCommandState` | mavlink_gateway 가 FC 로 보내는 명령의 상태. 여섯 중 하나이며 상태마다 그 상태의 값만 가진다: `Idle`(FC 를 제어하지 않음), `Entering`(Offboard 진입 명령을 보내고 FC 의 전환을 기다림. 송신권을 가진 세션, command_id, 진입 기한, FC 의 응답 여부), `Following`(FC 가 Offboard 이고 송신권을 가진 세션이 제어), `CancellingEntry`(진입을 취소했으나 FC 가 Offboard 로 바뀌었을 수 있어 속도 0 을 보내며 확인을 기다림. 취소한 진입의 기한), `Hovering`(FC 가 Offboard 이고 mavlink_gateway 가 제자리 유지. 목표 위치와 yaw), `Locked`(FC 가 요청 없이 Offboard 를 벗어남. 해제 전까지 송신하지 않음). FC 제어 명령 송신권은 `Entering` 과 `Following` 의 세션이고, 외부의 모드 변경 기록은 `Locked` 이다 | icd 4.2, 5장, 6.6 |
-| `fc_command_policy` (함수) | 판단 세 가지를 각각 한 곳에서 한다. ① `fc_mode_belief`: mavlink_gateway 가 판단한 FC 의 모드 넷(Offboard, Offboard 아님, 아직 모름, 받지 못함). 비행 상태는 1 Hz 로 오므로 "아직 모름" 은 정상이고, "받지 못함" 은 FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과다. ② 전환: 요청 없이 일어나는 전환(`advance`: `fc_epoch` 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리 유지 목표의 결정)과 요청별 전환(`on_offboard_request`, `on_hold_request`, `on_onboard_stop`, `on_entry_command_answered`, `on_entry_command_send_failed`, `on_lock_release`). 결과는 다음 상태, 실행할 일(`FcCommandEffects`), 거부 원인(`FcCommandDenial`)이다. ③ `select_setpoint`: 주기마다 보낼 setpoint 하나(없음, 추종 제어의 값, 속도 0, 제자리 유지의 목표). 모든 함수는 입력(`FcObservation`: 시각, `fc_epoch`, FC 연결 여부, 비행 상태, 최신 위치, 유효한 setpoint 를 받은 시각, 연속 송신 시간)만으로 결과를 정하며 MAVLink 와 시계를 쓰지 않는다 | icd 4.2, 5장, 6.2, 6.4, 6.6, pi 6장 |
-| `FcControl` | `IFlightModeControl`, `IVelocitySetpointSink`, `IStopRequester`, `IFcCommandLockRelease`, `IFcCommandStatus` 구현. `FcCommandState` 하나를 보관하고, 요청과 주기 작업(20 Hz)마다 입력을 모아 `fc_command_policy` 를 부른 뒤 결과를 실행한다: Offboard 진입 명령(DO_SET_MODE)과 setpoint(SET_POSITION_TARGET_LOCAL_NED)의 인코드와 송신, FC 의 응답(COMMAND_ACK) 수신, `subscribe_mode_events` 로 FC 의 모드 변경 전달. 입력은 주기 작업과 요청 처리의 시작에서 새로 읽는다 (요청을 지난 주기의 FC 모드로 판단하지 않음). 주기마다 setpoint 를 하나만 보내며, `Entering`, `Following`, `CancellingEntry`, `Hovering` 에서는 반드시 하나를 보낸다. `offboard_hover()` 는 `Hovering` 에서 위치 setpoint 를 보낸 주기에만 true 다 (`fc/state` 의 `offboard_hover`) | icd 4.2, 4.3, 부록 A, pi 3장, 5.1, 5.2 |
+| `FcCommandState` | mavlink_gateway 가 FC 로 보내는 명령의 상태. 여덟 중 하나이며 상태마다 그 상태의 값만 가진다: `Idle`(FC 를 제어하지 않음), `Entering`(Offboard 진입 명령을 보내고 FC 의 전환을 기다림. 송신권을 가진 세션, command_id, 진입 기한, FC 의 응답 여부), `Following`(FC 가 Offboard 이고 송신권을 가진 세션이 제어), `CancellingEntry`(진입을 취소했으나 FC 가 Offboard 로 바뀌었을 수 있어 속도 0 을 보내며 확인을 기다림. 취소한 진입의 기한), `Hovering`(FC 가 Offboard 이고 mavlink_gateway 가 제자리 유지. 목표 위치와 yaw), `Locked`(FC 가 요청 없이 Offboard 를 벗어남. 해제 전까지 송신하지 않음), `Landing`(통제기의 착륙 명령을 전달한 뒤 FC 가 Offboard 를 벗어나기를 기다리며 제자리 유지. 목표, FC 가 Offboard 였는지, 취소한 진입의 기한), `HoverEntering`(통제기의 복귀 명령으로 위치 setpoint 를 1 s 보낸 뒤 Offboard 진입 명령을 보내고 확인을 기다림. 목표, 시작 때의 FC 모드, 진입 기한, FC 의 응답 여부). FC 제어 명령 송신권은 `Entering` 과 `Following` 의 세션이고, 외부의 모드 변경 기록은 `Locked` 이다 | icd 4.2, 5장, 6.6 |
+| `fc_command_policy` (함수) | 판단 세 가지를 각각 한 곳에서 한다. ① `fc_mode_belief`: mavlink_gateway 가 판단한 FC 의 모드 넷(Offboard, Offboard 아님, 아직 모름, 받지 못함). 비행 상태는 1 Hz 로 오므로 "아직 모름" 은 정상이고, "받지 못함" 은 FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과다. ② 전환: 요청 없이 일어나는 전환(`advance`: `fc_epoch` 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리 유지 목표의 결정)과 요청별 전환(`on_offboard_request`, `on_hold_request`, `on_onboard_stop`, `on_entry_command_answered`, `on_entry_command_send_failed`, `on_lock_release`, `on_landing_release`, `on_hover_entry_request`, `on_hover_entry_abort`). 결과는 다음 상태, 실행할 일(`FcCommandEffects`), 거부 원인(`FcCommandDenial`)이다. ③ `select_setpoint`: 주기마다 보낼 setpoint 하나(없음, 추종 제어의 값, 속도 0, 제자리 유지의 목표). 모든 함수는 입력(`FcObservation`: 시각, `fc_epoch`, FC 연결 여부, 비행 상태, 최신 위치, 유효한 setpoint 를 받은 시각, 연속 송신 시간)만으로 결과를 정하며 MAVLink 와 시계를 쓰지 않는다 | icd 4.2, 5장, 6.2, 6.4, 6.6, pi 6장 |
+| `FcControl` | `IFlightModeControl`, `IVelocitySetpointSink`, `IStopRequester`, `IFcCommandLockRelease`, `IFcCommandStatus`, `IFcLandingRelease`, `IFcHoverEntry` 구현. `FcCommandState` 하나를 보관하고, 요청과 주기 작업(20 Hz)마다 입력을 모아 `fc_command_policy` 를 부른 뒤 결과를 실행한다: Offboard 진입 명령(DO_SET_MODE)과 setpoint(SET_POSITION_TARGET_LOCAL_NED)의 인코드와 송신, FC 의 응답(COMMAND_ACK) 수신, `subscribe_mode_events` 로 FC 의 모드 변경 전달. 입력은 주기 작업과 요청 처리의 시작에서 새로 읽는다 (요청을 지난 주기의 FC 모드로 판단하지 않음). 주기마다 setpoint 를 하나만 보내며, `Entering`, `Following`, `CancellingEntry`, `Hovering`, `Landing`, `HoverEntering` 에서는 반드시 하나를 보낸다. `offboard_hover()` 는 `Hovering` 에서 위치 setpoint 를 보낸 주기에만 true 다 (`fc/state` 의 `offboard_hover`) | icd 4.2, 4.3, 부록 A, pi 3장, 5.1, 5.2 |
 | `IStopRequester` | mavlink_gateway 가 스스로 정지를 요청하는 인터페이스 (통제기의 TRACK_STOP, 추종 제어 상태 보고 두절). 통제기 두절은 추종 제어에 정지를 요청한다 (3절 `GcsLinkMonitor`). 세션과 `fc_epoch` 값이 없고 송신권을 확인하지 않는다. bus 로는 호출할 수 없다 | icd 6.1, 6.4 |
 | `IFcCommandLockRelease` | `Locked` 를 해제하는 인터페이스. 운용자의 명시적 TRACK_STOP 을 처리하는 통제기 명령 handler 가 호출한다. FC 의 비행 상태가 최신일 때만 해제한다 | icd 4.2, 6장 |
 | `IFcCommandStatus` | mavlink_gateway 가 FC 로 setpoint 를 보내는 중인지(마지막 주기 작업이 setpoint 를 골랐는지. Offboard 진입 전의 사전 송신 포함), Offboard 진입 중인지, 추종 중 setpoint 유효 시간 경과로 마지막에 정지한 시각(icd 6.4 ⓐ)을 조회하는 인터페이스. 통제기 쪽 판단(제어권 부여, FC 전달 조건)이 `FcControl` 의 구체 클래스를 알지 않고 상태만 읽는다 | icd 5.1, 5.2 |
-| `IFcLandingRelease` | 통제기의 착륙 명령을 FC 로 전달할 때 진행 중인 명령을 취소하고 setpoint 송신을 멈추는 인터페이스. `LandingLock`(3절)이 호출한다. `FcCommandState` 에 이 요청의 전환을 추가한다 | icd 5.3 |
+| `IFcLandingRelease` | 통제기의 착륙 명령을 FC 로 전달할 때 FC 제어 명령 송신권과 진행 중인 Offboard 진입을 폐기하고 추종 제어의 setpoint 를 보내지 않는 인터페이스. FC 가 Offboard 일 수 있는 동안은 제자리 유지를 이어 가고(`Landing`), FC 가 Offboard 가 아님을 확인하면 송신을 끝낸다. `LandingLock`(3절)이 호출한다 | icd 5.3 |
+| `IFcHoverEntry` | 조종사 개입 뒤 통제기의 복귀 명령으로 Offboard 제자리 유지에 들어가는 인터페이스(`HoverEntering`). 진입 명령을 보내기 전에 `still_allowed()` 로 절차를 이어 가도 되는지 확인하고, 결과를 `done(entered)` 로 알린다. `EndRcOverrideHandler`(3절)가 호출한다 | icd 4.4, 5.4 |
 | `SetpointInbox` | 추종 제어가 보낸 가장 최근의 setpoint 하나를 보관. 유효 시간이 지난 값과 유한하지 않은 값은 받지 않고, `valid_until_monotonic_ns` 가 1 s 보다 먼 값은 1 s 로 줄인다 | pi 5.1, icd 6.4 ⓐ |
 | `SetpointStreamRecord` | 추종 제어의 setpoint 를 FC 로 끊기지 않고 송신해 온 시간. 송신 간격이 0.2 s 를 넘으면 끊긴 것으로 본다. Offboard 진입 요청의 조건(1 s 이상 연속 송신)에 쓴다 | icd 4.2 |
 | `HealthState` | `ARGUS_STATUS.health` 비트의 현재 값 | icd 3.1 |
@@ -318,8 +342,8 @@ classDiagram
 - `IVelocitySetpointSink`, `IFlightModeControl` 은 `vehicle_api` 의 인터페이스다(`class_follow.md`). 추종 제어 쪽에서는 같은 인터페이스를 bus 로 보내는 어댑터가 구현하고, mavlink_gateway 에서는 `FcControl` 이 구현한다.
 - `request_hold` 는 FC 의 Hold 모드가 아니라 정지 요청을 뜻한다. 정지는 Offboard 를 유지한 채 `Hovering` 의 setpoint 로 한다 (`icd.md` 4.2 정지 상태).
 - SET_POSITION_TARGET_LOCAL_NED 를 송신하는 곳은 `FcControl::tick` 하나다. 주기마다 `select_setpoint` 가 고른 하나만 보내므로 추종 제어의 속도와 정지 setpoint 가 같은 주기에 함께 나가지 않고, 주기 작업의 등록 순서에 따라 결과가 달라지지 않는다.
-- setpoint 의 송신을 끝내는 전환은 둘뿐이다: `CancellingEntry` → `Idle`(진입 기한 후에 받은 비행 상태가 Offboard 가 아님), `Following` 또는 `Hovering` → `Locked`(FC 가 Offboard 를 벗어남). 수신이 끊기거나 FC 연결이 다시 된 것만으로는 끝내지 않는다.
-- 호출하는 쪽은 `FcControl` 을 인터페이스 중 필요한 것으로만 참조한다: bus 어댑터는 `IFlightModeControl` 과 `IVelocitySetpointSink`, 통제기 명령 handler 는 `IStopRequester` 와 `IFcCommandLockRelease`, `ControlAuthority` 와 `ArgusStatusReporter` 는 `IFcCommandStatus`.
+- setpoint 의 송신을 끝내는 전환은 셋뿐이다: `CancellingEntry` → `Idle`(진입 기한 후에 받은 비행 상태가 Offboard 가 아님), `Landing` → `Idle`(FC 가 Offboard 가 아님), `Following` 또는 `Hovering` → `Locked`(FC 가 Offboard 를 벗어남). `HoverEntering` → `Idle` 은 진입 명령을 보내기 전에만 일어난다. 수신이 끊기거나 FC 연결이 다시 된 것만으로는 끝내지 않는다.
+- 호출하는 쪽은 `FcControl` 을 인터페이스 중 필요한 것으로만 참조한다: bus 어댑터는 `IFlightModeControl` 과 `IVelocitySetpointSink`, 통제기 명령 handler 는 `IStopRequester` 와 `IFcCommandLockRelease`, `ControlAuthority` 와 `ArgusStatusReporter` 는 `IFcCommandStatus`, `LandingLock` 은 `IFcLandingRelease`, `EndRcOverrideHandler` 는 `IFcHoverEntry`.
 - 전환표와 선택표는 `onboard/apps/mavlink_gateway/test/fc_command_policy_test.cpp` 의 표가 행마다 확인한다. 상태 그림은 `state_machine.md` 3절.
 
 ## 3. 통제기 통신 (UDP 14550, compid 195)
@@ -361,6 +385,7 @@ classDiagram
     }
     class MavlinkCommandReceiver {
         +add_handler(handler, CommandRules) bool
+        +cancel_in_progress()
         +tick() 1 Hz
         -records map~(sysid, compid, MAV_CMD), (명령 번호, 실행, 시각)~
     }
@@ -368,6 +393,7 @@ classDiagram
         +numbered bool
         +requires_control bool
         +kind Start, Stop, Other
+        +allowed_while_locked bool
     }
     class RequestHeaderFactory {
         +next(valid_for) RequestHeader
@@ -468,15 +494,30 @@ classDiagram
     class FcTelemetryRelay
     class landing_lock_policy {
         <<function>>
+        +on_land_forwarded(LandingLockStatus, now) LandingLockStep
+        +on_land_answered(LandingLockStatus, LandAnswer) LandingLockStatus
+        +on_landing_lock_tick(LandingLockStatus, LandingLockObservation) LandingLockStatus
     }
     class LandingLock {
         +active() bool
+        +subscribe_started(handler) Subscription
+        +tick() 100 ms
+    }
+    class IRcOverrideReturn {
+        <<interface>>
+        +check_return() ReturnCheck
+        +return_still_allowed() bool
+        +end_override()
     }
     class rc_override_policy {
         <<function>>
+        +is_pilot_takeover(ModeChange, GcsModeCommand) bool
+        +sticks_neutral(RcChannels) bool
+        +check_return_conditions(ReturnObservation) ReturnBlock
+        +return_procedure_allowed(ReturnObservation) bool
     }
     class RcOverrideMonitor {
-        +pilot_in_control() bool
+        +tick() 50 ms
     }
 
     IGcsMessageSource <|.. GcsRegistry
@@ -492,11 +533,14 @@ classDiagram
     ControlAuthority ..> ICommandActivity : 진행 중인 명령
     ControlAuthority ..> IFollowStatusSource : 추종, 스캔 중
     ControlAuthority ..> ILandingLockState : 착륙 잠금
+    ControlAuthority ..> IRcOverrideState : 조종사 개입 중
     ICommandActivity <|.. CommandActivity
     ILandingLockState <|.. LandingLock
     MavlinkCommandReceiver ..> IGcsMessageSource : COMMAND_LONG, COMMAND_INT 수신
     MavlinkCommandReceiver ..> IGcsLink : COMMAND_ACK, STATUSTEXT 를 보낸 통제기에만
     MavlinkCommandReceiver ..> IControlAuthority : 제어권 확인
+    MavlinkCommandReceiver ..> ILandingLockState : 착륙 잠금 중 거부
+    MavlinkCommandReceiver ..> IRcOverrideState : 조종사 개입 중 거부
     MavlinkCommandReceiver --> CommandActivity : 진행 중인 명령
     MavlinkCommandReceiver ..> CommandRules : handler 마다
     MavlinkCommandReceiver *-- IMavlinkCommandHandler
@@ -523,8 +567,8 @@ classDiagram
     ScanStartHandler ..> FollowCommandTracker
     FollowCommandTracker ..> IFollowStatusEvents : command_results
     RequestMessageHandler ..> IVideoStreamInfoSource : 269
-    EndRcOverrideHandler ..> rc_override_policy : 복귀 조건
-    EndRcOverrideHandler ..> IStopRequester : 제자리 유지
+    EndRcOverrideHandler ..> IRcOverrideReturn : 복귀 조건, 개입 끝냄
+    EndRcOverrideHandler ..> IFcHoverEntry : 제자리 유지 진입
     GcsLinkMonitor ..> IGcsPresence : 주인의 HEARTBEAT 시각
     GcsLinkMonitor ..> IControlAuthority : 주인
     GcsLinkMonitor ..> IFollowControlClient : 두절 시 정지 (LinkLoss)
@@ -538,6 +582,8 @@ classDiagram
     ArgusStatusReporter ..> IFcCommandStatus : setpoint 유효 시간 경과 정지
     ArgusStatusReporter ..> IStopRequester : follow/status 두절 시 정지
     ArgusStatusReporter ..> ICpuTemperature : cpu_temp
+    ArgusStatusReporter ..> ILandingLockState : control_flags
+    ArgusStatusReporter ..> IRcOverrideState : control_flags
     ArgusStatusReporter ..> IGcsLink : ARGUS_STATUS broadcast
     ICpuTemperature <|.. SysfsCpuTemperature
     HeartbeatSender ..> IGcsLink : HEARTBEAT broadcast
@@ -557,26 +603,33 @@ classDiagram
     GcsFcForwarder ..> IGcsLink : 직접 응답, FC 의 COMMAND_ACK 를 보낸 통제기에만
     GcsFcForwarder ..> IStopRequester : HOLD
     IForwardedCommandEvents <|.. GcsFcForwarder
-    IRcOverrideState <|.. RcOverrideMonitor
-    LandingLock ..> IForwardedCommandEvents : NAV_LAND 전달과 응답
-    RcOverrideMonitor ..> IForwardedCommandEvents : DO_SET_MODE 전달
     FcTelemetryRelay ..> IMavlinkConnection : FC telemetry 수신
     FcTelemetryRelay ..> IGcsLink : broadcast
     LandingLock ..> landing_lock_policy : 판단
     LandingLock ..> IFcLandingRelease
+    LandingLock ..> IForwardedCommandEvents : NAV_LAND 전달과 FC 의 응답
+    LandingLock ..> IFcStateSource : armed
+    LandingLock ..> IRcOverrideState : 복귀 완료
+    LandingLock ..> IFollowControlClient : 추종 중이면 정지 (Onboard)
+    IRcOverrideState <|.. RcOverrideMonitor
+    IRcOverrideReturn <|.. RcOverrideMonitor
     RcOverrideMonitor ..> rc_override_policy : 판단
+    RcOverrideMonitor ..> IForwardedCommandEvents : DO_SET_MODE 전달
+    RcOverrideMonitor ..> IFcStateSource : FC 모드, armed
+    RcOverrideMonitor ..> IFcRcStatusSource : 스틱, RC 수신기, 추정 상태
+    RcOverrideMonitor ..> ICommandActivity : 진행 중인 명령
 ```
 
 | 클래스 | 책임 | 단계 | 출처 |
 |---|---|---|---|
 | `GcsRegistry`, `IGcsMessageSource`, `IGcsPresence` | 통제기 인정(sysid 250~253, compid 190, HEARTBEAT 의 type 이 MAV_TYPE_GCS)과 통제기별 마지막 HEARTBEAT 시각, 주소 기록. 인정한 통제기의 메시지만 넘긴다(`IGcsMessageSource`, `MavlinkCommandReceiver` 와 `ControlAuthority` 가 사용). HEARTBEAT 시각과 주소 조회는 `IGcsPresence`(`ControlAuthority`, `GcsLinkMonitor` 가 사용). 같은 sysid 를 다른 주소에서 받으면 두 주소에 STATUSTEXT 경고 | B | icd 5.1 |
-| `control_authority_policy` (함수) | 제어권의 판단만 한다: 부여(제어권 없음, 진행 중 명령과 추종, 스캔, setpoint 송신 없음, 처음 HEARTBEAT), 요청(45010 의 거부 조건), 해제(주인이 아니면 DENIED). 입력은 `ControlObservation`(시각, 현재 주인과 그 마지막 HEARTBEAT 시각, 비행 중, 진행 중 명령, 추종 또는 스캔 중, setpoint 송신 중, 착륙 잠금)이고 결과는 다음 주인과 응답 결과. MAVLink 송수신과 시계를 모른다. 두절은 제어권을 바꾸지 않으므로 이 함수가 다루지 않는다 (`GcsLinkMonitor`) | B | icd 4.4, 5.1 |
-| `ControlAuthority`, `IControlAuthority`, `IControlRequests` | 주인 sysid 하나를 보관하고, HEARTBEAT 와 45010 마다 입력을 모아 `control_authority_policy` 를 부른 뒤 결과를 반영한다. 조회(`IControlAuthority`: `controller()`, `is_controller(sysid)`)와 요청(`IControlRequests`: `request(GcsPeer, action)`)을 나눠, 조회만 하는 `MavlinkCommandReceiver`, `GcsLinkMonitor`, `GcsFcForwarder`, `ArgusStatusReporter` 는 요청에 의존하지 않는다. 진행 중인 명령은 `ICommandActivity`(`CommandActivity`, `MavlinkCommandReceiver` 가 갱신)로 읽는다. `MavlinkCommandReceiver` 와 서로를 생성 인자로 받지 않도록 값을 두 객체 밖에 둔다. 착륙 잠금은 `ILandingLockState` 로 읽으며 F 단계 전에는 항상 false 인 `InactiveLandingLock` 을 연결한다 | B | icd 5.1 |
-| `MavlinkCommandReceiver`, `CommandRules` | `target_system = 1`, `target_component = 195` 인 COMMAND_LONG 을 받아 공통 규칙을 적용한 뒤 MAV_CMD 로 handler 에 넘긴다. 순서: 명령 번호 확인과 재전송 판단 (sysid, compid, MAV_CMD), 제어권 확인 (없으면 TEMPORARILY_REJECTED 와 STATUSTEXT "제어권 없음"), 동시 처리 규칙. 제어권을 동시 처리보다 먼저 확인하므로 제어권 없는 통제기의 TRACK_STOP 은 진행 중인 명령을 취소하지 않는다. handler 는 등록할 때 `CommandRules`(명령 번호 규칙 적용, 제어권 필요, 시작, 정지, 그 밖의 명령)를 함께 알린다 (`MAV_CMD_REQUEST_MESSAGE` 는 param7 이 응답 대상이므로 명령 번호 규칙을 적용하지 않음). 응답(COMMAND_ACK, 원인이 있으면 STATUSTEXT)은 명령을 보낸 통제기에만 보낸다. IN_PROGRESS 1 s 재송신. 모르는 명령은 UNSUPPORTED, COMMAND_INT 는 COMMAND_LONG_ONLY | B | icd 4.1, 5.1 |
+| `control_authority_policy` (함수) | 제어권의 판단만 한다: 부여(제어권 없음, 진행 중 명령과 추종, 스캔, setpoint 송신 없음, 처음 HEARTBEAT), 요청(45010 의 거부 조건), 해제(주인이 아니면 DENIED). 입력은 `ControlObservation`(시각, 현재 주인과 그 마지막 HEARTBEAT 시각, 비행 중, 진행 중 명령, 추종 또는 스캔 중, setpoint 송신 중, 착륙 잠금, 조종사 개입 중)이고 결과는 다음 주인과 응답 결과. MAVLink 송수신과 시계를 모른다. 두절은 제어권을 바꾸지 않으므로 이 함수가 다루지 않는다 (`GcsLinkMonitor`) | B | icd 4.4, 5.1 |
+| `ControlAuthority`, `IControlAuthority`, `IControlRequests` | 주인 sysid 하나를 보관하고, HEARTBEAT 와 45010 마다 입력을 모아 `control_authority_policy` 를 부른 뒤 결과를 반영한다. 조회(`IControlAuthority`: `controller()`, `is_controller(sysid)`)와 요청(`IControlRequests`: `request(GcsPeer, action)`)을 나눠, 조회만 하는 `MavlinkCommandReceiver`, `GcsLinkMonitor`, `GcsFcForwarder`, `ArgusStatusReporter` 는 요청에 의존하지 않는다. 진행 중인 명령은 `ICommandActivity`(`CommandActivity`, `MavlinkCommandReceiver` 가 갱신)로 읽는다. `MavlinkCommandReceiver` 와 서로를 생성 인자로 받지 않도록 값을 두 객체 밖에 둔다. 착륙 잠금은 `ILandingLockState`(`LandingLock`), 조종사 개입은 `IRcOverrideState`(`RcOverrideMonitor`)로 읽는다 | B, F | icd 5.1 |
+| `MavlinkCommandReceiver`, `CommandRules` | `target_system = 1`, `target_component = 195` 인 COMMAND_LONG 을 받아 공통 규칙을 적용한 뒤 MAV_CMD 로 handler 에 넘긴다. 순서: 명령 번호 확인과 재전송 판단 (sysid, compid, MAV_CMD), 제어권 확인 (없으면 TEMPORARILY_REJECTED 와 STATUSTEXT "제어권 없음"), 착륙 잠금과 조종사 개입 중 확인 (`CommandRules::allowed_while_locked` 가 아니면 TEMPORARILY_REJECTED 와 STATUSTEXT "착륙 잠금" 또는 "조종사 개입 중". 예외는 45010, `MAV_CMD_REQUEST_MESSAGE`, 45011), 동시 처리 규칙. 착륙 잠금이 시작되면 `cancel_in_progress()` 로 진행 중인 명령을 CANCELLED 로 끝낸다. 제어권을 동시 처리보다 먼저 확인하므로 제어권 없는 통제기의 TRACK_STOP 은 진행 중인 명령을 취소하지 않는다. handler 는 등록할 때 `CommandRules`(명령 번호 규칙 적용, 제어권 필요, 시작, 정지, 그 밖의 명령)를 함께 알린다 (`MAV_CMD_REQUEST_MESSAGE` 는 param7 이 응답 대상이므로 명령 번호 규칙을 적용하지 않음). 응답(COMMAND_ACK, 원인이 있으면 STATUSTEXT)은 명령을 보낸 통제기에만 보낸다. IN_PROGRESS 1 s 재송신. 모르는 명령은 UNSUPPORTED, COMMAND_INT 는 COMMAND_LONG_ONLY | B | icd 4.1, 5.1 |
 | `IMavlinkCommandHandler`, `CommandResponder` | MAV_CMD 하나를 처리. `handle(request, responder)` 로 받고 결과는 `responder.send()` 로 보낸다 (비동기). `CommandRequest` 는 보낸 통제기(`GcsPeer`)를 가진다. 공통 규칙(재전송, 제어권, 동시 처리)은 `MavlinkCommandReceiver` 가 handler 를 부르기 전에 처리한다. `CommandResponder` 는 IN_PROGRESS 는 여러 번, 그 외 결과는 최종으로 한 번만 보내며, 최종을 보내지 않고 사라지면 소멸자가 FAILED 를 보낸다 | B | icd 4.1 |
 | `RequestOperatorControlHandler` | 45010. p1(0 해제, 1 요청)과 p4(0 또는 보낸 통제기의 sysid) 검사 뒤 `IControlRequests` 에 요청 또는 해제를 넘긴다. 제어권이 없는 통제기도 보낼 수 있도록 제어권 필요 없음으로 등록한다 | B | icd 4.4 |
 | `GcsLinkMonitor`, `RequestHeaderFactory` | 주인의 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`. 두절이 시작될 때 추종 또는 스캔 중이면 `IFollowControlClient::stop(LinkLoss)` 로 추종 제어에 정지를 요청한다 (TRACK_STOP 과 같은 절차). 다시 받으면 비트만 복구. 두절 판단의 시각은 `IGcsPresence`. 추종 제어에 보내는 요청의 공통 필드(command_id, session_id, seq, fc_epoch, valid_until)는 `RequestHeaderFactory` 가 만든다 (D 단계의 명령 handler 도 사용) | B | icd 6.1, pi 3장 |
-| `ArgusStatusReporter`, `argus_status_policy` (함수), `ICpuTemperature`, `SysfsCpuTemperature` | ARGUS_STATUS 를 모든 통제기에 1 Hz 와 `mission_state`, `target_state`, `health`, `active_sensor` 가 바뀔 때 송신. 값은 `argus_status_policy` 가 `follow/status`(`IFollowStatusSource`), `IControlAuthority::controller()`(→ `control_sysid`), `HealthState`, `ICpuTemperature`(Linux thermal zone 파일)로 구성한다. `active_sensor` 는 PREPARING, FOLLOW_ACTIVE 일 때만 선택 표적의 센서. 추종 제어 두절: `follow/status` 3 s 없음(icd 6.4 ⓑ) → FAULT, 마지막 값이 추종 또는 스캔 중이었으면 `IStopRequester` 로 정지, 두절 뒤 새로 받은 값으로 풀림. setpoint 유효 시간 경과 정지(ⓐ, `IFcCommandStatus::last_setpoint_timeout_ns()`) → 그 뒤의 `follow/status` 가 FOLLOW_ACTIVE, SCAN_ACTIVE 가 아니게 될 때까지 FAULT. 해석하지 못한 `mission_state` 도 FAULT | C | icd 3.1, 6.4, pi 6장 |
+| `ArgusStatusReporter`, `argus_status_policy` (함수), `ICpuTemperature`, `SysfsCpuTemperature` | ARGUS_STATUS 를 모든 통제기에 1 Hz 와 `mission_state`, `target_state`, `health`, `active_sensor`, `control_flags` 가 바뀔 때 송신. 값은 `argus_status_policy` 가 `follow/status`(`IFollowStatusSource`), `IControlAuthority::controller()`(→ `control_sysid`), `HealthState`, `ICpuTemperature`(Linux thermal zone 파일), `ILandingLockState` 와 `IRcOverrideState`(→ `control_flags`, F 단계)로 구성한다. `active_sensor` 는 PREPARING, FOLLOW_ACTIVE 일 때만 선택 표적의 센서. 추종 제어 두절: `follow/status` 3 s 없음(icd 6.4 ⓑ) → FAULT, 마지막 값이 추종 또는 스캔 중이었으면 `IStopRequester` 로 정지, 두절 뒤 새로 받은 값으로 풀림. setpoint 유효 시간 경과 정지(ⓐ, `IFcCommandStatus::last_setpoint_timeout_ns()`) → 그 뒤의 `follow/status` 가 FOLLOW_ACTIVE, SCAN_ACTIVE 가 아니게 될 때까지 FAULT. 해석하지 못한 `mission_state` 도 FAULT | C | icd 3.1, 6.4, pi 6장 |
 | `HeartbeatSender` | mavlink_gateway(compid 195)의 HEARTBEAT 를 1 Hz 로 모든 통제기에 broadcast 하고 FC 로 보낸다(mavlink-router 경유). `type` MAV_TYPE_ONBOARD_CONTROLLER, `system_status` 는 `HealthState` 의 `ARGUS_HEALTH_FC_CONNECTED` 가 1 이면 ACTIVE, 0 이면 CRITICAL. 통제기는 이 HEARTBEAT 의 3 s 두절로 mavlink_gateway 연결 끊김을 표시한다 | C | icd 2장, 6.7 |
 | `ArgusSensorStatusReporter`, `sensor_status_policy` (함수), `SensorSourceMap` | ARGUS_SENSOR_STATUS 를 `SensorSourceMap` 의 센서마다 1 Hz 와 그 센서의 `flags` 가 바뀔 때 송신 (받은 값이 없어도 flags 0 으로 송신). 값은 `sensor_status_policy` 가 `vision/status`(`IVisionStatusSource`: CAMERA_OK, INFERENCE_OK, infer_fps, model_ver, img_w, img_h)와 `tracking/status`(`ITrackingStatusSource`: TRACKING)로 구성하며 3 s 안에 받은 값만 쓴다. FOLLOWABLE 은 TRACKING 이고 `SensorSourceMap` 이 허용할 때. `SensorSourceMap` 은 `source` 문자열 ↔ `ARGUS_SENSOR` 대응과 FOLLOWABLE 허용(기본값 `camera-ir` → IR, `camera-eo` → EO, 둘 다 허용. 설정 파일 전까지 코드 기본값) | C | icd 3.1, 6.3, pi 5.1.3, 5.1.7 |
 | `IFollowStatusSource`, `IFollowStatusEvents`, `BusFollowStatusSubscriber` | `follow/status` 를 구독해 최신 값과 받은 시각(mavlink_gateway 의 시계) 보관(`IFollowStatusSource::latest()`), 받을 때마다 handler 호출(`IFollowStatusEvents::subscribe()`). 조회와 알림을 인터페이스 둘로 나눠, 최신 값만 조회하는 `ControlAuthority`, `GcsLinkMonitor`(추종, 스캔 중 판단)는 알림에 의존하지 않는다 (`vehicle_api`, `vehicle_api_bus` 모듈) | B | pi 5.1.2 |
@@ -587,13 +640,13 @@ classDiagram
 | `gcs_forward_policy` (함수) | 통제기가 FC 로 보낸 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(MAV_RESULT 와 STATUSTEXT 이유), 응답 없이 폐기, 정지(HOLD). 입력은 `ForwardObservation`(보낸 통제기의 제어권, FC 상태를 아는지와 모드, armed, setpoint 송신 또는 Offboard 진입 대기, 추종 또는 스캔 중, 진행 중인 명령, 착륙 잠금, 조종사 개입 중)와 `GcsMessageRequest`(메시지 종류, MAV_CMD, param1~3). icd 5.2 표를 이 함수 하나에 둔다. DO_SET_MODE 의 요청 모드는 `set_mode_request()` 로 읽는다 | E | icd 4.1, 5.2 |
 | `GcsFcForwarder` | 통제기의 HEARTBEAT, COMMAND_LONG, COMMAND_INT, MANUAL_CONTROL, PARAM_REQUEST_READ, PARAM_SET 중 FC 가 대상인 것을 받아 `gcs_forward_policy` 의 결과를 실행한다: 받은 그대로(통제기의 sysid, compid 유지) FC 로 전달(`IMavlinkConnection`), COMMAND_ACK 와 STATUSTEXT 직접 응답(송신 compid 195, 보낸 통제기에만), HOLD 의 `IStopRequester` 호출. FC 의 COMMAND_ACK 중 대상이 통제기인 것을 그 통제기의 마지막 주소(`IGcsPresence`)로만 전달한다. 전달한 명령과 FC 의 응답을 `IForwardedCommandEvents` 로 알린다 | E | icd 4.1, 4.3, 5.2 |
 | `IForwardedCommandEvents`, `ForwardedCommandEvent` | FC 로 전달한 COMMAND_LONG 마다 보낸 직후 Forwarded, 대상이 통제기인 FC 의 COMMAND_ACK 마다 Answered 를 알린다. 값은 보낸 통제기, MAV_CMD, 단계, FC 의 결과(Answered), 요청 모드(DO_SET_MODE). `LandingLock` 은 NAV_LAND 로 잠금의 시작과 해제를, `RcOverrideMonitor` 는 DO_SET_MODE 로 통제기의 모드 변경을 안다. 전달하는 쪽이 받는 쪽을 모르도록 인터페이스로 둔다 (`IFollowStatusEvents` 와 같은 모양) | E | icd 5.3, 5.4 |
-| `IRcOverrideState`, `InactiveRcOverride` | 조종사 개입 중인지 조회(`pilot_in_control()`). 구현은 F 단계의 `RcOverrideMonitor` 이며, 그 전에는 항상 false 인 `InactiveRcOverride` 를 연결한다 | E | icd 5.4 |
+| `IRcOverrideState` | 조종사 개입 중인지 조회(`pilot_in_control()`). 구현은 F 단계의 `RcOverrideMonitor` | E, F | icd 5.4 |
 | `FcTelemetryRelay` | FC(sysid 1, compid 1)가 보낸 메시지 중 icd 2장의 "FC → 전체" 메시지만 받은 그대로 모든 통제기에 broadcast 한다 (허용 목록 `kRelayedFcMessages`). 주기는 줄이지 않는다 | E | icd 1.2, 2장 |
 | `RequestMessageHandler` | `MAV_CMD_REQUEST_MESSAGE`. 메시지 번호별 응답 함수를 등록받는 표를 두고, 처음 등록하는 것은 `VIDEO_STREAM_INFORMATION`(269, `build_video_stream_information`). 없는 번호와 아직 받지 못한 값은 DENIED. COMMAND_ACK 를 먼저 보내고 요청한 메시지는 요청한 통제기에만 보낸다 (param7 의 응답 대상은 보지 않음: RTSP 주소의 호스트가 요청한 통제기에 맞춘 값). 제어권이 없는 통제기도 요청할 수 있다 (`CommandRules` 의 제어권 필요 없음, 기체를 움직이지 않는 조회) | E | icd 4.1, video 7장 |
 | `IVideoStreamInfoSource`, `BusVideoStreamInfoSubscriber` | 영상 송신부가 발행한 `video/stream_info` 의 최신 값 조회 (`onboard/libs/video_api`, `onboard/libs/video_api_bus`). RTSP 주소의 호스트는 `IGcsLink::local_address()` 로 정한다 | E | video 7장, pi 5.1 |
-| `landing_lock_policy` (함수), `LandingLock` | `ILandingLockState` 구현. 착륙 잠금의 시작(착륙 명령 전달)과 해제(지상이고 시동 꺼짐, 조종사 개입 뒤 복귀 완료) 판단과 상태 보관. 시작할 때 `IFcLandingRelease` 로 진행 중 명령 취소와 setpoint 송신 중지 | F | icd 5.3 |
-| `rc_override_policy` (함수), `RcOverrideMonitor` | 조종사 개입 판정(FC 의 STATUSTEXT, Offboard 이탈)과 복귀 조건(FC 모드 Hold 또는 Position, 스틱 4축 중립 유지 시간, RC 수신기 정상, 추정 유효, 진행 중 명령 없음) 판단과 상태 보관. `pilot_in_control()` 제공 | F | icd 5.4 |
-| `EndRcOverrideHandler` | 45011. `rc_override_policy` 의 복귀 조건 확인 뒤 `IStopRequester` 로 제자리 유지 시작 | F | icd 4.4, 5.4 |
+| `landing_lock_policy` (함수), `LandingLock`, `ILandingLockState` | 착륙 잠금의 판단과 보관. 시작: NAV_LAND 의 Forwarded. 해제: FC 의 NAV_LAND 최종 결과가 ACCEPTED 가 아님(IN_PROGRESS 무시, 응답이 없으면 유지), 잠금 시작 뒤에 받은 HEARTBEAT 의 armed 가 false, 잠금 중 조종사 개입을 본 뒤 개입이 풀림(복귀 완료). 시작할 때 `IFcLandingRelease` 로 FC 제어를 내려놓고, 추종 또는 스캔 중이면 `IFollowControlClient::stop(Onboard)`, `subscribe_started()` 로 알려 main 이 `MavlinkCommandReceiver::cancel_in_progress()`(진행 중 명령 CANCELLED)를 연결한다. `MavlinkCommandReceiver` 와 서로를 생성 인자로 받지 않도록 취소는 알림으로 연결한다 | F | icd 5.3 |
+| `FcRcStatusReceiver`(2절), `rc_override_policy` (함수), `RcOverrideMonitor`, `IRcOverrideState`, `IRcOverrideReturn` | 조종사 개입의 판정과 보관, 복귀 조건. 개입: 시동이 걸린 기체의 FC 모드가 수동 모드(Position, Altitude, Stabilized, Manual)로 바뀌었고, 그 모드로 바꾸는 통제기의 DO_SET_MODE 를 바뀌기 전 3 s 안에 전달하지 않음. 해제: 복귀 완료(`end_override()`), armed 가 false. 스틱 4축 중립(RC_CHANNELS 의 정규화 값이 중앙 ± 0.1)이 시작된 시각을 50 ms 마다 갱신한다. 복귀 조건(`check_return()`): FC 모드 Hold 또는 Position, 중립 1 s 유지, RC 수신기와 위치, 자세 추정(SYS_STATUS), 진행 중인 명령, 추종, 스캔, Offboard 진입 없음. 채널 번호와 보정값은 `RcOverrideConfig`(mavlink_gateway 설정). 조회는 `IRcOverrideState`(`GcsFcForwarder`, `MavlinkCommandReceiver`, `ControlAuthority`, `LandingLock`, `ArgusStatusReporter`), 복귀 처리는 `IRcOverrideReturn`(`EndRcOverrideHandler`)로 나눈다 | F | icd 2장, 5.4 |
+| `EndRcOverrideHandler` | 45011. `CommandRules` 는 명령 번호, 제어권 필요, 착륙 잠금과 조종사 개입 중에도 받음. `IRcOverrideReturn::check_return()` 불충족이면 TEMPORARILY_REJECTED 와 불충족 조건의 STATUSTEXT. FC 모드가 Hold 이면 개입을 끝내고 ACCEPTED. Position 이면 IN_PROGRESS 뒤 `IFcHoverEntry` 로 제자리 유지에 들어가 성공하면 개입을 끝내고 ACCEPTED, 실패하면 FAILED. 진입 명령 전에는 `return_still_allowed()`(스틱이 지금 중립, RC 수신기와 추정 정상)로 절차를 이어 갈지 확인한다 | F | icd 4.4, 5.4 |
 
 - 단계: 구현 순서. B 통제기 연결과 제어권, 명령 처리. C 상태 송신. D 추종 명령. E FC 전달과 요청 메시지 (router 설정에서 통제기 엔드포인트 삭제 포함). F 착륙 잠금과 조종사 개입.
 - 판단 함수 넷(`control_authority_policy`, `gcs_forward_policy`, `landing_lock_policy`, `rc_override_policy`)은 입력 구조체만 받고 MAVLink, 시계, bus 를 모른다. 규약의 조건이 바뀌면 이 함수만 바꾼다. 실행 클래스(`ControlAuthority`, `GcsFcForwarder`, `LandingLock`, `RcOverrideMonitor`)는 입력을 모으고 결과를 실행만 한다 (2절 `fc_command_policy` 와 `FcControl` 의 구조와 같음).
@@ -619,7 +672,7 @@ classDiagram
 3. 해소 (0.5): 모듈은 `core`·`bus`·`protocol`·`vehicle_api`·`vehicle_api_testing`·`apps/mavlink_gateway` 로 나눴다(위 "코드" 행). bus 어댑터(`vehicle_api_bus`)와 실행 파일은 다음 PR.
 4. `FcCommandState` 의 상태가 열 개를 넘으면(Position 모드에서 조종을 넘겨받는 절차, 착륙을 mavlink_gateway 가 맡는 경우) 전환 함수 하나로 두지 않고 상태별 클래스나 계층 상태로 나눈다. 속도·yaw rate 절대 한계는 규약에 생기면 `select_setpoint` 다음 단계에 둔다.
 5. `MavlinkCommandReceiver` 의 IN_PROGRESS 재송신 최소 간격(progress 가 자주 바뀔 때)과 `CommandResponder` 가 Receiver 보다 오래 살 때의 처리(생성 순서 또는 weak 참조)는 구현 PR 에서 정한다.
-6. 스틱 중립 유지 시간과 판정 범위(`RCn_TRIM`, `RCn_DZ`)의 값은 기체 시험으로 정한다 (icd 5.4, F 단계).
+6. 해소 (F 단계): 스틱 중립은 정규화 값이 중앙 ± 0.1(PX4 `MPC_HOLD_DZ` 기본값), 유지 시간 1 s, 스로틀의 중앙은 (MIN + MAX) / 2 (icd 5.4). 값은 `RcOverrideConfig` 의 기본값이며 기체 시험에서 조정한다.
 7. sysid 겹침 경고의 반복 간격 (icd 5.1 은 "발견할 때마다").
 
 ## 변경 이력

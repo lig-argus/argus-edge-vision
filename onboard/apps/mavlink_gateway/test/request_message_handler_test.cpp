@@ -15,6 +15,7 @@
 #include "argus/mavlink_gateway/mavlink_command_handler.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
 #include "argus/mavlink_gateway/mavlink_ids.hpp"
+#include "fake_command_restrictions.hpp"
 #include "fake_gcs_link.hpp"
 #include "gcs_test_messages.hpp"
 
@@ -137,7 +138,12 @@ TEST(RequestMessageHandlerReceiverTest, GcsWithoutControlGetsAnswerRegardlessOfP
     GcsRegistry registry{link, clock};
     AlwaysOwnerAuthority authority;
     CommandActivity activity;
-    MavlinkCommandReceiver receiver{registry, link, clock, authority, activity};
+    FakeLandingLock landing_lock;
+    FakeRcOverride rc_override;
+    landing_lock.locked = true;  // 착륙 잠금 중에도 응답한다
+    rc_override.pilot = true;    // 조종사 개입 중에도 응답한다
+    MavlinkCommandReceiver receiver{registry, link,         clock,      authority,
+                                    activity, landing_lock, rc_override};
     RequestMessageHandler handler{link};
     ASSERT_TRUE(
         handler.add_message(269, [](const CommandRequest&) { return accepted_with_marker(); }));

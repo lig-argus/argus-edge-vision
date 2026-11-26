@@ -32,6 +32,8 @@ struct StatusObservation {
     std::optional<std::uint8_t> controller;
     std::uint8_t health = 0;
     std::optional<double> cpu_celsius;
+    bool landing_locked = false;    // 착륙 잠금 (control_flags)
+    bool pilot_in_control = false;  // 조종사 개입 중 (control_flags)
 };
 
 // - StatusLost: 받은 적이 없으면 시작 후, 받았으면 마지막으로 받은 뒤 kFollowStatusTimeoutNs 가

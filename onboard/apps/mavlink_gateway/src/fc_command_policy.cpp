@@ -18,7 +18,7 @@ using vehicle_api::RequestHeader;
 
 // advance() 가 전환을 이어서 적용하는 횟수의 상한. 전환은 되돌아가지 않으므로 상태의 수보다
 // 많이 이어지지 않는다
-constexpr std::int32_t kMaxChainedTransitions = 6;
+constexpr std::int32_t kMaxChainedTransitions = 8;
 
 FcCommandStep to(FcCommandState state) { return FcCommandStep{std::move(state), {}}; }
 
@@ -73,6 +73,23 @@ FcCommandState stopped(const Entering& entering) { return CancellingEntry{enteri
 // 첫 setpoint 를 기다리던 중이면 그동안 보내던 목표를 그대로 이어 간다
 FcCommandState stopped(const Following& following) {
     return Hovering{following.awaiting_first_value ? following.hover_target : std::nullopt};
+}
+
+// 복귀 명령의 제자리 유지 진입이 실패로 끝난 상태. 진입 명령을 보냈으면 FC 가 Offboard 로 바뀌었을
+// 수 있으므로 CancellingEntry 로 확인을 기다린다
+FcCommandStep hover_entry_failed(const HoverEntering& entering, const char* cause) {
+    FcCommandStep step = entry_failed(entering.deadline_ns.has_value()
+                                          ? FcCommandState{CancellingEntry{*entering.deadline_ns}}
+                                          : FcCommandState{Idle{}},
+                                      cause);
+    step.effects.hover_entered = false;
+    return step;
+}
+
+FcCommandStep hover_entered(const HoverEntering& entering) {
+    FcCommandStep step = to(Hovering{entering.target});
+    step.effects.hover_entered = true;
+    return step;
 }
 
 // 요청 없이 일어나는 전환 하나. 바뀌지 않는 경우 nullopt
@@ -164,8 +181,77 @@ public:
 
     std::optional<FcCommandStep> operator()(const Locked& /*locked*/) const { return std::nullopt; }
 
+    std::optional<FcCommandStep> operator()(const Landing& landing) const {
+        const FcModeBelief mode = fc_mode_belief(observation_, config_, landing.entry_deadline_ns);
+        if (mode == FcModeBelief::NotOffboard) {
+            FcCommandStep step = to(Idle{});
+            if (landing.was_offboard && observation_.status.has_value()) {
+                step.effects.exited_to = observation_.status->mode;
+                step.effects.exit_requested = true;
+            }
+            return step;
+        }
+        Landing next = landing;
+        next.was_offboard = landing.was_offboard || mode == FcModeBelief::Offboard;
+        if (!next.target.has_value()) {
+            next.target = observation_.fresh_pose;
+        }
+        const bool changed = next.was_offboard != landing.was_offboard ||
+                             next.target.has_value() != landing.target.has_value();
+        return changed ? std::optional<FcCommandStep>(to(next)) : std::nullopt;
+    }
+
+    std::optional<FcCommandStep> operator()(const HoverEntering& entering) const {
+        if (entering.fc_epoch != observation_.fc_epoch) {
+            return hover_entry_failed(entering, "FC 연결이 다시 됨");
+        }
+        const FcModeBelief mode = belief();
+        if (mode == FcModeBelief::NotReceived) {
+            return hover_entry_failed(entering, "FC 의 비행 상태를 받지 못함");
+        }
+        if (!entering.deadline_ns.has_value()) {
+            return before_entry_command(entering, mode);
+        }
+        if (mode == FcModeBelief::Offboard && entering.acknowledged) {
+            return hover_entered(entering);
+        }
+        if (observation_.now_ns > *entering.deadline_ns) {
+            // FC 의 응답만 없이 Offboard 가 된 경우에도 제자리 유지에 들어간 것이다
+            return mode == FcModeBelief::Offboard ? hover_entered(entering)
+                                                  : hover_entry_failed(entering, "확인 시간 초과");
+        }
+        return std::nullopt;
+    }
+
 private:
     FcModeBelief belief() const { return fc_mode_belief(observation_, config_); }
+
+    // 진입 명령을 보내기 전: FC 의 모드가 시작한 때와 다르면 포기하고, 목표 setpoint 를
+    // prestream_ns 동안 보냈으면 진입 명령을 보낸다
+    std::optional<FcCommandStep> before_entry_command(const HoverEntering& entering,
+                                                      FcModeBelief mode) const {
+        if (mode == FcModeBelief::Offboard) {
+            // 외부가 FC 를 Offboard 로 바꿈. 제자리 유지는 이어 가되 복귀 절차는 실패로 끝낸다
+            FcCommandStep step = to(Hovering{entering.target});
+            step.effects.entry_failure = "모드 이탈";
+            step.effects.hover_entered = false;
+            return step;
+        }
+        const FlightMode current =
+            observation_.status.has_value() ? observation_.status->mode : FlightMode::Unknown;
+        if (mode == FcModeBelief::NotOffboard && current != entering.start_mode) {
+            return hover_entry_failed(entering, "모드 이탈");
+        }
+        if (mode != FcModeBelief::NotOffboard ||
+            observation_.now_ns - entering.started_ns < config_.prestream_ns) {
+            return std::nullopt;
+        }
+        HoverEntering sending = entering;
+        sending.deadline_ns = observation_.now_ns + config_.entry_confirm_ns;
+        FcCommandStep step = to(sending);
+        step.effects.send_entry_command = true;
+        return step;
+    }
 
     static std::optional<FcCommandStep> started(const Following& following) {
         return to(following_by(following.authority_session, following.fc_epoch,
@@ -206,6 +292,10 @@ void merge(FcCommandEffects& into, const FcCommandEffects& from) {
         into.entry_failure = from.entry_failure;
     }
     into.setpoint_timed_out = into.setpoint_timed_out || from.setpoint_timed_out;
+    into.exit_requested = into.exit_requested || from.exit_requested;
+    if (from.hover_entered.has_value()) {
+        into.hover_entered = from.hover_entered;
+    }
 }
 
 class OffboardRequest {
@@ -273,6 +363,14 @@ public:
 
     FcRequestStep operator()(const Locked& locked) const {
         return deny(locked, FcCommandDenial::ExternalModeChange);
+    }
+
+    FcRequestStep operator()(const Landing& landing) const {
+        return deny(landing, FcCommandDenial::Landing);
+    }
+
+    FcRequestStep operator()(const HoverEntering& entering) const {
+        return deny(entering, FcCommandDenial::HoverEntry);
     }
 
 private:
@@ -356,6 +454,14 @@ std::string_view to_string(FcCommandDenial denial) {
             return "entry cancelled";
         case FcCommandDenial::SendFailed:
             return "send failed";
+        case FcCommandDenial::Landing:
+            return "landing";
+        case FcCommandDenial::HoverEntry:
+            return "hover entry in progress";
+        case FcCommandDenial::Busy:
+            return "fc command in progress";
+        case FcCommandDenial::PoseStale:
+            return "pose not fresh";
     }
     return "";
 }
@@ -426,10 +532,24 @@ FcRequestStep on_onboard_stop(const FcCommandState& state) {
     if (const auto* following = std::get_if<Following>(&state)) {
         return accept(stopped(*following));
     }
+    if (const auto* entering = std::get_if<HoverEntering>(&state)) {
+        // 진입 명령을 보내기 전이면 FC 는 Offboard 가 아니므로 보낼 것이 없다
+        const FcCommandStep failed = hover_entry_failed(*entering, "정지 요청");
+        return FcRequestStep{failed.state, failed.effects, FcCommandDenial::None};
+    }
     return accept(state);
 }
 
 FcCommandStep on_entry_command_answered(const FcCommandState& state, bool accepted) {
+    if (const auto* hover = std::get_if<HoverEntering>(&state);
+        hover != nullptr && hover->deadline_ns.has_value()) {
+        if (!accepted) {
+            return hover_entry_failed(*hover, "FC 가 거부");
+        }
+        HoverEntering acknowledged = *hover;
+        acknowledged.acknowledged = true;
+        return to(acknowledged);
+    }
     const auto* entering = std::get_if<Entering>(&state);
     if (entering == nullptr) {
         return to(state);
@@ -443,6 +563,12 @@ FcCommandStep on_entry_command_answered(const FcCommandState& state, bool accept
 }
 
 FcCommandStep on_entry_command_send_failed(const FcCommandState& state) {
+    if (const auto* hover = std::get_if<HoverEntering>(&state)) {
+        // 보내지 못했으므로 FC 가 Offboard 로 바뀌지 않는다
+        HoverEntering unsent = *hover;
+        unsent.deadline_ns.reset();
+        return hover_entry_failed(unsent, "진입 명령 송신 실패");
+    }
     const auto* entering = std::get_if<Entering>(&state);
     if (entering == nullptr) {
         return to(state);
@@ -460,6 +586,62 @@ FcRequestStep on_lock_release(const FcCommandState& state, const FcObservation& 
         return deny(state, unknown_mode_denial(observation));
     }
     return accept(Idle{});
+}
+
+FcCommandStep on_landing_release(const FcCommandState& state) {
+    if (const auto* entering = std::get_if<Entering>(&state)) {
+        return entry_failed(Landing{std::nullopt, false, entering->deadline_ns}, "착륙 명령 전달");
+    }
+    if (const auto* following = std::get_if<Following>(&state)) {
+        return to(Landing{following->awaiting_first_value ? following->hover_target : std::nullopt,
+                          true, std::nullopt});
+    }
+    if (const auto* cancelling = std::get_if<CancellingEntry>(&state)) {
+        return to(Landing{std::nullopt, false, cancelling->deadline_ns});
+    }
+    if (const auto* hovering = std::get_if<Hovering>(&state)) {
+        return to(Landing{hovering->target, true, std::nullopt});
+    }
+    if (const auto* entering = std::get_if<HoverEntering>(&state)) {
+        FcCommandStep step =
+            entry_failed(Landing{entering->target, false, entering->deadline_ns}, "착륙 명령 전달");
+        step.effects.hover_entered = false;
+        return step;
+    }
+    // Idle, Locked: FC 가 Offboard 가 아니라고 판단하므로 보낼 것이 없다. Landing: 이미 처리 중
+    return to(state);
+}
+
+FcRequestStep on_hover_entry_request(const FcCommandState& state, const FcObservation& observation,
+                                     const FcCommandPolicyConfig& config) {
+    if (!std::holds_alternative<Idle>(state) && !std::holds_alternative<Locked>(state)) {
+        return deny(state, FcCommandDenial::Busy);
+    }
+    const FcModeBelief mode = fc_mode_belief(observation, config);
+    if (mode == FcModeBelief::Offboard) {
+        return deny(state, FcCommandDenial::Busy);
+    }
+    if (mode != FcModeBelief::NotOffboard) {
+        return deny(state, unknown_mode_denial(observation));
+    }
+    if (!observation.fresh_pose.has_value()) {
+        return deny(state, FcCommandDenial::PoseStale);
+    }
+    HoverEntering entering;
+    entering.target = *observation.fresh_pose;
+    entering.fc_epoch = observation.fc_epoch;
+    entering.started_ns = observation.now_ns;
+    entering.start_mode =
+        observation.status.has_value() ? observation.status->mode : FlightMode::Unknown;
+    return accept(entering);
+}
+
+FcCommandStep on_hover_entry_abort(const FcCommandState& state) {
+    const auto* entering = std::get_if<HoverEntering>(&state);
+    if (entering == nullptr || entering->deadline_ns.has_value()) {
+        return to(state);
+    }
+    return hover_entry_failed(*entering, "절차 중 조종사 개입");
 }
 
 SetpointChoice select_setpoint(const FcCommandState& state, const FcObservation& observation,
@@ -491,6 +673,12 @@ SetpointChoice select_setpoint(const FcCommandState& state, const FcObservation&
     }
     if (const auto* hovering = std::get_if<Hovering>(&state)) {
         return hold(hovering->target);
+    }
+    if (const auto* landing = std::get_if<Landing>(&state)) {
+        return hold(landing->target);
+    }
+    if (const auto* entering = std::get_if<HoverEntering>(&state)) {
+        return SetpointChoice{SetpointKind::Position, entering->target};
     }
     return SetpointChoice{};
 }

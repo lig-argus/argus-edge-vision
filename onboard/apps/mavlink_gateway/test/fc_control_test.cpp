@@ -539,5 +539,88 @@ TEST_F(FcControlTest, DoesNotCallHandlerAfterSubscriptionIsReleased) {
     EXPECT_TRUE(events_.empty());
 }
 
+// ---- 착륙 명령 전달 (icd 5.3)
+
+TEST_F(FcControlTest, LandingReleaseHoldsPositionUntilFcLeavesOffboard) {
+    start_following();
+
+    control_.release_for_landing();
+    step(FlightMode::Offboard);  // 추종 제어의 setpoint 는 더 보내지 않는다
+
+    EXPECT_TRUE(holds<Landing>());
+    EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask);
+    EXPECT_FALSE(control_.request_offboard(header(3)).accepted);
+
+    step(FlightMode::Land, false);
+    EXPECT_TRUE(holds<Idle>());
+    // 마지막으로 받은 추종 제어의 setpoint 가 유효한 동안은 Offboard 진입 전의 사전 송신과 같이
+    // 보낸다 (FC 가 Offboard 가 아니므로 비행에 쓰지 않음). 유효 시간이 지난 뒤에는 보내지 않는다
+    steps(5, FlightMode::Land, false);
+    const std::size_t count = sent(MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED).size();
+    step(FlightMode::Land, false);
+    EXPECT_EQ(sent(MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED).size(), count);
+}
+
+TEST_F(FcControlTest, LandingExitIsReportedAsSwitchNotFailsafe) {
+    start_hovering();
+    control_.release_for_landing();
+    events_.clear();
+
+    step(FlightMode::Land, false);
+
+    ASSERT_EQ(events_.size(), 1U);
+    EXPECT_EQ(events_[0].mode, FlightMode::Land);
+    EXPECT_EQ(events_[0].exit_cause, OffboardExitCause::PilotSwitch);
+}
+
+// ---- 복귀 명령의 제자리 유지 진입 (icd 5.4)
+
+TEST_F(FcControlTest, HoverEntrySendsTargetThenEntryCommandAndReportsResult) {
+    std::vector<bool> results;
+    EXPECT_TRUE(control_
+                    .request_hover_entry([] { return true; },
+                                         [&results](bool entered) { results.push_back(entered); })
+                    .empty());
+    EXPECT_TRUE(control_.entering());
+
+    steps(19, FlightMode::Hold, false);
+    EXPECT_TRUE(sent(MAVLINK_MSG_ID_COMMAND_LONG).empty());
+    EXPECT_EQ(last_setpoint().type_mask, kPositionAndYawMask);
+    EXPECT_FLOAT_EQ(last_setpoint().x, 5.0F);
+
+    steps(1, FlightMode::Hold, false);  // 위치 setpoint 를 1 s 보냄
+    ASSERT_EQ(sent(MAVLINK_MSG_ID_COMMAND_LONG).size(), 1U);
+
+    receive_ack(MAV_CMD_DO_SET_MODE, MAV_RESULT_ACCEPTED, kOnboardCommandCompid);
+    step(FlightMode::Offboard, false);
+
+    EXPECT_TRUE(holds<Hovering>());
+    EXPECT_EQ(results, std::vector<bool>{true});
+    EXPECT_TRUE(control_.offboard_hover());
+}
+
+TEST_F(FcControlTest, HoverEntryStopsBeforeCommandWhenNoLongerAllowed) {
+    bool allowed = true;
+    std::vector<bool> results;
+    ASSERT_TRUE(control_
+                    .request_hover_entry([&allowed] { return allowed; },
+                                         [&results](bool entered) { results.push_back(entered); })
+                    .empty());
+    steps(5, FlightMode::Hold, false);
+
+    allowed = false;
+    steps(20, FlightMode::Hold, false);
+
+    EXPECT_TRUE(holds<Idle>());
+    EXPECT_EQ(results, std::vector<bool>{false});
+    EXPECT_TRUE(sent(MAVLINK_MSG_ID_COMMAND_LONG).empty());
+}
+
+TEST_F(FcControlTest, HoverEntryIsRefusedWhileControllingFc) {
+    start_following();
+
+    EXPECT_FALSE(control_.request_hover_entry([] { return true; }, [](bool) {}).empty());
+}
+
 }  // namespace
 }  // namespace argus::mavlink_gateway

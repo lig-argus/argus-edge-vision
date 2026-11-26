@@ -14,7 +14,8 @@ namespace {
 // 바로 송신하는 기준 필드 (icd 3.1)
 bool key_fields_differ(const mavlink_argus_status_t& lhs, const mavlink_argus_status_t& rhs) {
     return lhs.mission_state != rhs.mission_state || lhs.target_state != rhs.target_state ||
-           lhs.health != rhs.health || lhs.active_sensor != rhs.active_sensor;
+           lhs.health != rhs.health || lhs.active_sensor != rhs.active_sensor ||
+           lhs.control_flags != rhs.control_flags;
 }
 
 }  // namespace
@@ -46,6 +47,8 @@ StatusObservation ArgusStatusReporter::observe() {
     observation.controller = inputs_.authority.controller();
     observation.health = inputs_.health.value();
     observation.cpu_celsius = inputs_.cpu_temperature.celsius();
+    observation.landing_locked = inputs_.landing_lock.active();
+    observation.pilot_in_control = inputs_.rc_override.pilot_in_control();
     return observation;
 }
 

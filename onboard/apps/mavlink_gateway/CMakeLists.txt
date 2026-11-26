@@ -25,12 +25,14 @@ add_library(argus_mavlink_gateway_core STATIC
     src/argus_status_reporter.cpp
     src/control_authority.cpp
     src/control_authority_policy.cpp
+    src/end_rc_override_handler.cpp
     src/fc_command_policy.cpp
     src/fc_control.cpp
     src/fc_gateway.cpp
     src/fc_link_tracker.cpp
-    src/fc_telemetry_relay.cpp
+    src/fc_rc_status_receiver.cpp
     src/fc_telemetry_receiver.cpp
+    src/fc_telemetry_relay.cpp
     src/follow_activity.cpp
     src/follow_command_policy.cpp
     src/follow_command_tracker.cpp
@@ -40,10 +42,14 @@ add_library(argus_mavlink_gateway_core STATIC
     src/gcs_message_encoding.cpp
     src/gcs_registry.cpp
     src/heartbeat_sender.cpp
+    src/landing_lock.cpp
+    src/landing_lock_policy.cpp
     src/latest_tracks.cpp
     src/mavlink_command_receiver.cpp
     src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
+    src/rc_override_monitor.cpp
+    src/rc_override_policy.cpp
     src/request_message_handler.cpp
     src/request_operator_control_handler.cpp
     src/scan_start_handler.cpp
@@ -175,4 +181,20 @@ argus_add_test(mavlink_gateway_track_start_handler_test SOURCES test/track_start
 argus_add_test(mavlink_gateway_scan_start_handler_test SOURCES test/scan_start_handler_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
 argus_add_test(mavlink_gateway_track_stop_handler_test SOURCES test/track_stop_handler_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+
+# F 단계: 착륙 잠금과 조종사 개입, 통제기로의 복귀 (MAV_CMD_ARGUS_END_RC_OVERRIDE)
+argus_add_test(mavlink_gateway_fc_rc_status_receiver_test
+               SOURCES test/fc_rc_status_receiver_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_landing_lock_policy_test SOURCES test/landing_lock_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_landing_lock_test SOURCES test/landing_lock_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_rc_override_policy_test SOURCES test/rc_override_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_rc_override_monitor_test SOURCES test/rc_override_monitor_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_end_rc_override_handler_test
+               SOURCES test/end_rc_override_handler_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)

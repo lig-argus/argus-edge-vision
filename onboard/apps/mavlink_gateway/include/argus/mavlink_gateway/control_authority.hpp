@@ -20,6 +20,7 @@
 #include "argus/mavlink_gateway/gcs_message_source.hpp"
 #include "argus/mavlink_gateway/gcs_presence.hpp"
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
+#include "argus/mavlink_gateway/rc_override_state.hpp"
 #include "argus/vehicle_api/follow_status_source.hpp"
 
 namespace argus::mavlink_gateway {
@@ -51,6 +52,7 @@ struct ControlAuthorityInputs {
     const ICommandActivity& commands;                       // 진행 중인 명령
     const vehicle_api::IFollowStatusSource& follow_status;  // 추종, 스캔 중
     const ILandingLockState& landing_lock;
+    const IRcOverrideState& rc_override;
 };
 
 // HEARTBEAT 와 요청마다 입력을 모아 decide_control() 을 부르고 결과를 반영한다. 판단은

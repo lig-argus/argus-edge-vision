@@ -35,6 +35,10 @@ bool is_newer(std::uint32_t received, std::uint32_t stored) {
 // 제어권이 없는 통제기의 명령에 보내는 STATUSTEXT (icd 4.1)
 constexpr const char* kNotInControlText = "제어권 없음";
 
+// 착륙 잠금, 조종사 개입 중에 거부하는 명령에 보내는 STATUSTEXT (icd 5.3, 5.4)
+constexpr const char* kLandingLockedText = "착륙 잠금";
+constexpr const char* kPilotInControlText = "조종사 개입 중";
+
 bool is_for_onboard(std::uint8_t target_system, std::uint8_t target_component) {
     return target_system == kVehicleSysid && target_component == kOnboardCommandCompid;
 }
@@ -44,9 +48,13 @@ bool is_for_onboard(std::uint8_t target_system, std::uint8_t target_component) {
 MavlinkCommandReceiver::MavlinkCommandReceiver(IGcsMessageSource& messages, IGcsLink& link,
                                                const core::IClock& clock,
                                                const IControlAuthority& authority,
-                                               CommandActivity& activity)
+                                               CommandActivity& activity,
+                                               const ILandingLockState& landing_lock,
+                                               const IRcOverrideState& rc_override)
     : clock_(clock),
       authority_(authority),
+      landing_lock_(landing_lock),
+      rc_override_(rc_override),
       shared_(std::make_shared<Shared>(Shared{link, activity, {}})) {
     command_long_subscription_ =
         messages.subscribe(MAVLINK_MSG_ID_COMMAND_LONG,
@@ -76,6 +84,14 @@ void MavlinkCommandReceiver::tick() {
         const bool expired = now_ns - it->second.last_received_ns > kCommandRecordLifetimeNs;
         const bool running = it->second.execution && !it->second.execution->completed;
         it = expired && !running ? records_.erase(it) : std::next(it);
+    }
+}
+
+void MavlinkCommandReceiver::cancel_in_progress() {
+    // send_ack 가 active 를 바꾸므로 복사본을 돈다
+    const std::vector<std::shared_ptr<Execution>> running = shared_->active;
+    for (const std::shared_ptr<Execution>& execution : running) {
+        send_ack(*shared_, *execution, CommandAck{MAV_RESULT_CANCELLED, kProgressUnknown, {}});
     }
 }
 
@@ -132,6 +148,12 @@ void MavlinkCommandReceiver::on_command_long(const mavlink_message_t& message,
     if (rules.requires_control && !authority_.is_controller(sender.sysid)) {
         immediate =
             CommandAck{MAV_RESULT_TEMPORARILY_REJECTED, kProgressUnknown, kNotInControlText};
+    } else if (!rules.allowed_while_locked && landing_lock_.active()) {
+        immediate =
+            CommandAck{MAV_RESULT_TEMPORARILY_REJECTED, kProgressUnknown, kLandingLockedText};
+    } else if (!rules.allowed_while_locked && rc_override_.pilot_in_control()) {
+        immediate =
+            CommandAck{MAV_RESULT_TEMPORARILY_REJECTED, kProgressUnknown, kPilotInControlText};
     } else if (const std::optional<MAV_RESULT> busy =
                    apply_concurrency(command.command, rules.kind)) {
         immediate = CommandAck{*busy, kProgressUnknown, {}};

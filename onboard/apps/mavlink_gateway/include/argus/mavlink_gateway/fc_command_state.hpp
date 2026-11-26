@@ -1,5 +1,6 @@
 // mavlink_gateway 가 FC 로 보내는 명령의 상태와, 상태를 바꾸는 판단에 쓰는 값
-// 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.6, docs/spec/process_interfaces.md 6장
+// 규약: docs/spec/icd.md 4.2, 5장 (5.3 착륙 잠금, 5.4 통제기로의 복귀), 6.2, 6.6,
+//      docs/spec/process_interfaces.md 6장
 // 사용: fc_command_policy (판단), FcControl (보관과 실행)
 #ifndef ARGUS_ONBOARD_FC_COMMAND_STATE_HPP_
 #define ARGUS_ONBOARD_FC_COMMAND_STATE_HPP_
@@ -65,7 +66,39 @@ struct Hovering {
 // 않음
 struct Locked {};
 
-using FcCommandState = std::variant<Idle, Entering, Following, CancellingEntry, Hovering, Locked>;
+// 통제기의 착륙 명령을 FC 로 전달한 뒤 FC 가 Offboard 를 벗어나기를 기다림. 제자리 유지
+// setpoint 를 보낸다 (icd 5.3). FC 가 Offboard 가 아님을 확인하면 Idle 로 바뀐다
+struct Landing {
+    std::optional<HoverTarget> target;  // 정하기 전에는 속도 0 을 보낸다
+
+    // FC 가 Offboard 였다고 판단한 상태(Following, Hovering)에서 시작했거나 시작 뒤 Offboard 를
+    // 확인했으면 true. 이 경우 FC 가 Offboard 를 벗어난 것을 착륙 명령에 따른 이탈로 알린다
+    bool was_offboard = false;
+
+    // Offboard 진입을 기다리던 중에 시작했으면 그 진입의 기한. FC 가 진입하지 않았다는 판단에는 이
+    // 시각 후에 받은 비행 상태만 쓴다 (CancellingEntry 와 같음)
+    std::optional<std::int64_t> entry_deadline_ns;
+};
+
+// 조종사 개입 뒤 통제기의 복귀 명령(45011)으로 Offboard 제자리 유지에 들어가는 중 (icd 5.4).
+// 목표 위치 setpoint 를 prestream_ns 동안 보낸 뒤 Offboard 진입 명령을 보낸다
+struct HoverEntering {
+    HoverTarget target;
+    std::uint64_t fc_epoch = 0;   // 시작한 때의 FC 연결 epoch
+    std::int64_t started_ns = 0;  // 목표 setpoint 를 보내기 시작한 시각
+
+    // 시작한 때의 FC 모드. 진입 명령을 보내기 전에 바뀌면 포기한다 (icd 5.4 의 모드 이탈)
+    vehicle_api::FlightMode start_mode = vehicle_api::FlightMode::Unknown;
+
+    // 진입 명령을 보낸 경우 이 시각까지 FC 가 Offboard 로 확인되지 않으면 실패. 보내기 전에는
+    // nullopt
+    std::optional<std::int64_t> deadline_ns;
+
+    bool acknowledged = false;  // FC 가 진입 명령을 수락함 (COMMAND_ACK)
+};
+
+using FcCommandState = std::variant<Idle, Entering, Following, CancellingEntry, Hovering, Locked,
+                                    Landing, HoverEntering>;
 
 // mavlink_gateway 가 판단한 FC 의 모드. FC 의 비행 상태는 1 Hz 로 도착한다
 enum class FcModeBelief : std::uint8_t {
@@ -103,6 +136,10 @@ enum class FcCommandDenial : std::uint8_t {
     PrestreamNotReady,   // setpoint 를 충분히 오래 송신하고 있지 않음
     EntryCancelled,      // 취소한 진입의 확인을 기다리는 중
     SendFailed,          // FC 로의 송신 실패
+    Landing,             // 착륙 명령 전달 뒤 FC 가 Offboard 를 벗어나기를 기다리는 중 (icd 5.3)
+    HoverEntry,          // 복귀 명령의 제자리 유지 진입 중 (icd 5.4)
+    Busy,                // FC 를 제어하는 중이어서 제자리 유지 진입을 시작할 수 없음
+    PoseStale,           // 자세와 local 위치가 최신이 아님
 };
 
 std::string_view to_string(FcCommandDenial denial);

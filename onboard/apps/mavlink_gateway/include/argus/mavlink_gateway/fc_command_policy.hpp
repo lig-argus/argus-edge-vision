@@ -1,6 +1,6 @@
 // mavlink_gateway 가 FC 로 보내는 명령의 판단: FC 의 모드 판단, 상태의 전환, 주기마다 보낼
 // setpoint 의 선택. 모든 함수는 입력만으로 결과를 정하며 MAVLink 와 시계를 사용하지 않는다
-// 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.6
+// 규약: docs/spec/icd.md 4.2, 5장 (5.3 착륙 잠금, 5.4 통제기로의 복귀), 6.2, 6.6
 // 사용: FcControl
 #ifndef ARGUS_ONBOARD_FC_COMMAND_POLICY_HPP_
 #define ARGUS_ONBOARD_FC_COMMAND_POLICY_HPP_
@@ -41,6 +41,12 @@ struct FcCommandEffects {
 
     // 추종 중 setpoint 의 유효 시간이 지나 정지함 (icd 6.4 ⓐ. mission_state FAULT 보고에 사용)
     bool setpoint_timed_out = false;
+
+    // exited_to 가 통제기의 착륙 명령에 따른 이탈임 (icd 5.3). 원인을 PilotSwitch 로 알린다
+    bool exit_requested = false;
+
+    // 복귀 명령의 제자리 유지 진입이 끝남. true = Offboard 제자리 유지에 들어감, false = 실패
+    std::optional<bool> hover_entered;
 };
 
 struct FcCommandStep {
@@ -75,7 +81,7 @@ FcModeBelief fc_mode_belief(const FcObservation& observation, const FcCommandPol
                             std::optional<std::int64_t> not_offboard_after_ns = std::nullopt);
 
 // 요청 없이 일어나는 전환: fc_epoch 변경, FC 의 모드, 진입 기한, setpoint 의 유효 시간, 제자리
-// 유지 목표의 결정. 더 바뀌지 않을 때까지 적용한 결과를 반환한다.
+// 유지 목표의 결정, 복귀 명령의 진입 명령 송신 시점. 더 바뀌지 않을 때까지 적용한 결과를 반환한다.
 // 주기 작업과 요청 처리의 시작에서 호출한다 (요청을 지난 주기의 FC 모드로 판단하지 않기 위함)
 FcCommandStep advance(const FcCommandState& state, const FcObservation& observation,
                       const FcCommandPolicyConfig& config);
@@ -94,7 +100,8 @@ FcRequestStep on_hold_request(const FcCommandState& state, const FcObservation& 
 // denial 이 None 이 아닌 경우는 Locked 뿐이다
 FcRequestStep on_onboard_stop(const FcCommandState& state);
 
-// FC 가 진입 명령에 응답함. Entering 이 아닌 상태에서는 아무것도 바꾸지 않는다
+// FC 가 진입 명령에 응답함. Entering, 진입 명령을 보낸 HoverEntering 이 아닌 상태에서는 아무것도
+// 바꾸지 않는다
 FcCommandStep on_entry_command_answered(const FcCommandState& state, bool accepted);
 
 // 진입 명령의 송신에 실패함
@@ -104,8 +111,23 @@ FcCommandStep on_entry_command_send_failed(const FcCommandState& state);
 FcRequestStep on_lock_release(const FcCommandState& state, const FcObservation& observation,
                               const FcCommandPolicyConfig& config);
 
+// 통제기의 착륙 명령을 FC 로 전달함 (icd 5.3). 송신권과 진행 중인 Offboard 진입을 폐기하고,
+// FC 가 Offboard 일 수 있으면 Landing 으로 바꾸어 제자리 유지 setpoint 를 보낸다. Idle, Locked,
+// Landing 은 바꾸지 않는다
+FcCommandStep on_landing_release(const FcCommandState& state);
+
+// 통제기의 복귀 명령(45011)으로 Offboard 제자리 유지에 들어가는 요청 (icd 5.4). Idle 또는 Locked
+// 이고 FC 가 Offboard 가 아님을 알며 자세와 local 위치가 최신이면 HoverEntering 으로 바꾼다.
+// state 는 advance() 를 적용한 상태여야 한다
+FcRequestStep on_hover_entry_request(const FcCommandState& state, const FcObservation& observation,
+                                     const FcCommandPolicyConfig& config);
+
+// 진입 명령을 보내기 전의 HoverEntering 을 포기한다 (절차 중 조종사의 개입, icd 5.4). 그 밖의
+// 상태는 바꾸지 않는다
+FcCommandStep on_hover_entry_abort(const FcCommandState& state);
+
 // 이번 주기에 보낼 setpoint. state 는 advance() 를 적용한 상태여야 한다.
-// Entering, Following, CancellingEntry, Hovering 은 항상 하나를 보낸다
+// Entering, Following, CancellingEntry, Hovering, Landing, HoverEntering 은 항상 하나를 보낸다
 SetpointChoice select_setpoint(const FcCommandState& state, const FcObservation& observation,
                                const FcCommandPolicyConfig& config);
 

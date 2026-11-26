@@ -105,7 +105,7 @@ TEST(ControlAuthorityPolicyTest, RequestTakesControlFromAliveControllerOnGround)
 TEST(ControlAuthorityPolicyTest, RequestIsRejectedWhileCommandFollowOrLandingLock) {
     for (const auto condition :
          {&ControlObservation::command_in_progress, &ControlObservation::follow_in_progress,
-          &ControlObservation::landing_locked}) {
+          &ControlObservation::landing_locked, &ControlObservation::pilot_in_control}) {
         ControlObservation observation = free_observation();
         observation.*condition = true;
         const ControlDecision decision = decide(observation, ControlEventKind::Request, kOther);

@@ -3,6 +3,7 @@
 // 사용: mavlink_gateway 의 main 이 통신 구현과 시계를 생성한 뒤 하나를 생성
 //
 // - FC telemetry 를 fc/attitude, fc/state 로, FC 의 모드 변경을 fc/mode_event 로 발행한다
+// - FC 의 RC_CHANNELS, SYS_STATUS 를 받아 통제기 쪽(조종사 개입 판정)에 내보낸다
 // - 추종 제어의 control/setpoint 와 control/mode_request 를 FcControl 로 전달한다
 // - FcControl::tick, FcLinkTracker::check_timeout, TimeSync::send_request 를 주기 작업으로 등록한다
 // 통신 구현(ZeroMQ, UDP)과 실제 시계를 알지 못하고 인터페이스로만 사용한다
@@ -20,7 +21,11 @@
 #include "argus/mavlink_gateway/fc_command_status.hpp"
 #include "argus/mavlink_gateway/fc_control.hpp"
 #include "argus/mavlink_gateway/fc_epoch_source.hpp"
+#include "argus/mavlink_gateway/fc_hover_entry.hpp"
+#include "argus/mavlink_gateway/fc_landing_release.hpp"
 #include "argus/mavlink_gateway/fc_link_tracker.hpp"
+#include "argus/mavlink_gateway/fc_rc_status_receiver.hpp"
+#include "argus/mavlink_gateway/fc_rc_status_source.hpp"
 #include "argus/mavlink_gateway/fc_state_source.hpp"
 #include "argus/mavlink_gateway/fc_state_view.hpp"
 #include "argus/mavlink_gateway/fc_telemetry_receiver.hpp"
@@ -68,6 +73,9 @@ public:
     const IFcCommandStatus& command_status() const { return control_; }
     const IFcStateSource& fc_state() const { return state_view_; }
     const IFcEpochSource& fc_epoch_source() const { return link_; }
+    IFcLandingRelease& landing_release() { return control_; }
+    IFcHoverEntry& hover_entry() { return control_; }
+    const IFcRcStatusSource& rc_status() const { return rc_status_; }
 
 private:
     FcGateway(IMavlinkConnection& connection, const core::IClock& clock, HealthState& health);
@@ -87,6 +95,7 @@ private:
     FcLinkTracker link_;
     TimeSync time_sync_;
     FcTelemetryReceiver telemetry_;
+    FcRcStatusReceiver rc_status_;
     FcStateView state_view_;
     FcControl control_;
 

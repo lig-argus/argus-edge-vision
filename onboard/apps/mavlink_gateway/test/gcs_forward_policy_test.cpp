@@ -140,7 +140,7 @@ TEST(GcsForwardPolicyTest, CommandsExceptLandAreRejectedInLandingLockAndPilotCon
     ForwardObservation pilot = flying_controller();
     pilot.pilot_in_control = true;
     expect_reply(decide_forward(pilot, set_mode(3)), MAV_RESULT_TEMPORARILY_REJECTED,
-                 "조종사 조종 중");
+                 "조종사 개입 중");
 }
 
 TEST(GcsForwardPolicyTest, ValueConditionIsCheckedBeforeStateCondition) {

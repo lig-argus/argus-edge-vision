@@ -22,6 +22,7 @@ FcGateway::FcGateway(IMavlinkConnection& connection, const core::IClock& clock, 
     : link_(clock, health),
       time_sync_(connection, clock, link_),
       telemetry_(connection, link_, time_sync_),
+      rc_status_(connection, link_),
       state_view_(link_, telemetry_),
       control_(connection, state_view_, clock) {}
 

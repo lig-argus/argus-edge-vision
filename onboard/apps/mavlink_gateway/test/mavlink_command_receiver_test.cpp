@@ -15,6 +15,7 @@
 #include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/mavlink_command_handler.hpp"
+#include "fake_command_restrictions.hpp"
 #include "fake_gcs_link.hpp"
 #include "gcs_test_messages.hpp"
 
@@ -127,8 +128,10 @@ protected:
     RecordingHandler scan_start_{MAV_CMD_ARGUS_SCAN_START};
     RecordingHandler track_stop_{MAV_CMD_ARGUS_TRACK_STOP};
     RecordingHandler request_control_{MAV_CMD_ARGUS_REQUEST_OPERATOR_CONTROL};
-    std::unique_ptr<MavlinkCommandReceiver> receiver_ =
-        std::make_unique<MavlinkCommandReceiver>(registry_, link_, clock_, authority_, activity_);
+    FakeLandingLock landing_lock_;
+    FakeRcOverride rc_override_;
+    std::unique_ptr<MavlinkCommandReceiver> receiver_ = std::make_unique<MavlinkCommandReceiver>(
+        registry_, link_, clock_, authority_, activity_, landing_lock_, rc_override_);
 };
 
 TEST_F(MavlinkCommandReceiverTest, RejectsSecondHandlerForSameCommand) {
@@ -352,6 +355,63 @@ TEST_F(MavlinkCommandReceiverTest, ResponderOutlivingReceiverSendsNothing) {
     responder.send(CommandAck{MAV_RESULT_ACCEPTED, kProgressUnknown, {}});
 
     EXPECT_TRUE(link_.sent().empty());
+}
+
+// ---- 착륙 잠금, 조종사 개입 중의 명령 (icd 5.3, 5.4)
+
+TEST_F(MavlinkCommandReceiverTest, LandingLockRejectsCommandsWithReason) {
+    landing_lock_.locked = true;
+
+    send(owner_, MAV_CMD_ARGUS_TRACK_START, 7.0F);
+
+    EXPECT_EQ(last_result(), std::optional<MAV_RESULT>{MAV_RESULT_TEMPORARILY_REJECTED});
+    EXPECT_EQ(statustexts(), std::vector<std::string>{"착륙 잠금"});
+    EXPECT_TRUE(track_start_.requests.empty());
+}
+
+TEST_F(MavlinkCommandReceiverTest, PilotInControlRejectsCommandsWithReason) {
+    rc_override_.pilot = true;
+
+    send(owner_, MAV_CMD_ARGUS_TRACK_STOP, 7.0F);
+
+    EXPECT_EQ(last_result(), std::optional<MAV_RESULT>{MAV_RESULT_TEMPORARILY_REJECTED});
+    EXPECT_EQ(statustexts(), std::vector<std::string>{"조종사 개입 중"});
+    EXPECT_TRUE(track_stop_.requests.empty());
+}
+
+TEST_F(MavlinkCommandReceiverTest, NoControlIsReportedBeforeLock) {
+    landing_lock_.locked = true;
+
+    send(other_, MAV_CMD_ARGUS_TRACK_START, 7.0F);
+
+    EXPECT_EQ(statustexts(), std::vector<std::string>{"제어권 없음"});
+}
+
+TEST_F(MavlinkCommandReceiverTest, CommandAllowedWhileLockedReachesHandler) {
+    RecordingHandler end_override{MAV_CMD_ARGUS_END_RC_OVERRIDE};
+    ASSERT_TRUE(
+        receiver_->add_handler(end_override, CommandRules{true, true, CommandKind::Other, true}));
+    landing_lock_.locked = true;
+    rc_override_.pilot = true;
+
+    send(owner_, MAV_CMD_ARGUS_END_RC_OVERRIDE, 7.0F);
+
+    EXPECT_EQ(end_override.requests.size(), 1U);
+}
+
+TEST_F(MavlinkCommandReceiverTest, CancelEndsEveryRunningCommandAndIgnoresLaterResult) {
+    send(owner_, MAV_CMD_ARGUS_TRACK_START, 7.0F);
+    ASSERT_EQ(track_start_.responders.size(), 1U);
+    track_start_.responders[0].send(CommandAck{MAV_RESULT_IN_PROGRESS, kProgressUnknown, {}});
+    ASSERT_TRUE(activity_.command_in_progress());
+
+    receiver_->cancel_in_progress();
+
+    EXPECT_EQ(last_result(), std::optional<MAV_RESULT>{MAV_RESULT_CANCELLED});
+    EXPECT_FALSE(activity_.command_in_progress());
+    const std::size_t sent = link_.sent().size();
+    track_start_.responders[0].send(CommandAck{MAV_RESULT_ACCEPTED, kProgressUnknown, {}});
+    EXPECT_EQ(link_.sent().size(), sent);
 }
 
 }  // namespace

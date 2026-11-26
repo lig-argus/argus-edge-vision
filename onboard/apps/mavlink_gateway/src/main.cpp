@@ -2,10 +2,9 @@
 // 규약: docs/design/uml/class_mavlink_gateway.md 2절, 4절
 // 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계를 생성하는 유일한 곳이다. 그 밖의 코드는
 // 인터페이스로만 사용한다. 구성은 FC 쪽(FcGateway)과 통제기 쪽(통제기 연결, 제어권, 명령 수신, 두절
-// 감시, 요청 메시지 응답, FC 전달, 상태 송신, 추종 명령)이다. 설정 값은 코드의 기본값
-// (UdpMavlinkConfig, UdpGcsConfig, protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을
-// 사용한다.
-// 인자
+// 감시, 요청 메시지 응답, FC 전달, 상태 송신, 추종 명령, 착륙 잠금, 조종사 개입과 복귀)이다. 설정
+// 값은 코드의 기본값 (UdpMavlinkConfig, UdpGcsConfig, protocol/dds_settings.hpp,
+// protocol/zmq_endpoints.hpp)을 사용한다. 인자
 // - --bus dds|zmq: 통신 구현. 기본값 dds. ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수
 // 있다
 // - --dds-domain N: DDS domain. 기본값 protocol::kDefaultDdsDomain
@@ -32,23 +31,27 @@
 #include "argus/bus_zmq/zmq_bus.hpp"
 #include "argus/bus_zmq/zmq_poller.hpp"
 #include "argus/core/event_loop.hpp"
+#include "argus/core/handler_list.hpp"
 #include "argus/core/steady_clock.hpp"
+#include "argus/core/subscription.hpp"
 #include "argus/mavlink_gateway/argus_sensor_status_reporter.hpp"
 #include "argus/mavlink_gateway/argus_status_reporter.hpp"
 #include "argus/mavlink_gateway/command_activity.hpp"
 #include "argus/mavlink_gateway/control_authority.hpp"
+#include "argus/mavlink_gateway/end_rc_override_handler.hpp"
 #include "argus/mavlink_gateway/fc_gateway.hpp"
 #include "argus/mavlink_gateway/fc_telemetry_relay.hpp"
 #include "argus/mavlink_gateway/follow_command_tracker.hpp"
+#include "argus/mavlink_gateway/forwarded_command_events.hpp"
 #include "argus/mavlink_gateway/gcs_fc_forwarder.hpp"
 #include "argus/mavlink_gateway/gcs_link_monitor.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
 #include "argus/mavlink_gateway/heartbeat_sender.hpp"
-#include "argus/mavlink_gateway/landing_lock_state.hpp"
+#include "argus/mavlink_gateway/landing_lock.hpp"
 #include "argus/mavlink_gateway/latest_tracks.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
-#include "argus/mavlink_gateway/rc_override_state.hpp"
+#include "argus/mavlink_gateway/rc_override_monitor.hpp"
 #include "argus/mavlink_gateway/request_header_factory.hpp"
 #include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
@@ -260,22 +263,47 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
 #endif
 }
 
+// GcsFcForwarder 의 전달 알림을 LandingLock 과 RcOverrideMonitor 에 이어 준다. GcsFcForwarder 는
+// 착륙 잠금과 조종사 개입 상태를 생성 인자로 받고, 두 객체는 전달 알림을 생성 인자로 받으므로
+// 서로를 먼저 만들 수 없다. 이 객체를 먼저 만들어 두 객체에 넘기고, GcsFcForwarder 를 만든 뒤
+// 연결한다
+class ForwardedCommandRelay : public mavlink_gateway::IForwardedCommandEvents {
+public:
+    core::Subscription subscribe(Handler handler) override {
+        return handlers_.subscribe(std::move(handler));
+    }
+
+    // source 의 알림을 등록된 handler 에 전달한다. 반환된 Subscription 이 사라지면 연결이 끊긴다
+    [[nodiscard]] core::Subscription connect(mavlink_gateway::IForwardedCommandEvents& source) {
+        return source.subscribe([this](const mavlink_gateway::ForwardedCommandEvent& event) {
+            handlers_.notify(event);
+        });
+    }
+
+private:
+    core::HandlerList<const mavlink_gateway::ForwardedCommandEvent&> handlers_;
+};
+
 // 통제기 쪽 객체. 멤버는 선언의 역순으로 소멸하므로, 참조되는 객체를 참조하는 객체보다 앞에 둔다
 struct GcsSide {
     std::unique_ptr<mavlink_gateway::UdpGcsLink> link;
     std::unique_ptr<mavlink_gateway::GcsRegistry> registry;
     mavlink_gateway::CommandActivity activity;
-    mavlink_gateway::InactiveLandingLock landing_lock;
-    mavlink_gateway::InactiveRcOverride rc_override;
+    ForwardedCommandRelay forwarded_commands;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowStatusSubscriber> follow_status;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowControlClient> follow_control;
     std::unique_ptr<argus::video_api_bus::BusVideoStreamInfoSubscriber> video_stream_info;
     std::unique_ptr<mavlink_gateway::RequestHeaderFactory> request_headers;
+    std::unique_ptr<mavlink_gateway::RcOverrideMonitor> rc_override;
+    std::unique_ptr<mavlink_gateway::LandingLock> landing_lock;
     std::unique_ptr<mavlink_gateway::ControlAuthority> authority;
     std::unique_ptr<mavlink_gateway::RequestOperatorControlHandler> request_control_handler;
     std::unique_ptr<mavlink_gateway::RequestMessageHandler> request_message_handler;
+    std::unique_ptr<mavlink_gateway::EndRcOverrideHandler> end_rc_override_handler;
     std::unique_ptr<mavlink_gateway::MavlinkCommandReceiver> receiver;
+    core::Subscription landing_started;  // 착륙 잠금 시작 → 진행 중인 명령의 CANCELLED
     std::unique_ptr<mavlink_gateway::GcsFcForwarder> forwarder;
+    core::Subscription forwarded_link;  // GcsFcForwarder → ForwardedCommandRelay
     std::unique_ptr<mavlink_gateway::FcTelemetryRelay> telemetry_relay;
     std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
     mavlink_gateway::SysfsCpuTemperature cpu_temperature;
@@ -294,6 +322,8 @@ struct GcsSide {
     core::PeriodicTimer status_timer;
     core::PeriodicTimer sensor_status_timer;
     core::PeriodicTimer follow_tracker_timer;
+    core::PeriodicTimer rc_override_timer;
+    core::PeriodicTimer landing_lock_timer;
 };
 
 // 추종 명령(TRACK_START, TRACK_STOP, SCAN_START)의 handler 를 만들어 등록한다. create_gcs_side 가
@@ -342,16 +372,32 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     gcs.registry = std::make_unique<mavlink_gateway::GcsRegistry>(*gcs.link, clock);
     gcs.request_headers = std::make_unique<mavlink_gateway::RequestHeaderFactory>(
         make_session_id(), clock, fc.fc_epoch_source());
+    gcs.rc_override = std::make_unique<mavlink_gateway::RcOverrideMonitor>(
+        mavlink_gateway::RcOverrideMonitorInputs{fc.fc_state(), fc.rc_status(),
+                                                 gcs.forwarded_commands, clock, gcs.activity,
+                                                 *gcs.follow_status, fc.command_status()});
+    gcs.landing_lock =
+        std::make_unique<mavlink_gateway::LandingLock>(mavlink_gateway::LandingLockInputs{
+            gcs.forwarded_commands, fc.fc_state(), *gcs.rc_override, clock, fc.landing_release(),
+            *gcs.follow_status, *gcs.follow_control, *gcs.request_headers});
     gcs.authority =
         std::make_unique<mavlink_gateway::ControlAuthority>(mavlink_gateway::ControlAuthorityInputs{
             *gcs.registry, *gcs.registry, clock, fc.fc_state(), fc.command_status(), gcs.activity,
-            *gcs.follow_status, gcs.landing_lock});
+            *gcs.follow_status, *gcs.landing_lock, *gcs.rc_override});
     gcs.request_control_handler =
         std::make_unique<mavlink_gateway::RequestOperatorControlHandler>(*gcs.authority);
     gcs.receiver = std::make_unique<mavlink_gateway::MavlinkCommandReceiver>(
-        *gcs.registry, *gcs.link, clock, *gcs.authority, gcs.activity);
+        *gcs.registry, *gcs.link, clock, *gcs.authority, gcs.activity, *gcs.landing_lock,
+        *gcs.rc_override);
     gcs.receiver->add_handler(*gcs.request_control_handler,
                               mavlink_gateway::RequestOperatorControlHandler::kRules);
+    gcs.end_rc_override_handler =
+        std::make_unique<mavlink_gateway::EndRcOverrideHandler>(*gcs.rc_override, fc.hover_entry());
+    gcs.receiver->add_handler(*gcs.end_rc_override_handler,
+                              mavlink_gateway::EndRcOverrideHandler::kRules);
+    mavlink_gateway::MavlinkCommandReceiver* const receiver = gcs.receiver.get();
+    gcs.landing_started =
+        gcs.landing_lock->subscribe_started([receiver] { receiver->cancel_in_progress(); });
     gcs.request_message_handler =
         std::make_unique<mavlink_gateway::RequestMessageHandler>(*gcs.link);
     const argus::video_api::IVideoStreamInfoSource* const video_source =
@@ -368,8 +414,9 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     gcs.forwarder =
         std::make_unique<mavlink_gateway::GcsFcForwarder>(mavlink_gateway::GcsFcForwarderInputs{
             *gcs.registry, *gcs.link, *gcs.registry, connection, clock, *gcs.authority,
-            fc.fc_state(), fc.command_status(), gcs.activity, *gcs.follow_status, gcs.landing_lock,
-            gcs.rc_override, fc.stop_requester()});
+            fc.fc_state(), fc.command_status(), gcs.activity, *gcs.follow_status, *gcs.landing_lock,
+            *gcs.rc_override, fc.stop_requester()});
+    gcs.forwarded_link = gcs.forwarded_commands.connect(*gcs.forwarder);
     gcs.telemetry_relay =
         std::make_unique<mavlink_gateway::FcTelemetryRelay>(connection, *gcs.link);
     gcs.monitor =
@@ -379,8 +426,8 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     gcs.status_reporter = std::make_unique<mavlink_gateway::ArgusStatusReporter>(
         mavlink_gateway::ArgusStatusReporterInputs{
             *gcs.link, clock, *gcs.follow_status, *gcs.follow_status, *gcs.authority, health,
-            fc.command_status(), fc.stop_requester(), gcs.cpu_temperature});
-    mavlink_gateway::MavlinkCommandReceiver* const receiver = gcs.receiver.get();
+            fc.command_status(), fc.stop_requester(), gcs.cpu_temperature, *gcs.landing_lock,
+            *gcs.rc_override});
     mavlink_gateway::GcsLinkMonitor* const monitor = gcs.monitor.get();
     gcs.receiver_timer = loop.add_periodic(mavlink_gateway::kCommandReceiverTickPeriod,
                                            [receiver] { receiver->tick(); });
@@ -389,6 +436,12 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     mavlink_gateway::ArgusStatusReporter* const status_reporter = gcs.status_reporter.get();
     gcs.status_timer = loop.add_periodic(mavlink_gateway::kArgusStatusCheckPeriod,
                                          [status_reporter] { status_reporter->tick(); });
+    mavlink_gateway::RcOverrideMonitor* const rc_override = gcs.rc_override.get();
+    gcs.rc_override_timer = loop.add_periodic(mavlink_gateway::kRcOverrideCheckPeriod,
+                                              [rc_override] { rc_override->tick(); });
+    mavlink_gateway::LandingLock* const landing_lock = gcs.landing_lock.get();
+    gcs.landing_lock_timer = loop.add_periodic(mavlink_gateway::kLandingLockCheckPeriod,
+                                               [landing_lock] { landing_lock->tick(); });
 
     gcs.tracking_status =
         argus::perception_api_bus::BusTrackingStatusSubscriber::create(bus, clock);

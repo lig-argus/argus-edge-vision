@@ -1,15 +1,17 @@
 // mavlink_gateway 가 FC 로 보내는 명령(Offboard 진입 명령, setpoint)의 송신
-// 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.4, 6.6, docs/spec/process_interfaces.md 3장, 5.1, 5.2
+// 규약: docs/spec/icd.md 4.2, 5장 (5.3 착륙 잠금, 5.4 통제기로의 복귀), 6.2, 6.4, 6.6,
+//      docs/spec/process_interfaces.md 3장, 5.1, 5.2
 // 사용: BusFlightModeControlServer 와 BusVelocitySetpointSubscriber (vehicle_api_bus)가 추종 제어의
 //      요청과 setpoint 를 전달. FcGateway 가 subscribe_mode_events() 를 fc/mode_event 발행에
 //      연결하고 tick() 을 20 Hz 주기 작업으로 등록. ControlAuthority 가 IFcCommandStatus 로 송신
-//      상태를 조회
+//      상태를 조회. LandingLock 이 IFcLandingRelease, EndRcOverrideHandler 가 IFcHoverEntry 를 사용
 #ifndef ARGUS_ONBOARD_FC_CONTROL_HPP_
 #define ARGUS_ONBOARD_FC_CONTROL_HPP_
 
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string_view>
 
 #include "argus/core/clock.hpp"
 #include "argus/core/handler_list.hpp"
@@ -19,6 +21,8 @@
 #include "argus/mavlink_gateway/fc_command_policy.hpp"
 #include "argus/mavlink_gateway/fc_command_state.hpp"
 #include "argus/mavlink_gateway/fc_command_status.hpp"
+#include "argus/mavlink_gateway/fc_hover_entry.hpp"
+#include "argus/mavlink_gateway/fc_landing_release.hpp"
 #include "argus/mavlink_gateway/fc_state_source.hpp"
 #include "argus/mavlink_gateway/mavlink_connection.hpp"
 #include "argus/mavlink_gateway/setpoint_inbox.hpp"
@@ -54,7 +58,9 @@ class FcControl : public vehicle_api::IFlightModeControl,
                   public vehicle_api::IVelocitySetpointSink,
                   public IStopRequester,
                   public IFcCommandLockRelease,
-                  public IFcCommandStatus {
+                  public IFcCommandStatus,
+                  public IFcLandingRelease,
+                  public IFcHoverEntry {
 public:
     using ModeEventHandler = std::function<void(const vehicle_api::FlightModeEvent&)>;
 
@@ -71,6 +77,8 @@ public:
 
     bool stop_from_onboard() override;
     bool release_lock() override;
+    void release_for_landing() override;
+    std::string_view request_hover_entry(StillAllowed still_allowed, Done done) override;
 
     bool sending_setpoints() const override;
     bool entering() const override;
@@ -112,6 +120,8 @@ private:
               std::optional<vehicle_api::CommandId> command_id,
               vehicle_api::OffboardExitCause exit_cause);
     void on_command_ack(const mavlink_message_t& message);
+    // 진입 명령을 보내기 전의 HoverEntering 에서 still_allowed() 가 false 이면 포기한다
+    void check_hover_entry_allowed(const FcObservation& observation);
 
     IMavlinkConnection& connection_;
     const IFcStateSource& fc_state_;
@@ -128,6 +138,10 @@ private:
     // 마지막으로 전달한 FC 의 모드와 그 fc_epoch. 전달한 적이 없으면 nullopt
     std::optional<vehicle_api::FlightMode> reported_mode_;
     std::uint64_t reported_fc_epoch_ = 0;
+
+    // 진행 중인 복귀 명령의 제자리 유지 진입 (request_hover_entry)
+    StillAllowed hover_still_allowed_;
+    Done hover_done_;
 
     core::HandlerList<const vehicle_api::FlightModeEvent&> mode_event_handlers_;
     core::Subscription ack_subscription_;

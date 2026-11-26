@@ -34,9 +34,9 @@ struct RequestedMessages {
 
 class RequestMessageHandler : public IMavlinkCommandHandler {
 public:
-    // param7 이 응답 대상이므로 명령 번호 규칙을 적용하지 않는다. 제어권이 없는 통제기도 요청할 수
-    // 있다: 요청한 메시지를 알려 줄 뿐 기체를 움직이지 않는다
-    static constexpr CommandRules kRules{false, false, CommandKind::Other};
+    // param7 이 응답 대상이므로 명령 번호 규칙을 적용하지 않는다. 제어권이 없는 통제기도, 착륙
+    // 잠금이나 조종사 개입 중에도 요청할 수 있다: 요청한 메시지를 알려 줄 뿐 기체를 움직이지 않는다
+    static constexpr CommandRules kRules{false, false, CommandKind::Other, true};
 
     // 요청 하나에 대해 보낼 메시지를 만드는 함수
     using MessageBuilder = std::function<RequestedMessages(const CommandRequest&)>;
