@@ -8,11 +8,13 @@
 # - 주석만 있는 줄
 # - 생성 코드(*/generated/*, common/mavlink/generated)와 탐지 담당 코드(onboard/vision/python/native)
 # 단어 경계는 앞뒤가 영문자, 숫자, _, - 가 아닌 경우로 본다 (문자열 "key-int-max" 등을 제외하기 위해)
+# 검사 대상: 작업 트리의 파일. git 에 추가하지 않은 새 파일도 검사하고(--untracked), .gitignore 의
+# 파일(빌드 결과 등)은 검사하지 않는다
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-found="$(git grep -nP '(?<![\w-])(int|unsigned)(?![\w-])' -- \
+found="$(git grep --untracked -nP '(?<![\w-])(int|unsigned)(?![\w-])' -- \
     'onboard/*.cpp' 'onboard/*.hpp' 'onboard/*.h' 'gcs/*.cpp' 'gcs/*.hpp' 'gcs/*.h' \
     ':!*/generated/*' ':!common/mavlink/generated' ':!onboard/vision/python/native' |
     grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' |

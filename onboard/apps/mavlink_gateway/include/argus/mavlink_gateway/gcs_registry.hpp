@@ -1,7 +1,8 @@
 // 통제기의 인정과 통제기별 마지막 HEARTBEAT 시각, 주소의 기록
-// 규약: docs/spec/icd.md 5.1 (통제기 인정, sysid 겹침), docs/design/uml/class_mavlink_gateway.md
-// 3절 사용: mavlink_gateway 의 main 이 하나를 생성하여 ControlAuthority, MavlinkCommandReceiver,
-//      GcsLinkMonitor 에 필요한 인터페이스로만 전달
+// 규약: docs/spec/icd.md 5.1 (통제기 인정, sysid 겹침),
+//      docs/design/uml/class_mavlink_gateway.md 3절
+// 사용: mavlink_gateway 의 main 이 하나를 생성하여 ControlAuthority,
+//      MavlinkCommandReceiver, GcsLinkMonitor 에 필요한 인터페이스로만 전달
 #ifndef ARGUS_ONBOARD_GCS_REGISTRY_HPP_
 #define ARGUS_ONBOARD_GCS_REGISTRY_HPP_
 
