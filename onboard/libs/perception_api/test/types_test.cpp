@@ -4,6 +4,10 @@
 
 #include <cstdint>
 
+// 인터페이스 헤더가 bus 와 통신 구현 없이 각각 컴파일되는지 함께 확인한다
+#include "argus/perception_api/tracking_status_events.hpp"
+#include "argus/perception_api/tracking_status_source.hpp"
+
 namespace argus::perception_api {
 namespace {
 
@@ -97,6 +101,14 @@ TEST(TrackingStatusTest, DefaultsToNotFreshAndNoCmc) {
     EXPECT_FALSE(status.fc_fresh);
     EXPECT_FALSE(status.cmc_valid);
     EXPECT_DOUBLE_EQ(status.fps, 0.0);
+}
+
+TEST(TrackingStatusTest, DefaultsToZeroValues) {
+    const ReceivedTrackingStatus received;
+
+    EXPECT_TRUE(received.status.source.empty());
+    EXPECT_EQ(received.status.published_monotonic_ns, 0);
+    EXPECT_EQ(received.arrived_monotonic_ns, 0);
 }
 
 }  // namespace

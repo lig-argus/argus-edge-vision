@@ -17,6 +17,7 @@
 #include "argus/perception_api/types.hpp"
 #include "argus/perception_api_bus/zmq_codecs.hpp"
 #include "argus_msg/perception_observations.hpp"
+#include "argus_msg/tracking_status.hpp"
 #include "argus_msg/tracking_tracks.hpp"
 #include "argus_msg/vision_frame_gray8.hpp"
 
@@ -174,6 +175,18 @@ TEST_F(DdsTypesTest, TracksWithUnspecifiedStateCannotBeConverted) {
     sample.tracks().push_back(track);
 
     EXPECT_FALSE(from_sample<perception_api::Tracks>(sample).has_value());
+}
+
+TEST_F(DdsTypesTest, TrackingStatusKeepsEveryField) {
+    perception_api::TrackingStatus status;
+    status.source = "eo";
+    status.published_monotonic_ns = 5'000'000'000;
+    status.generation = 4;
+    status.fc_fresh = true;
+    status.cmc_valid = false;
+    status.fps = 14.25;
+
+    expect_same_zmq_frames<perception_api::TrackingStatus, idl::TrackingStatus>(status);
 }
 
 }  // namespace

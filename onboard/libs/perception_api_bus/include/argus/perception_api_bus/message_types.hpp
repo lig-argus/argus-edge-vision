@@ -27,6 +27,9 @@ inline const bus::MessageType kPerceptionObservationsType =
 // tracking/tracks
 inline const bus::MessageType kTrackingTracksType =
     bus::message_type<perception_api::Tracks>("argus.msg.TrackingTracks"sv);
+// tracking/status
+inline const bus::MessageType kTrackingStatusType =
+    bus::message_type<perception_api::TrackingStatus>("argus.msg.TrackingStatus"sv);
 
 }  // namespace argus::perception_api_bus
 

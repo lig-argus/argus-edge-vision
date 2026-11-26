@@ -8,6 +8,7 @@
 
 #include "argus/perception_api/types.hpp"
 #include "argus_msg/perception_observationsPubSubTypes.hpp"
+#include "argus_msg/tracking_statusPubSubTypes.hpp"
 #include "argus_msg/tracking_tracksPubSubTypes.hpp"
 #include "argus_msg/vision_frame_gray8PubSubTypes.hpp"
 
@@ -255,6 +256,28 @@ bool tracks_from_idl(const idl::TrackingTracks& sample, perception_api::Tracks& 
     return true;
 }
 
+bool tracking_status_to_idl(const perception_api::TrackingStatus& status,
+                            idl::TrackingStatus& sample) {
+    sample.source(status.source);
+    sample.published_monotonic_ns(status.published_monotonic_ns);
+    sample.generation(status.generation);
+    sample.fc_fresh(status.fc_fresh);
+    sample.cmc_valid(status.cmc_valid);
+    sample.fps(status.fps);
+    return true;
+}
+
+bool tracking_status_from_idl(const idl::TrackingStatus& sample,
+                              perception_api::TrackingStatus& status) {
+    status.source = sample.source();
+    status.published_monotonic_ns = sample.published_monotonic_ns();
+    status.generation = sample.generation();
+    status.fc_fresh = sample.fc_fresh();
+    status.cmc_valid = sample.cmc_valid();
+    status.fps = sample.fps();
+    return true;
+}
+
 }  // namespace
 
 bus_dds::DdsTypeTable dds_types() {
@@ -265,6 +288,8 @@ bus_dds::DdsTypeTable dds_types() {
         table, &observations_to_idl, &observations_from_idl);
     bus_dds::add_dds_type<perception_api::Tracks, idl::TrackingTracksPubSubType>(
         table, &tracks_to_idl, &tracks_from_idl);
+    bus_dds::add_dds_type<perception_api::TrackingStatus, idl::TrackingStatusPubSubType>(
+        table, &tracking_status_to_idl, &tracking_status_from_idl);
     return table;
 }
 

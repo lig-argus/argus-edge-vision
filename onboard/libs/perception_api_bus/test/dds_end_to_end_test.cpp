@@ -15,6 +15,7 @@
 #include "argus/core/steady_clock.hpp"
 #include "argus/core/subscription.hpp"
 #include "argus/perception_api/types.hpp"
+#include "argus/perception_api_bus/bus_tracking_status_subscriber.hpp"
 #include "argus/perception_api_bus/dds_types.hpp"
 #include "argus/perception_api_bus/message_types.hpp"
 #include "argus/perception_api_bus/subscribers.hpp"
@@ -140,6 +141,30 @@ TEST_F(DdsEndToEndTest, TracksArrive) {
     ASSERT_EQ(received[0].tracks.size(), 1U);
     EXPECT_EQ(received[0].tracks[0].track_id, 7U);
     EXPECT_FLOAT_EQ(static_cast<float>(received[0].tracks[0].box.x1), 10.5F);
+}
+
+TEST_F(DdsEndToEndTest, TrackingStatusArrives) {
+    // 추적기의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<perception_api::TrackingStatus>(
+        *sender_, protocol::kTrackingStatus, kTrackingStatusType, kDepth);
+    const auto subscriber = BusTrackingStatusSubscriber::create(*receiver_, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    std::vector<perception_api::ReceivedTrackingStatus> received;
+    const core::Subscription subscription = subscriber->subscribe(
+        [&](const perception_api::ReceivedTrackingStatus& r) { received.push_back(r); });
+    perception_api::TrackingStatus status;
+    status.source = "ir";
+    status.generation = 2;
+    status.cmc_valid = true;
+    const std::int64_t sent_after_ns = clock_.now_monotonic_ns();
+
+    ASSERT_TRUE(pump_until([&] { publisher->publish(status); }, [&] { return !received.empty(); }));
+
+    EXPECT_EQ(received[0].status.source, "ir");
+    EXPECT_EQ(received[0].status.generation, 2U);
+    EXPECT_TRUE(received[0].status.cmc_valid);
+    EXPECT_GE(received[0].arrived_monotonic_ns, sent_after_ns);
 }
 
 }  // namespace

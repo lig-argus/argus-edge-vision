@@ -162,10 +162,19 @@ struct Tracks {
 // 추적기 상태 (`tracking/status` v1, 1 Hz). ARGUS_SENSOR_STATUS 보고에 쓴다
 struct TrackingStatus {
     std::string source;
+    std::int64_t published_monotonic_ns = 0;  // 발행 시각 (발행자의 CLOCK_MONOTONIC)
     std::uint32_t generation = 0;
     bool fc_fresh = false;   // 프레임 시각에 맞는 FC 메시지가 있는지
     bool cmc_valid = false;  // 카메라 움직임 보정이 유효한지
     double fps = 0.0;
+};
+
+// 받은 `tracking/status` 와 받은 시각 (ITrackingStatusSource, ITrackingStatusEvents 가 전달)
+struct ReceivedTrackingStatus {
+    TrackingStatus status;
+
+    // 구현이 이 값을 받은 시각 (RPi monotonic clock). 값이 얼마나 오래됐는지는 이 시각으로 판단한다
+    std::int64_t arrived_monotonic_ns = 0;
 };
 
 }  // namespace argus::perception_api
