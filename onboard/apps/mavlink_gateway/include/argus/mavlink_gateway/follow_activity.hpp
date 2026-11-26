@@ -1,6 +1,6 @@
 // follow/status 로 추종 또는 스캔 중인지 판단
 // 규약: docs/spec/icd.md 5.1 (제어권), 6.1 (통제기 두절), 부록 B (임무 상태)
-// 사용: ControlAuthority, GcsLinkMonitor
+// 사용: ControlAuthority, GcsLinkMonitor, ArgusStatusReporter
 #ifndef ARGUS_ONBOARD_FOLLOW_ACTIVITY_HPP_
 #define ARGUS_ONBOARD_FOLLOW_ACTIVITY_HPP_
 
@@ -13,6 +13,9 @@ namespace argus::mavlink_gateway {
 
 // follow/status 를 이 시간 동안 받지 못하면 추종 제어가 멈춘 것으로 본다 (icd 6.4 ⓑ)
 inline constexpr std::int64_t kFollowStatusTimeoutNs = 3'000'000'000;
+
+// 임무 상태가 추종 또는 스캔 중인지: PREPARING, FOLLOW_ACTIVE, HOLD_TRANSITION, SCAN_ACTIVE
+bool is_follow_mission(vehicle_api::MissionState state);
 
 // latest 를 now_ns 에서 kFollowStatusTimeoutNs 이내에 받았고 임무 상태가 PREPARING, FOLLOW_ACTIVE,
 // HOLD_TRANSITION, SCAN_ACTIVE 중 하나이면 true.

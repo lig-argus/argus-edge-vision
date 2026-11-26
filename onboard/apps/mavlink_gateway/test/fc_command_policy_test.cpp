@@ -176,6 +176,7 @@ struct AdvanceRow {
     bool entered = false;       // 진입 완료를 알림
     bool exited = false;        // Offboard 이탈을 알림
     bool entry_failed = false;  // 진입 실패를 기록
+    bool timed_out = false;     // setpoint 유효 시간 경과로 정지함을 알림
 };
 
 std::vector<AdvanceRow> advance_rows() {
@@ -213,7 +214,7 @@ std::vector<AdvanceRow> advance_rows() {
         {"Following: 연결 두절", following(), observed(FlightMode::Offboard, disconnected),
          kHovering},
         {"Following: setpoint 의 유효 시간 초과", following(),
-         observed(FlightMode::Offboard, no_setpoint), kHovering},
+         observed(FlightMode::Offboard, no_setpoint), kHovering, false, false, false, true},
         {"Following: fc_epoch 변경", following(), observed(FlightMode::Offboard, new_epoch),
          kHovering},
         {"Following: 첫 setpoint 를 기다림", awaiting(kNowNs - 1'000'000'000),
@@ -261,6 +262,7 @@ TEST(FcCommandAdvanceTest, FollowsTransitionTable) {
         EXPECT_EQ(step.effects.entered_command_id.has_value(), row.entered);
         EXPECT_EQ(step.effects.exited_to.has_value(), row.exited);
         EXPECT_EQ(step.effects.entry_failure != nullptr, row.entry_failed);
+        EXPECT_EQ(step.effects.setpoint_timed_out, row.timed_out);
         EXPECT_FALSE(step.effects.send_entry_command);
     }
 }

@@ -164,6 +164,9 @@ void FcControl::apply(const FcCommandState& state, const FcCommandEffects& effec
     if (effects.entry_failure != nullptr) {
         detail::log_error(std::string("Offboard 진입 실패 (") + effects.entry_failure + ")");
     }
+    if (effects.setpoint_timed_out) {
+        last_setpoint_timeout_ns_ = observation.now_ns;
+    }
     const std::int64_t received_ns = observation.status.has_value()
                                          ? observation.status->received_monotonic_ns
                                          : observation.now_ns;

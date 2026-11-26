@@ -30,6 +30,7 @@ class FakeFcCommandStatus : public IFcCommandStatus {
 public:
     bool sending_setpoints() const override { return sending; }
     bool entering() const override { return false; }
+    std::optional<std::int64_t> last_setpoint_timeout_ns() const override { return std::nullopt; }
 
     bool sending = false;
 };

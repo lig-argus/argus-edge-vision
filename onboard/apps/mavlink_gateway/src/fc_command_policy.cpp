@@ -129,8 +129,13 @@ public:
         if (following.awaiting_first_value) {
             return has_value ? started(following) : give_up_if_overdue(following);
         }
-        // setpoint 의 유효 시간이 지남 (icd.md 6.4)
-        return has_value ? std::nullopt : std::optional<FcCommandStep>(to(stopped(following)));
+        if (has_value) {
+            return std::nullopt;
+        }
+        // setpoint 의 유효 시간이 지남 (icd.md 6.4 ⓐ)
+        FcCommandStep step = to(stopped(following));
+        step.effects.setpoint_timed_out = true;
+        return step;
     }
 
     std::optional<FcCommandStep> operator()(const CancellingEntry& cancelling) const {
@@ -200,6 +205,7 @@ void merge(FcCommandEffects& into, const FcCommandEffects& from) {
     if (from.entry_failure != nullptr) {
         into.entry_failure = from.entry_failure;
     }
+    into.setpoint_timed_out = into.setpoint_timed_out || from.setpoint_timed_out;
 }
 
 class OffboardRequest {

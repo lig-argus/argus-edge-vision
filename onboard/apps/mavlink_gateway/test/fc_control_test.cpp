@@ -208,6 +208,20 @@ TEST_F(FcControlTest, CommandStatusReportsSetpointSendingAndEntry) {
     EXPECT_FALSE(control_.entering());
 }
 
+TEST_F(FcControlTest, RecordsTimeOfStopBySetpointTimeout) {
+    start_following();
+    EXPECT_EQ(control_.last_setpoint_timeout_ns(), std::nullopt);
+
+    // 추종 제어가 setpoint 를 보내지 않아 유효 시간이 지남
+    for (std::int32_t i = 0; i < 40 && holds<Following>(); ++i) {
+        step(FlightMode::Offboard, false);
+    }
+
+    ASSERT_TRUE(holds<Hovering>());
+    ASSERT_TRUE(control_.last_setpoint_timeout_ns().has_value());
+    EXPECT_LE(control_.last_setpoint_timeout_ns().value_or(0), clock_.now_monotonic_ns());
+}
+
 TEST_F(FcControlTest, EntryRequestNeedsOneSecondOfSetpointStream) {
     steps(20, FlightMode::Hold);  // 첫 송신부터 0.95초
     EXPECT_EQ(control_.request_offboard(header(1)).reason, "prestream not ready");

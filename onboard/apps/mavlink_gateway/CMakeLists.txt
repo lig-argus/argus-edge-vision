@@ -20,6 +20,8 @@ argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_respo
 
 # main.cpp 를 제외한 mavlink_gateway 의 소스. 실행 파일과 테스트가 링크한다
 add_library(argus_mavlink_gateway_core STATIC
+    src/argus_status_policy.cpp
+    src/argus_status_reporter.cpp
     src/control_authority.cpp
     src/control_authority_policy.cpp
     src/fc_command_policy.cpp
@@ -37,6 +39,7 @@ add_library(argus_mavlink_gateway_core STATIC
     src/request_message_handler.cpp
     src/request_operator_control_handler.cpp
     src/setpoint_encoding.cpp
+    src/sysfs_cpu_temperature.cpp
     src/time_sync.cpp
     src/udp_gcs_link.cpp
     src/udp_mavlink_connection.cpp
@@ -119,3 +122,12 @@ argus_add_test(mavlink_gateway_request_operator_control_handler_test
                LIBS argus::mavlink_gateway_core)
 argus_add_test(mavlink_gateway_gcs_link_monitor_test SOURCES test/gcs_link_monitor_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+
+# C 단계: ARGUS_STATUS 송신과 추종 제어 두절 처리
+argus_add_test(mavlink_gateway_argus_status_policy_test SOURCES test/argus_status_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_argus_status_reporter_test
+               SOURCES test/argus_status_reporter_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_sysfs_cpu_temperature_test
+               SOURCES test/sysfs_cpu_temperature_test.cpp LIBS argus::mavlink_gateway_core)
