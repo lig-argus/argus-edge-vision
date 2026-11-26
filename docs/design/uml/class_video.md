@@ -67,6 +67,9 @@ classDiagram
     class VideoSender {
         +send(CollectedFrame)
     }
+    class VideoStreamInfoPublisher {
+        +publish() 1 Hz, 변경 시
+    }
     class VideoBusInput {
         +create(IBus, FrameCollector)$ VideoBusInput
     }
@@ -87,6 +90,8 @@ classDiagram
     VideoSender ..> IStreamSink : push
     RtspServer *-- MetadataRtpPacketizer
     RtspServer ..> VideoEncodeConfig : 파이프라인 문자열
+    VideoStreamInfoPublisher ..> RtspServer : 포트, 경로, 송신 중 여부
+    VideoStreamInfoPublisher ..> VideoEncodeConfig : 코덱, 비트 전송률
 ```
 
 | 클래스 | 책임 | 출처 |
@@ -101,6 +106,7 @@ classDiagram
 | `IStreamSink` | 프레임 하나의 영상과 메타데이터 문서(XML)를 함께 받아 송신하는 인터페이스. 한 호출로 받는 이유는 두 트랙에 같은 시각을 부여해야 하고 같은 프레임의 것이어야 하기 때문이다. 테스트용 `FakeStreamSink` 는 `apps/video_sender/test/` | video 5장 |
 | `RtspServer` | gst-rtsp-server 에 두 트랙 등록, `appsrc` 둘에 push. `IStreamSink` 구현이다. 메타데이터 문서를 `MetadataRtpPacketizer` 로 나누어 송신하며, payload type 을 패킷의 헤더와 SDP 에 `RtspServerConfig` 한 곳의 값으로 지정한다. 두 버퍼에 같은 PTS(프레임을 RPi 가 수신한 시각에 해당하는 running time)를 부여한다. 클라이언트가 없는 동안에도 서버는 유지하고 받은 프레임은 폐기한다. 폐기 횟수는 `stats()` 로 원인별로 제공한다. NUC 공백은 아무것도 보내지 않음 | video 5장 |
 | `VideoSender` | `CollectedFrame` 하나마다 메타데이터 문서를 생성해 `IStreamSink::push()` 를 한 번 호출한다. `FrameCollector` 의 출력을 `send()` 에 연결하는 조립은 `main` 이 담당한다 | video 5장 |
+| `VideoStreamInfoPublisher` | RTSP 서버가 실제로 연 포트와 경로, 해상도, FPS, 코덱, 비트 전송률, 송신 중 여부, 센서(IR/EO)를 `video/stream_info` 로 1 Hz 와 값이 바뀔 때 발행한다. 영상 송신부가 스트림 정보의 원천이며, mavlink_gateway 는 이 값으로 `VIDEO_STREAM_INFORMATION` 을 응답한다 (`class_mavlink_gateway.md` 3절). bus 로만 발행하며 MAVLink 를 모른다 | pi 5.1, video 7장 |
 
 - `FrameCollector` 의 근거: Autoware `image_projection_based_fusion` 의 `FusionCollector`(입력 여러 개를 키로 모으고, 시간 제한이 지나면 모인 것으로 처리).
 
