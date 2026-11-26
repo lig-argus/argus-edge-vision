@@ -115,6 +115,7 @@ gcs/
   mavlink_connection/           # IMavlinkConnection (MAVLink 연결 인터페이스)
   mavlink_connection_testing/   # FakeMavlinkConnection
   net/                          # UdpMavlinkConnection (mavlink_gateway 와의 MAVLink UDP 연결)
+  link/                         # 기체 상태 해석, 링크 판단, 명령 송신과 응답 처리 (VehicleLink)
   app/                          # 실행 파일. 구체 구현을 만들어 다른 모듈에 넘긴다
 ```
 
