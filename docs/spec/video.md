@@ -197,7 +197,7 @@ a=control:trackID=1
 | 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회 |
 | stream_id / count | 1 = IR (EO 추가 시 2) / 스트림 수 |
 | type | `VIDEO_STREAM_TYPE_RTSP` (0) |
-| flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 고정. mavlink_gateway 는 영상 송신부의 실행 여부를 확인하지 않는다. 통제기는 영상 송신 여부를 RTSP 접속 결과로 판단한다 |
+| flags | IR 은 `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 과 `VIDEO_STREAM_STATUS_FLAGS_THERMAL` (2) 을 합친 3, EO 는 `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1). 값은 고정이며 mavlink_gateway 는 영상 송신부의 실행 여부를 확인하지 않는다. 통제기는 영상 송신 여부를 RTSP 접속 결과로 판단하고, THERMAL 로 열화상 스트림을 구분한다 |
 | framerate / resolution_h / resolution_v | 30 / 640 / 480 |
 | bitrate | 송신부의 비트 전송률 설정값 (bit/s). 설정값이 없으면 0 |
 | rotation / hfov | 0 / 카메라 화각 측정 뒤 (`icd.md` A1). 모르면 0 |
