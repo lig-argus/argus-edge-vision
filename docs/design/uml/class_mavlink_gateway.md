@@ -436,9 +436,17 @@ classDiagram
     }
     class gcs_forward_policy {
         <<function>>
-        +decide(ForwardObservation, message) ForwardDecision
+        +decide_forward(ForwardObservation, GcsMessageRequest) ForwardDecision
     }
     class GcsFcForwarder
+    class IForwardedCommandEvents {
+        <<interface>>
+        +subscribe(handler) Subscription
+    }
+    class IRcOverrideState {
+        <<interface>>
+        +pilot_in_control() bool
+    }
     class FcTelemetryRelay
     class landing_lock_policy {
         <<function>>
@@ -513,9 +521,15 @@ classDiagram
     GcsFcForwarder ..> gcs_forward_policy : 판단
     GcsFcForwarder ..> IControlAuthority
     GcsFcForwarder ..> ILandingLockState
-    GcsFcForwarder ..> RcOverrideMonitor
+    GcsFcForwarder ..> IRcOverrideState : 조종사 개입
+    GcsFcForwarder ..> IGcsMessageSource : 통제기 메시지 수신
     GcsFcForwarder ..> IMavlinkConnection : FC 로 전달, FC 의 COMMAND_ACK 수신
-    GcsFcForwarder ..> IGcsLink : COMMAND_ACK 를 보낸 통제기에만
+    GcsFcForwarder ..> IGcsLink : 직접 응답, FC 의 COMMAND_ACK 를 보낸 통제기에만
+    GcsFcForwarder ..> IStopRequester : HOLD
+    IForwardedCommandEvents <|.. GcsFcForwarder
+    IRcOverrideState <|.. RcOverrideMonitor
+    LandingLock ..> IForwardedCommandEvents : NAV_LAND 전달과 응답
+    RcOverrideMonitor ..> IForwardedCommandEvents : DO_SET_MODE 전달
     FcTelemetryRelay ..> IMavlinkConnection : FC telemetry 수신
     FcTelemetryRelay ..> IGcsLink : broadcast
     LandingLock ..> landing_lock_policy : 판단
@@ -538,9 +552,11 @@ classDiagram
 | `ITrackingStatusSource`, `ITrackingStatusEvents`, `BusTrackingStatusSubscriber`, `IVisionStatusSource`, `BusVisionStatusSubscriber` | `tracking/status`, `vision/status` 를 구독해 카메라(`source`)마다 최신 값과 받은 시각 보관 (`perception_api`, `perception_api_bus` 모듈) | C | pi 5.1.3, 5.1.7 |
 | `TrackStartHandler`, `TrackStopHandler`, `ScanStartHandler` | 조건 ③④⑤ 와 범위 검사 → DENIED, TEMPORARILY_REJECTED 또는 `IFollowControlClient`(`BusFollowControlClient`) 호출. MAVLink param 변환 함수와 조건 판정 함수를 나눈다. IN_PROGRESS 의 `progress` 는 `follow/status` 의 스캔 진행 | D | icd 4.2 |
 | `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | D | icd 4.2 ④ |
-| `gcs_forward_policy` (함수) | 통제기 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(결과 값), mavlink_gateway 가 처리(HOLD → 제자리 유지). 입력은 `ForwardObservation`(보낸 통제기의 제어권, 메시지 종류와 인자, FC 모드, armed, 비행 중, 전역 위치 유효, setpoint 송신 중, 추종 또는 스캔 중, 착륙 잠금, 조종사 개입 중). icd 5.2 표를 이 함수 하나에 둔다 | E | icd 5.2 |
-| `GcsFcForwarder` | 통제기의 메시지를 받아 `gcs_forward_policy` 의 결과를 실행한다: FC 로 전달(`IMavlinkConnection`), COMMAND_ACK 직접 응답, `IStopRequester` 호출. FC 가 보낸 COMMAND_ACK 중 대상이 통제기인 것을 그 통제기에만 전달한다 | E | icd 4.1, 4.3, 5.2 |
-| `FcTelemetryRelay` | FC 의 telemetry(icd 2장의 FC → 통제기 메시지)를 모든 통제기에 전달한다 | E | icd 1.2, 2장 |
+| `gcs_forward_policy` (함수) | 통제기가 FC 로 보낸 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(MAV_RESULT 와 STATUSTEXT 이유), 응답 없이 폐기, 정지(HOLD). 입력은 `ForwardObservation`(보낸 통제기의 제어권, FC 상태를 아는지와 모드, armed, setpoint 송신 또는 Offboard 진입 대기, 추종 또는 스캔 중, 진행 중인 명령, 착륙 잠금, 조종사 개입 중)와 `GcsMessageRequest`(메시지 종류, MAV_CMD, param1~3). icd 5.2 표를 이 함수 하나에 둔다. DO_SET_MODE 의 요청 모드는 `set_mode_request()` 로 읽는다 | E | icd 4.1, 5.2 |
+| `GcsFcForwarder` | 통제기의 HEARTBEAT, COMMAND_LONG, COMMAND_INT, MANUAL_CONTROL, PARAM_REQUEST_READ, PARAM_SET 중 FC 가 대상인 것을 받아 `gcs_forward_policy` 의 결과를 실행한다: 받은 그대로(통제기의 sysid, compid 유지) FC 로 전달(`IMavlinkConnection`), COMMAND_ACK 와 STATUSTEXT 직접 응답(송신 compid 195, 보낸 통제기에만), HOLD 의 `IStopRequester` 호출. FC 의 COMMAND_ACK 중 대상이 통제기인 것을 그 통제기의 마지막 주소(`IGcsPresence`)로만 전달한다. 전달한 명령과 FC 의 응답을 `IForwardedCommandEvents` 로 알린다 | E | icd 4.1, 4.3, 5.2 |
+| `IForwardedCommandEvents`, `ForwardedCommandEvent` | FC 로 전달한 COMMAND_LONG 마다 보낸 직후 Forwarded, 대상이 통제기인 FC 의 COMMAND_ACK 마다 Answered 를 알린다. 값은 보낸 통제기, MAV_CMD, 단계, FC 의 결과(Answered), 요청 모드(DO_SET_MODE). `LandingLock` 은 NAV_LAND 로 잠금의 시작과 해제를, `RcOverrideMonitor` 는 DO_SET_MODE 로 통제기의 모드 변경을 안다. 전달하는 쪽이 받는 쪽을 모르도록 인터페이스로 둔다 (`IFollowStatusEvents` 와 같은 모양) | E | icd 5.3, 5.4 |
+| `IRcOverrideState`, `InactiveRcOverride` | 조종사 개입 중인지 조회(`pilot_in_control()`). 구현은 F 단계의 `RcOverrideMonitor` 이며, 그 전에는 항상 false 인 `InactiveRcOverride` 를 연결한다 | E | icd 5.4 |
+| `FcTelemetryRelay` | FC(sysid 1, compid 1)가 보낸 메시지 중 icd 2장의 "FC → 전체" 메시지만 받은 그대로 모든 통제기에 broadcast 한다 (허용 목록 `kRelayedFcMessages`). 주기는 줄이지 않는다 | E | icd 1.2, 2장 |
 | `RequestMessageHandler` | `MAV_CMD_REQUEST_MESSAGE`. 메시지 번호별 응답 함수를 등록받는 표를 두고, 처음 등록하는 것은 `VIDEO_STREAM_INFORMATION`(269, `build_video_stream_information`). 없는 번호와 아직 받지 못한 값은 DENIED. COMMAND_ACK 를 먼저 보내고 요청한 메시지는 요청한 통제기에만 보낸다 (param7 의 응답 대상은 보지 않음: RTSP 주소의 호스트가 요청한 통제기에 맞춘 값). 제어권이 없는 통제기도 요청할 수 있다 (`CommandRules` 의 제어권 필요 없음, 기체를 움직이지 않는 조회) | E | icd 4.1, video 7장 |
 | `IVideoStreamInfoSource`, `BusVideoStreamInfoSubscriber` | 영상 송신부가 발행한 `video/stream_info` 의 최신 값 조회 (`onboard/libs/video_api`, `onboard/libs/video_api_bus`). RTSP 주소의 호스트는 `IGcsLink::local_address()` 로 정한다 | E | video 7장, pi 5.1 |
 | `landing_lock_policy` (함수), `LandingLock` | `ILandingLockState` 구현. 착륙 잠금의 시작(착륙 명령 전달)과 해제(지상이고 시동 꺼짐, 조종사 개입 뒤 복귀 완료) 판단과 상태 보관. 시작할 때 `IFcLandingRelease` 로 진행 중 명령 취소와 setpoint 송신 중지 | F | icd 5.3 |

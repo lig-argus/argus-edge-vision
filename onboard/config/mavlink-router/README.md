@@ -1,6 +1,6 @@
 # mavlink-router 설정
 
-RPi 에서 FC 의 USB 장치를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, mavlink_gateway(UDP 14540), 통제기(UDP 14550), QGC(UDP 14551)로 중계한다 (`docs/spec/icd.md` 1.2).
+RPi 에서 FC 의 USB 장치를 직접 읽고 쓰는 프로세스는 mavlink-router 하나이고, mavlink_gateway(UDP 14540)와 QGC(UDP 14551)로 중계한다. 통제기는 라우터에 연결하지 않고 mavlink_gateway(UDP 14550)에 연결하며, mavlink_gateway 가 FC 의 telemetry 를 통제기에 전달하고 통제기의 메시지를 검사한 뒤 FC 로 전달한다 (`docs/spec/icd.md` 1.2, 5.2).
 
 | 파일 | 용도 |
 |---|---|
@@ -46,9 +46,9 @@ sudo journalctl -u mavlink-router -n 30
 ss -ulnp | grep mavlink-routerd
 ```
 
-- `ss` 에 14550, 14551 이 표시되어야 한다 (14540 은 mavlink_gateway 가 여는 포트라 라우터 쪽에는 표시되지 않는다).
-- 통제기를 RPi Wi-Fi 에 붙이고 14550 으로 HEARTBEAT 를 보내면 FC telemetry 가 통제기에 도착한다. 통제기가 먼저 보내야 라우터가 통제기 주소를 인식한다.
+- `ss` 에 14551 이 표시되어야 한다 (14540, 14550 은 mavlink_gateway 가 여는 포트라 라우터 쪽에는 표시되지 않는다).
 - mavlink_gateway 를 실행하면 14540 으로 FC 메시지가 수신된다.
+- 통제기를 RPi Wi-Fi 에 붙이고 mavlink_gateway 의 14550 으로 HEARTBEAT 를 보내면 FC telemetry 가 통제기에 도착한다. 통제기가 먼저 보내야 mavlink_gateway 가 통제기 주소를 인식한다.
 - QGC 입력 차단: 비행 설정(`main.conf` 만)에서 QGC 로 파라미터 하나를 바꾸면 FC 에 반영되지 않고, 정비 설정(`config.d/qgc-maintenance.conf` 추가)에서는 반영되어야 한다. 기체에서 확인한다.
 
 ## QGC 로 파라미터, 보정하기 (정비)
@@ -76,7 +76,7 @@ ls /etc/mavlink-router/config.d/
 
 ## 네트워크 조건
 
-14550 과 14551 은 RPi 의 모든 인터페이스(`0.0.0.0`)에서 받으므로, 같은 Wi-Fi 에 있는 어느 장치든 MAVLink 를 보낼 수 있다. 기체와 통제기만 있는 사설 Wi-Fi 에서만 사용한다. 근본 보호는 MAVLink 서명이며 아직 사용하지 않는다 (`docs/spec/icd.md` 7장 D1).
+14551(라우터)과 14550(mavlink_gateway)은 RPi 의 모든 인터페이스(`0.0.0.0`)에서 받으므로, 같은 Wi-Fi 에 있는 어느 장치든 MAVLink 를 보낼 수 있다. 기체와 통제기만 있는 사설 Wi-Fi 에서만 사용한다. 근본 보호는 MAVLink 서명이며 아직 사용하지 않는다 (`docs/spec/icd.md` 7장 D1).
 
 ## 설정을 바꿀 때
 
