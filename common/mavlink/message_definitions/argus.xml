@@ -94,7 +94,7 @@
     </enum>
     <enum name="MAV_CMD">
       <entry value="45000" name="MAV_CMD_ARGUS_TRACK_START" hasLocation="false" isDestination="false">
-        <description>표적 추종 시작. 수신자: mavlink_gateway (compid 195). 표적은 운용자가 영상에서 고른 트랙의 센서, track_id, class_id, generation 으로 지정한다. 추종·스캔 중에 받으면 TEMPORARILY_REJECTED 이며, 표적을 바꾸려면 TRACK_STOP 뒤 다시 보낸다. 제어권이 없으면 NOT_IN_CONTROL, 조건 불충족은 값 조건(트랙 없음, generation 불일치, 범위)이면 DENIED, 상태 조건이면 TEMPORARILY_REJECTED 이다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 조건은 docs/spec/icd.md.</description>
+        <description>표적 추종 시작. 수신자: mavlink_gateway (compid 195). 표적은 운용자가 영상에서 고른 트랙의 센서, track_id, class_id, generation 으로 지정한다. 추종·스캔 중에 받으면 TEMPORARILY_REJECTED 이며, 표적을 바꾸려면 TRACK_STOP 뒤 다시 보낸다. 제어권이 없으면 TEMPORARILY_REJECTED 와 STATUSTEXT "제어권 없음", 조건 불충족은 값 조건(트랙 없음, generation 불일치, 범위)이면 DENIED, 상태 조건이면 TEMPORARILY_REJECTED 이다. 결과는 COMMAND_ACK 로 응답하며, Offboard 진입 중에는 IN_PROGRESS 를 먼저 보내고 ACCEPTED 또는 FAILED 로 끝난다. 진행 중에 TRACK_STOP 을 받으면 CANCELLED 로 끝난다. 조건은 docs/spec/icd.md.</description>
         <param index="1" label="Track ID" minValue="1" maxValue="16777215" increment="1">추종할 표적의 track_id (영상 메타데이터의 값). 0 이거나 해당 센서의 최신 추적 결과에 없으면 DENIED.</param>
         <param index="2" label="Sensor" enum="ARGUS_SENSOR">표적이 있는 센서. UNKNOWN(0) 이면 DENIED.</param>
         <param index="3" label="Class ID" minValue="0" maxValue="16777215" increment="1">표적의 class_id (영상 메타데이터의 값).</param>
@@ -124,7 +124,7 @@
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. mavlink_gateway 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
       <entry value="45010" name="MAV_CMD_ARGUS_REQUEST_OPERATOR_CONTROL" hasLocation="false" isDestination="false">
-        <description>제어권 요청 또는 해제. 수신자: mavlink_gateway (compid 195). 매개변수 순서는 MAVLink 의 MAV_CMD_REQUEST_OPERATOR_CONTROL(32100)과 같다. 요청은 부여하면 ACCEPTED, 거부 조건(제어권을 가진 통제기가 살아 있고 비행 중, 명령 진행 중, 추종 또는 스캔 중, 착륙 잠금)이면 TEMPORARILY_REJECTED. 해제는 제어권을 가진 통제기가 보내면 ACCEPTED, 아니면 NOT_IN_CONTROL. p4 가 0 도 보낸 통제기의 sysid 도 아니면 DENIED. 제어권을 가진 통제기에 넘겨줄지 묻는 절차는 없다. 조건은 docs/spec/icd.md 4.4, 5.1.</description>
+        <description>제어권 요청 또는 해제. 수신자: mavlink_gateway (compid 195). 매개변수 순서는 MAVLink 의 MAV_CMD_REQUEST_OPERATOR_CONTROL(32100)과 같다. 요청은 부여하면 ACCEPTED, 거부 조건(제어권을 가진 통제기가 살아 있고 비행 중, 명령 진행 중, 추종 또는 스캔 중, 착륙 잠금)이면 TEMPORARILY_REJECTED. 해제는 제어권을 가진 통제기가 보내면 ACCEPTED, 아니면 DENIED. p4 가 0 도 보낸 통제기의 sysid 도 아니면 DENIED. 제어권을 가진 통제기에 넘겨줄지 묻는 절차는 없다. 조건은 docs/spec/icd.md 4.4, 5.1.</description>
         <param index="1" label="Action" minValue="0" maxValue="1" increment="1">0 해제, 1 요청.</param>
         <param index="2" reserved="true" default="NaN"/>
         <param index="3" reserved="true" default="NaN"/>
@@ -134,7 +134,7 @@
         <param index="7" label="Sequence Number" minValue="0" maxValue="16777215" increment="1">명령 번호. 통제기가 명령을 보낼 때마다 1 증가시킨다 (시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지, 16,777,215 를 넘으면 0). 재전송 시에는 동일한 번호를 사용한다. mavlink_gateway 는 (sysid, compid, MAV_CMD, 번호)로 재전송을 구분하여 다시 실행하지 않고 마지막 COMMAND_ACK 를 재송신한다 (docs/spec/icd.md 4.1).</param>
       </entry>
       <entry value="45011" name="MAV_CMD_ARGUS_END_RC_OVERRIDE" hasLocation="false" isDestination="false">
-        <description>조종사(RC)가 넘겨받은 기체를 통제기가 다시 넘겨받는다. 수신자: mavlink_gateway (compid 195). FC 모드, 스틱 중립 유지, RC 수신기와 추정 상태, 진행 중인 명령 없음을 모두 확인하면 ACCEPTED 로 응답하고 제자리 유지를 시작한다. 조건 불충족은 TEMPORARILY_REJECTED, 제어권이 없으면 NOT_IN_CONTROL. 추종은 자동으로 시작하지 않는다. 조건은 docs/spec/icd.md 4.4, 5.4.</description>
+        <description>조종사(RC)가 넘겨받은 기체를 통제기가 다시 넘겨받는다. 수신자: mavlink_gateway (compid 195). FC 모드, 스틱 중립 유지, RC 수신기와 추정 상태, 진행 중인 명령 없음을 모두 확인하면 ACCEPTED 로 응답하고 제자리 유지를 시작한다. 조건 불충족과 제어권 없음은 TEMPORARILY_REJECTED (제어권 없음은 STATUSTEXT "제어권 없음" 을 함께 보낸다). 추종은 자동으로 시작하지 않는다. 조건은 docs/spec/icd.md 4.4, 5.4.</description>
         <param index="1" reserved="true" default="NaN"/>
         <param index="2" reserved="true" default="NaN"/>
         <param index="3" reserved="true" default="NaN"/>

@@ -188,6 +188,26 @@ TEST_F(FcControlTest, EntryRequestSendsDoSetModeForPx4Offboard) {
     EXPECT_TRUE(holds<Entering>());
 }
 
+TEST_F(FcControlTest, CommandStatusReportsSetpointSendingAndEntry) {
+    steps(2, FlightMode::Hold, false);
+    EXPECT_FALSE(control_.sending_setpoints());
+    EXPECT_FALSE(control_.entering());
+
+    steps(1, FlightMode::Hold);  // 진입 전의 사전 송신
+    EXPECT_TRUE(control_.sending_setpoints());
+    EXPECT_FALSE(control_.entering());
+
+    request_entry();
+    EXPECT_TRUE(control_.sending_setpoints());
+    EXPECT_TRUE(control_.entering());
+
+    receive_ack(MAV_CMD_DO_SET_MODE, MAV_RESULT_ACCEPTED, kOnboardCommandCompid);
+    step(FlightMode::Offboard);
+    ASSERT_TRUE(holds<Following>());
+    EXPECT_TRUE(control_.sending_setpoints());
+    EXPECT_FALSE(control_.entering());
+}
+
 TEST_F(FcControlTest, EntryRequestNeedsOneSecondOfSetpointStream) {
     steps(20, FlightMode::Hold);  // 첫 송신부터 0.95초
     EXPECT_EQ(control_.request_offboard(header(1)).reason, "prestream not ready");

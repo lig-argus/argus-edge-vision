@@ -1,24 +1,20 @@
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
 
-#include <arpa/inet.h>
-#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "log.hpp"
+#include "udp_socket.hpp"
 
 namespace argus::mavlink_gateway {
 namespace {
@@ -26,74 +22,20 @@ namespace {
 // datagram 하나의 수신 버퍼 크기. MAVLink 2 메시지의 최대 길이(280 바이트)보다 크게 둔다
 constexpr std::size_t kReceiveBufferSize = 2048;
 
-std::string errno_text() { return std::strerror(errno); }
-
-// config 의 주소를 소켓 주소로 변환한다. 주소 문자열이 IPv4 주소가 아닌 경우 nullopt
-std::optional<sockaddr_in> to_socket_address(const UdpMavlinkConfig& config) {
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(config.local_port);
-    if (inet_pton(AF_INET, config.local_address.c_str(), &address.sin_addr) != 1) {
-        detail::log_error("UDP 주소 변환 실패: " + config.local_address);
-        return std::nullopt;
-    }
-    return address;
-}
-
-// non-blocking UDP 소켓을 연다. 실패한 경우 valid() 가 false
-UniqueFd open_nonblocking_udp_socket() {
-    UniqueFd fd(socket(AF_INET, SOCK_DGRAM, 0));
-    if (!fd.valid()) {
-        detail::log_error("UDP 소켓 생성 실패: " + errno_text());
-        return UniqueFd();
-    }
-    const std::int32_t flags = fcntl(fd.get(), F_GETFL, 0);
-    // 비트 연산은 부호 없는 타입으로 한다
-    const auto nonblocking_flags = static_cast<std::int32_t>(
-        static_cast<std::uint32_t>(flags) | static_cast<std::uint32_t>(O_NONBLOCK));
-    if (flags < 0 || fcntl(fd.get(), F_SETFL, nonblocking_flags) < 0) {
-        detail::log_error("UDP 소켓 non-blocking 설정 실패: " + errno_text());
-        return UniqueFd();
-    }
-    return fd;
-}
-
-bool bind_socket(std::int32_t fd, const sockaddr_in& address) {
-    if (bind(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0) {
-        detail::log_error("UDP bind 실패: " + errno_text());
-        return false;
-    }
-    return true;
-}
-
-// fd 가 실제로 bind 된 포트. 확인하지 못한 경우 nullopt
-std::optional<std::uint16_t> bound_port(std::int32_t fd) {
-    sockaddr_in bound{};
-    socklen_t bound_size = sizeof(bound);
-    if (getsockname(fd, reinterpret_cast<sockaddr*>(&bound), &bound_size) < 0) {
-        detail::log_error("UDP 포트 확인 실패: " + errno_text());
-        return std::nullopt;
-    }
-    return ntohs(bound.sin_port);
-}
-
-bool same_address(const sockaddr_in& lhs, const sockaddr_in& rhs) {
-    return lhs.sin_addr.s_addr == rhs.sin_addr.s_addr && lhs.sin_port == rhs.sin_port;
-}
-
 }  // namespace
 
 std::unique_ptr<UdpMavlinkConnection> UdpMavlinkConnection::create(core::IFdWatcher& watcher,
                                                                    const UdpMavlinkConfig& config) {
-    const std::optional<sockaddr_in> address = to_socket_address(config);
+    const std::optional<sockaddr_in> address =
+        detail::to_socket_address(config.local_address, config.local_port);
     if (!address.has_value()) {
         return nullptr;
     }
-    UniqueFd fd = open_nonblocking_udp_socket();
-    if (!fd.valid() || !bind_socket(fd.get(), address.value_or(sockaddr_in{}))) {
+    UniqueFd fd = detail::open_bound_udp_socket(address.value_or(sockaddr_in{}));
+    if (!fd.valid()) {
         return nullptr;
     }
-    const std::optional<std::uint16_t> port = bound_port(fd.get());
+    const std::optional<std::uint16_t> port = detail::bound_port(fd.get());
     if (!port.has_value()) {
         return nullptr;
     }
@@ -139,11 +81,11 @@ void UdpMavlinkConnection::on_readable() {
             recvfrom(fd_.get(), buffer.data(), buffer.size(), 0, sender_address, &sender_size);
         if (received < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                detail::log_error("UDP 수신 실패: " + errno_text());
+                detail::log_error("UDP 수신 실패: " + detail::errno_text());
             }
             return;
         }
-        if (!same_address(sender, assembling_from_)) {
+        if (!detail::same_address(sender, assembling_from_)) {
             parse_buffer_ = {};
             parse_status_ = {};
             assembling_from_ = sender;

@@ -1,13 +1,15 @@
 // mavlink_gateway 실행 파일 (argus_mavlink_gateway)
 // 규약: docs/design/uml/class_mavlink_gateway.md 2절, 4절
 // 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계를 생성하는 유일한 곳이다. 그 밖의 코드는
-// 인터페이스로만 사용한다. 현재 구성은 FC 쪽(FcGateway)만 포함한다. 통제기 쪽(ARGUS_STATUS 송신,
-// 통제기 명령 처리)은 다음 작업에서 추가한다. 설정 값은 코드의 기본값(UdpMavlinkConfig,
-// protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다
+// 인터페이스로만 사용한다. 구성은 FC 쪽(FcGateway)과 통제기 쪽(통제기 연결, 제어권, 명령 수신, 두절
+// 감시)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig, protocol/dds_settings.hpp,
+// protocol/zmq_endpoints.hpp)을 사용한다
 // 인자
 // - --bus dds|zmq: 통신 구현. 기본값 dds. ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수
 // 있다
 // - --dds-domain N: DDS domain. 기본값 protocol::kDefaultDdsDomain
+// - --gcs-port N: 통제기 UDP 포트. 기본값 14550 (icd 1.2). mavlink-router 가 14550 을 여는 동안
+//   (통제기 엔드포인트를 router 설정에서 지우기 전) 함께 실행할 때 다른 포트를 지정한다
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -17,6 +19,8 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <random>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -27,12 +31,23 @@
 #include "argus/bus_zmq/zmq_poller.hpp"
 #include "argus/core/event_loop.hpp"
 #include "argus/core/steady_clock.hpp"
+#include "argus/mavlink_gateway/command_activity.hpp"
+#include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/fc_gateway.hpp"
+#include "argus/mavlink_gateway/gcs_link_monitor.hpp"
+#include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
+#include "argus/mavlink_gateway/landing_lock_state.hpp"
+#include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
+#include "argus/mavlink_gateway/request_header_factory.hpp"
+#include "argus/mavlink_gateway/request_operator_control_handler.hpp"
+#include "argus/mavlink_gateway/udp_gcs_link.hpp"
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
 #include "argus/protocol/dds_settings.hpp"
 #include "argus/protocol/topics.hpp"
 #include "argus/protocol/zmq_endpoints.hpp"
+#include "argus/vehicle_api_bus/bus_follow_control_client.hpp"
+#include "argus/vehicle_api_bus/bus_follow_status_subscriber.hpp"
 #include "argus/vehicle_api_bus/zmq_codecs.hpp"
 
 #ifdef ARGUS_HAS_BUS_DDS
@@ -55,6 +70,7 @@ constexpr const char* kLogPrefix = "argus_mavlink_gateway: ";
 
 constexpr std::string_view kBusOption = "--bus";
 constexpr std::string_view kDdsDomainOption = "--dds-domain";
+constexpr std::string_view kGcsPortOption = "--gcs-port";
 constexpr std::string_view kBusDds = "dds";
 constexpr std::string_view kBusZmq = "zmq";
 
@@ -66,6 +82,7 @@ enum class BusKind : std::uint8_t {
 struct Options {
     BusKind bus = BusKind::Dds;
     std::uint32_t dds_domain = protocol::kDefaultDdsDomain;
+    std::uint16_t gcs_port = mavlink_gateway::kGcsUdpPort;
 };
 
 // domain 은 0~232 (DDS 의 포트 규칙에서 쓸 수 있는 범위)
@@ -75,6 +92,17 @@ std::optional<std::uint32_t> dds_domain_of(const char* text) {
     const char* const end = text + std::strlen(text);
     const auto [last, error] = std::from_chars(text, end, value);
     if (error != std::errc{} || last != end || last == text || value > kMaxDomain) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+// 1~65535
+std::optional<std::uint16_t> port_of(const char* text) {
+    std::uint16_t value = 0;
+    const char* const end = text + std::strlen(text);
+    const auto [last, error] = std::from_chars(text, end, value);
+    if (error != std::errc{} || last != end || last == text || value == 0) {
         return std::nullopt;
     }
     return value;
@@ -100,6 +128,12 @@ std::optional<Options> parse_options(std::int32_t argc, char** argv) {
                 return std::nullopt;
             }
             options.dds_domain = domain.value();
+        } else if (argument == kGcsPortOption && i + 1 < argc) {
+            const std::optional<std::uint16_t> port = port_of(argv[++i]);
+            if (!port.has_value()) {
+                return std::nullopt;
+            }
+            options.gcs_port = port.value();
         } else {
             return std::nullopt;
         }
@@ -109,14 +143,27 @@ std::optional<Options> parse_options(std::int32_t argc, char** argv) {
 
 void print_usage() {
     std::cerr << "사용법: argus_mavlink_gateway [" << kBusOption << " " << kBusDds << "|" << kBusZmq
-              << "] [" << kDdsDomainOption << " N]\n"
+              << "] [" << kDdsDomainOption << " N] [" << kGcsPortOption << " N]\n"
               << "  " << kBusOption << "  통신 구현. 지정하지 않으면 " << kBusDds << "\n"
               << "  " << kDdsDomainOption << "  DDS domain (0~232). 지정하지 않으면 "
-              << protocol::kDefaultDdsDomain << "\n";
+              << protocol::kDefaultDdsDomain << "\n"
+              << "  " << kGcsPortOption << "  통제기 UDP 포트 (1~65535). 지정하지 않으면 "
+              << mavlink_gateway::kGcsUdpPort << "\n";
+}
+
+// mavlink_gateway 의 세션. 시작할 때마다 새로 만든다 (process_interfaces.md 3장 session_id).
+// 다시 시작한 mavlink_gateway 를 추종 제어가 구분하는 데만 사용하므로 난수 64 비트의 16 진수로 한다
+std::string make_session_id() {
+    std::random_device device;
+    const std::uint64_t value = (static_cast<std::uint64_t>(device()) << 32U) | device();
+    std::ostringstream text;
+    text << "mavlink_gateway-" << std::hex << value;
+    return text.str();
 }
 
 // mavlink_gateway 가 쓰는 이름의 ZeroMQ 엔드포인트 (process_interfaces.md 5.1, 5.2).
-// fc/* 와 control/mode_request 는 bind, control/setpoint 는 connect 한다 (ZmqBus 가 역할로 정함)
+// fc/* 와 control/mode_request 는 bind, control/setpoint, follow/status, follow/command 는 connect
+// 한다 (ZmqBus 가 역할로 정함)
 bus_zmq::ZmqEndpointTable endpoints() {
     const std::string fc_state{protocol::kDefaultFcStateEndpoint};
     return {
@@ -127,13 +174,20 @@ bus_zmq::ZmqEndpointTable endpoints() {
          std::string(protocol::kDefaultControlModeRequestEndpoint)},
         {std::string(protocol::kControlSetpoint),
          std::string(protocol::kDefaultControlStateEndpoint)},
+        {std::string(protocol::kFollowStatus), std::string(protocol::kDefaultControlStateEndpoint)},
+        {std::string(protocol::kFollowCommand),
+         std::string(protocol::kDefaultFollowCommandEndpoint)},
     };
 }
 
 void log_configuration(const mavlink_gateway::UdpMavlinkConnection& connection,
-                       const mavlink_gateway::UdpMavlinkConfig& udp, const Options& options,
+                       const mavlink_gateway::UdpMavlinkConfig& udp,
+                       const mavlink_gateway::UdpGcsLink& gcs_link,
+                       const mavlink_gateway::UdpGcsConfig& gcs, const Options& options,
                        const bus_zmq::ZmqEndpointTable& table) {
     std::cout << kLogPrefix << "FC UDP " << udp.local_address << ":" << connection.local_port()
+              << "\n";
+    std::cout << kLogPrefix << "통제기 UDP " << gcs.local_address << ":" << gcs_link.local_port()
               << "\n";
     if (options.bus == BusKind::Dds) {
         std::cout << kLogPrefix << "bus DDS domain " << options.dds_domain << "\n";
@@ -161,6 +215,61 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
               << kBusZmq << " 로 실행해야 한다\n";
     return nullptr;
 #endif
+}
+
+// 통제기 쪽 객체. 멤버는 선언의 역순으로 소멸하므로, 참조되는 객체를 참조하는 객체보다 앞에 둔다
+struct GcsSide {
+    std::unique_ptr<mavlink_gateway::UdpGcsLink> link;
+    std::unique_ptr<mavlink_gateway::GcsRegistry> registry;
+    mavlink_gateway::CommandActivity activity;
+    mavlink_gateway::InactiveLandingLock landing_lock;
+    std::unique_ptr<argus::vehicle_api_bus::BusFollowStatusSubscriber> follow_status;
+    std::unique_ptr<argus::vehicle_api_bus::BusFollowControlClient> follow_control;
+    std::unique_ptr<mavlink_gateway::RequestHeaderFactory> request_headers;
+    std::unique_ptr<mavlink_gateway::ControlAuthority> authority;
+    std::unique_ptr<mavlink_gateway::RequestOperatorControlHandler> request_control_handler;
+    std::unique_ptr<mavlink_gateway::MavlinkCommandReceiver> receiver;
+    std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
+    core::PeriodicTimer receiver_timer;
+    core::PeriodicTimer monitor_timer;
+};
+
+// 통제기 쪽 객체를 만들어 연결하고 주기 작업을 등록한다. 하나라도 만들지 못하면 false (원인은
+// UdpGcsLink 와 bus 구현이 기록한다)
+bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
+                     argus::bus::IBus& bus, bus_zmq::ZmqPoller& poller, const core::IClock& clock,
+                     core::EventLoop& loop, mavlink_gateway::FcGateway& fc,
+                     mavlink_gateway::HealthState& health) {
+    gcs.link = mavlink_gateway::UdpGcsLink::create(poller, config);
+    gcs.follow_status = argus::vehicle_api_bus::BusFollowStatusSubscriber::create(bus, clock);
+    gcs.follow_control = argus::vehicle_api_bus::BusFollowControlClient::create(bus);
+    if (!gcs.link || !gcs.follow_status || !gcs.follow_control) {
+        return false;
+    }
+    gcs.registry = std::make_unique<mavlink_gateway::GcsRegistry>(*gcs.link, clock);
+    gcs.request_headers = std::make_unique<mavlink_gateway::RequestHeaderFactory>(
+        make_session_id(), clock, fc.fc_epoch_source());
+    gcs.authority =
+        std::make_unique<mavlink_gateway::ControlAuthority>(mavlink_gateway::ControlAuthorityInputs{
+            *gcs.registry, *gcs.registry, clock, fc.fc_state(), fc.command_status(), gcs.activity,
+            *gcs.follow_status, gcs.landing_lock});
+    gcs.request_control_handler =
+        std::make_unique<mavlink_gateway::RequestOperatorControlHandler>(*gcs.authority);
+    gcs.receiver = std::make_unique<mavlink_gateway::MavlinkCommandReceiver>(
+        *gcs.registry, *gcs.link, clock, *gcs.authority, gcs.activity);
+    gcs.receiver->add_handler(*gcs.request_control_handler,
+                              mavlink_gateway::RequestOperatorControlHandler::kRules);
+    gcs.monitor =
+        std::make_unique<mavlink_gateway::GcsLinkMonitor>(mavlink_gateway::GcsLinkMonitorInputs{
+            *gcs.registry, *gcs.authority, clock, *gcs.follow_status, *gcs.follow_control,
+            *gcs.request_headers, health});
+    mavlink_gateway::MavlinkCommandReceiver* const receiver = gcs.receiver.get();
+    mavlink_gateway::GcsLinkMonitor* const monitor = gcs.monitor.get();
+    gcs.receiver_timer = loop.add_periodic(mavlink_gateway::kCommandReceiverTickPeriod,
+                                           [receiver] { receiver->tick(); });
+    gcs.monitor_timer =
+        loop.add_periodic(mavlink_gateway::kGcsLinkCheckPeriod, [monitor] { monitor->tick(); });
+    return true;
 }
 
 std::int32_t run(const Options& options) {
@@ -191,7 +300,15 @@ std::int32_t run(const Options& options) {
         return EXIT_FAILURE;  // 원인은 bus 구현이 기록한다
     }
 
-    log_configuration(*connection, udp_config, options, table);
+    // gateway 보다 뒤에 선언하여 먼저 소멸시킨다 (통제기 쪽이 FC 쪽 객체를 참조)
+    mavlink_gateway::UdpGcsConfig gcs_config;
+    gcs_config.local_port = options.gcs_port;
+    GcsSide gcs;
+    if (!create_gcs_side(gcs, gcs_config, *bus, poller, clock, loop, *gateway, health)) {
+        return EXIT_FAILURE;
+    }
+
+    log_configuration(*connection, udp_config, *gcs.link, gcs_config, options, table);
     loop.run();
     return EXIT_SUCCESS;
 }
