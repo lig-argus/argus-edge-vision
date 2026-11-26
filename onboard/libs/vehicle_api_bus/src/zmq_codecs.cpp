@@ -11,6 +11,7 @@
 #include "control_setpoint_codec.hpp"
 #include "fc_telemetry_codec.hpp"
 #include "follow_command_codec.hpp"
+#include "follow_status_codec.hpp"
 
 namespace argus::vehicle_api_bus {
 namespace {
@@ -68,6 +69,7 @@ bus_zmq::ZmqCodecTable zmq_codecs() {
                                                   &decode_fc_mode_event);
     add_topic_codec<vehicle_api::VelocitySetpoint>(table, &encode_control_setpoint,
                                                    &decode_control_setpoint);
+    add_topic_codec<vehicle_api::FollowStatus>(table, &encode_follow_status, &decode_follow_status);
     add_request_reply_codec<FlightModeRequest>(table, &encode_flight_mode_request,
                                                &decode_flight_mode_request);
     add_request_reply_codec<vehicle_api::FlightModeReply>(table, &encode_flight_mode_reply,

@@ -8,9 +8,8 @@
 #include "idl_common.hpp"
 
 namespace argus::vehicle_api_bus {
-namespace {
 
-idl::Sensor to_idl(vehicle_api::Sensor sensor) {
+idl::Sensor sensor_to_idl(vehicle_api::Sensor sensor) {
     switch (sensor) {
         case vehicle_api::Sensor::Unknown:
             return idl::Sensor::SENSOR_UNKNOWN;
@@ -22,8 +21,7 @@ idl::Sensor to_idl(vehicle_api::Sensor sensor) {
     return idl::Sensor::SENSOR_UNKNOWN;
 }
 
-// 이 코드에 정의되지 않은 값(표본을 만든 프로그램이 더 새 버전인 경우)은 Unknown 으로 바꾼다
-vehicle_api::Sensor from_idl(idl::Sensor sensor) {
+vehicle_api::Sensor sensor_from_idl(idl::Sensor sensor) {
     switch (sensor) {
         case idl::Sensor::SENSOR_UNKNOWN:
             return vehicle_api::Sensor::Unknown;
@@ -34,6 +32,38 @@ vehicle_api::Sensor from_idl(idl::Sensor sensor) {
     }
     return vehicle_api::Sensor::Unknown;
 }
+
+idl::FollowOutcome outcome_to_idl(vehicle_api::FollowOutcome outcome) {
+    switch (outcome) {
+        case vehicle_api::FollowOutcome::InProgress:
+            return idl::FollowOutcome::FOLLOW_OUTCOME_IN_PROGRESS;
+        case vehicle_api::FollowOutcome::Succeeded:
+            return idl::FollowOutcome::FOLLOW_OUTCOME_SUCCEEDED;
+        case vehicle_api::FollowOutcome::Rejected:
+            return idl::FollowOutcome::FOLLOW_OUTCOME_REJECTED;
+        case vehicle_api::FollowOutcome::Failed:
+            return idl::FollowOutcome::FOLLOW_OUTCOME_FAILED;
+    }
+    return idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED;
+}
+
+std::optional<vehicle_api::FollowOutcome> outcome_from_idl(idl::FollowOutcome outcome) {
+    switch (outcome) {
+        case idl::FollowOutcome::FOLLOW_OUTCOME_IN_PROGRESS:
+            return vehicle_api::FollowOutcome::InProgress;
+        case idl::FollowOutcome::FOLLOW_OUTCOME_SUCCEEDED:
+            return vehicle_api::FollowOutcome::Succeeded;
+        case idl::FollowOutcome::FOLLOW_OUTCOME_REJECTED:
+            return vehicle_api::FollowOutcome::Rejected;
+        case idl::FollowOutcome::FOLLOW_OUTCOME_FAILED:
+            return vehicle_api::FollowOutcome::Failed;
+        case idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+namespace {
 
 idl::StopReason to_idl(vehicle_api::StopReason reason) {
     switch (reason) {
@@ -61,36 +91,6 @@ std::optional<vehicle_api::StopReason> from_idl(idl::StopReason reason) {
     return std::nullopt;
 }
 
-idl::FollowOutcome to_idl(vehicle_api::FollowOutcome outcome) {
-    switch (outcome) {
-        case vehicle_api::FollowOutcome::InProgress:
-            return idl::FollowOutcome::FOLLOW_OUTCOME_IN_PROGRESS;
-        case vehicle_api::FollowOutcome::Succeeded:
-            return idl::FollowOutcome::FOLLOW_OUTCOME_SUCCEEDED;
-        case vehicle_api::FollowOutcome::Rejected:
-            return idl::FollowOutcome::FOLLOW_OUTCOME_REJECTED;
-        case vehicle_api::FollowOutcome::Failed:
-            return idl::FollowOutcome::FOLLOW_OUTCOME_FAILED;
-    }
-    return idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED;
-}
-
-std::optional<vehicle_api::FollowOutcome> from_idl(idl::FollowOutcome outcome) {
-    switch (outcome) {
-        case idl::FollowOutcome::FOLLOW_OUTCOME_IN_PROGRESS:
-            return vehicle_api::FollowOutcome::InProgress;
-        case idl::FollowOutcome::FOLLOW_OUTCOME_SUCCEEDED:
-            return vehicle_api::FollowOutcome::Succeeded;
-        case idl::FollowOutcome::FOLLOW_OUTCOME_REJECTED:
-            return vehicle_api::FollowOutcome::Rejected;
-        case idl::FollowOutcome::FOLLOW_OUTCOME_FAILED:
-            return vehicle_api::FollowOutcome::Failed;
-        case idl::FollowOutcome::FOLLOW_OUTCOME_UNSPECIFIED:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
-
 double nan_if_empty(const std::optional<double>& value) {
     return value.value_or(std::numeric_limits<double>::quiet_NaN());
 }
@@ -105,7 +105,7 @@ struct ActionToIdl {
 
     void operator()(const vehicle_api::TrackTarget& target) const {
         idl::FollowCommand_TrackStart track_start;
-        track_start.sensor(to_idl(target.sensor));
+        track_start.sensor(sensor_to_idl(target.sensor));
         track_start.generation(target.generation);
         track_start.class_id(target.class_id);
         track_start.track_id(target.track_id);
@@ -138,7 +138,7 @@ bool from_idl_follow_command(const idl::FollowCommand& sample, FollowCommandRequ
     switch (action._d()) {
         case idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START: {
             vehicle_api::TrackTarget target;
-            target.sensor = from_idl(action.track_start().sensor());
+            target.sensor = sensor_from_idl(action.track_start().sensor());
             target.generation = action.track_start().generation();
             target.class_id = action.track_start().class_id();
             target.track_id = action.track_start().track_id();
@@ -172,13 +172,13 @@ bool from_idl_follow_command(const idl::FollowCommand& sample, FollowCommandRequ
 
 void to_idl_follow_result(const vehicle_api::FollowResult& result, idl::FollowResult& sample) {
     to_idl(result.id, sample.id());
-    sample.outcome(to_idl(result.outcome));
+    sample.outcome(outcome_to_idl(result.outcome));
     sample.request_accepted(result.request_accepted);
     sample.reason(result.reason);
 }
 
 bool from_idl_follow_result(const idl::FollowResult& sample, vehicle_api::FollowResult& result) {
-    const std::optional<vehicle_api::FollowOutcome> outcome = from_idl(sample.outcome());
+    const std::optional<vehicle_api::FollowOutcome> outcome = outcome_from_idl(sample.outcome());
     if (!outcome) {
         return false;
     }

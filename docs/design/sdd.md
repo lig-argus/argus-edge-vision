@@ -91,7 +91,7 @@ CSC 는 각 CSCI 의 주요 클래스(또는 클래스 묶음)이다. 클래스 
 | CSC-FOL-01 | `IVehicleTelemetry` | 기체 상태 스냅샷, 프레임 시각에 맞춘 자세·위치·하향 거리 조회 | `fc/attitude`, `fc/state` → 기체 상태 |
 | CSC-FOL-02 | `FollowController` | 임무·표적 상태 관리(`state_machine.md`), 지정 표적 유지, 속도 setpoint 계산(설정 한도 적용) | 추적 결과 + 기체 상태 + 명령 → setpoint, 상태 |
 | CSC-FOL-03 | `IVelocitySetpointSink`, `IFlightModeControlClient` | FRD 속도·yaw 속도·유효 시간 송신, Offboard 진입·Hold 요청 | setpoint → `control/setpoint`, `control/mode_request` |
-| CSC-FOL-04 | `IFollowControl` / `ZmqFollowControlServer` | 추종 시작·종료·Scan 요청 처리, 결과 응답 | `follow/command` → `follow/result` |
+| CSC-FOL-04 | `IFollowControl` / `BusFollowControlServer` | 추종 시작·종료·Scan 요청 처리, 결과 응답 | `follow/command` → `follow/result` |
 | CSC-FOL-05 | `FollowStatusPublisher` | 임무·표적 상태와 명령 결과 발행 (1 Hz + 변경 시) | 상태 → `follow/status` |
 
 ### 3.4 CSCI-GW mavlink_gateway (`class_mavlink_gateway.md`)

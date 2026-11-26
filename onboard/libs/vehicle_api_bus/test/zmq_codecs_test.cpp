@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -19,6 +20,7 @@
 #include "argus_msg/fc_mode_event.pb.h"
 #include "argus_msg/fc_state.pb.h"
 #include "argus_msg/follow_command.pb.h"
+#include "argus_msg/follow_status.pb.h"
 
 namespace argus::vehicle_api_bus {
 namespace {
@@ -30,6 +32,7 @@ using vehicle_api::FlightModeEvent;
 using vehicle_api::FlightModeReply;
 using vehicle_api::FollowOutcome;
 using vehicle_api::FollowResult;
+using vehicle_api::FollowStatus;
 using vehicle_api::VehicleState;
 using vehicle_api::VelocitySetpoint;
 
@@ -105,14 +108,14 @@ protected:
 TEST_F(ZmqCodecsTest, HasCodecForEveryMessageType) {
     for (const bus::MessageType* type :
          {&kFcAttitudeType, &kFcStateType, &kFcModeEventType, &kControlSetpointType,
-          &kControlModeRequestType, &kControlModeReplyType, &kFollowCommandType,
-          &kFollowResultType}) {
+          &kControlModeRequestType, &kControlModeReplyType, &kFollowCommandType, &kFollowResultType,
+          &kFollowStatusType}) {
         const auto found = table_.find(type->type);
         ASSERT_NE(found, table_.end()) << type->name;
         EXPECT_TRUE(found->second.encode) << type->name;
         EXPECT_TRUE(found->second.decode) << type->name;
     }
-    EXPECT_EQ(table_.size(), 8U);
+    EXPECT_EQ(table_.size(), 9U);
 }
 
 // ------------------------------------------------------------------------------- control/setpoint
@@ -290,6 +293,7 @@ TEST_F(ZmqCodecsTest, TopicDecodeFailsForBodyThatCannotBeParsed) {
     EXPECT_FALSE(decode<VehicleState>(broken_body()).has_value());
     EXPECT_FALSE(decode<FlightModeEvent>(broken_body()).has_value());
     EXPECT_FALSE(decode<VelocitySetpoint>(broken_body()).has_value());
+    EXPECT_FALSE(decode<FollowStatus>(broken_body()).has_value());
 }
 
 TEST_F(ZmqCodecsTest, TopicDecodeFailsForMessageWithBinary) {
@@ -301,6 +305,7 @@ TEST_F(ZmqCodecsTest, TopicDecodeFailsForMessageWithBinary) {
     EXPECT_FALSE(decode<VehicleState>(Bytes{}, binary).has_value());
     EXPECT_FALSE(decode<FlightModeEvent>(Bytes{}, binary).has_value());
     EXPECT_FALSE(decode<VelocitySetpoint>(Bytes{}, binary).has_value());
+    EXPECT_FALSE(decode<FollowStatus>(Bytes{}, binary).has_value());
 }
 
 // --------------------------------------------------------------------------- control/mode_request
@@ -549,6 +554,158 @@ TEST_F(ZmqCodecsTest, FollowResultDecodeFailsForBrokenBodyOrBinary) {
 
     EXPECT_FALSE(decode<FollowResult>(broken_body()).has_value());
     EXPECT_FALSE(decode<FollowResult>(valid.value_or(Bytes{}), Bytes{1}).has_value());
+}
+
+// ---------------------------------------------------------------------------------- follow/status
+
+vehicle_api::TrackTarget sample_target(std::uint32_t track_id) {
+    vehicle_api::TrackTarget target;
+    target.sensor = vehicle_api::Sensor::Ir;
+    target.generation = 3;
+    target.class_id = 2;
+    target.track_id = track_id;
+    target.label = "car";
+    return target;
+}
+
+// 모든 필드와 optional 값을 채운 follow/status
+FollowStatus full_follow_status() {
+    FollowStatus status;
+    status.session_id = "session-f";
+    status.controller_session = "controller-f";
+    status.client_session = "client-f";
+    status.onboard_session = "onboard-g";
+    status.uid = "uid-1";
+    status.fc_epoch = 4;
+    status.received_monotonic_ns = 9 * kMs;
+    status.mission_state = vehicle_api::MissionState::FollowActive;
+    status.target_state = vehicle_api::TargetState::Confirmed;
+    status.selected = sample_target(17);
+    vehicle_api::FollowCommandResult track_start;
+    track_start.command_id = vehicle_api::CommandId{42};
+    track_start.action = vehicle_api::FollowAction::TrackStart;
+    track_start.outcome = FollowOutcome::InProgress;
+    track_start.request_accepted = true;
+    track_start.target = sample_target(17);
+    vehicle_api::FollowCommandResult stop;
+    stop.command_id = vehicle_api::CommandId{43};
+    stop.action = vehicle_api::FollowAction::Stop;
+    stop.outcome = FollowOutcome::Rejected;
+    stop.reason = "not following";
+    status.command_results = {track_start, stop};
+    status.command_epoch = 5;
+    status.command_sent = true;
+    vehicle_api::ScanProgress scan;
+    scan.yaw_rate_rad_s = -0.2;
+    scan.sweep_rad = 3.0;
+    scan.timeout_s = 20.0;
+    scan.progress_deg = 45.0;
+    scan.remaining_s = 12.5;
+    status.scan = scan;
+    return status;
+}
+
+void expect_same_target(const std::optional<vehicle_api::TrackTarget>& actual,
+                        const std::optional<vehicle_api::TrackTarget>& expected) {
+    ASSERT_EQ(actual.has_value(), expected.has_value());
+    const vehicle_api::TrackTarget a = actual.value_or(vehicle_api::TrackTarget{});
+    const vehicle_api::TrackTarget e = expected.value_or(vehicle_api::TrackTarget{});
+    EXPECT_EQ(a.sensor, e.sensor);
+    EXPECT_EQ(a.generation, e.generation);
+    EXPECT_EQ(a.class_id, e.class_id);
+    EXPECT_EQ(a.track_id, e.track_id);
+    EXPECT_EQ(a.label, e.label);
+}
+
+TEST_F(ZmqCodecsTest, FollowStatusRoundTripKeepsEveryFieldAndSequence) {
+    const FollowStatus sent = full_follow_status();
+
+    const std::optional<Bytes> body = encode(sent, 6);
+    ASSERT_TRUE(body.has_value());
+    EXPECT_EQ(parsed<msg::FollowStatus>(body.value_or(Bytes{})).seq(), 6U);
+    const FollowStatus received =
+        decode<FollowStatus>(body.value_or(Bytes{})).value_or(FollowStatus{});
+
+    EXPECT_EQ(sequence_, 6U);
+    EXPECT_EQ(received.session_id, "session-f");
+    EXPECT_EQ(received.controller_session, "controller-f");
+    EXPECT_EQ(received.client_session, "client-f");
+    EXPECT_EQ(received.onboard_session, "onboard-g");
+    EXPECT_EQ(received.uid, "uid-1");
+    EXPECT_EQ(received.fc_epoch, 4U);
+    EXPECT_EQ(received.received_monotonic_ns, 9 * kMs);
+    EXPECT_EQ(received.mission_state, vehicle_api::MissionState::FollowActive);
+    EXPECT_EQ(received.target_state, vehicle_api::TargetState::Confirmed);
+    expect_same_target(received.selected, sent.selected);
+    ASSERT_EQ(received.command_results.size(), 2U);
+    for (std::size_t i = 0; i < sent.command_results.size(); ++i) {
+        const vehicle_api::FollowCommandResult& actual = received.command_results[i];
+        const vehicle_api::FollowCommandResult& expected = sent.command_results[i];
+        EXPECT_EQ(actual.command_id, expected.command_id);
+        EXPECT_EQ(actual.action, expected.action);
+        EXPECT_EQ(actual.outcome, expected.outcome);
+        EXPECT_EQ(actual.request_accepted, expected.request_accepted);
+        EXPECT_EQ(actual.reason, expected.reason);
+        expect_same_target(actual.target, expected.target);
+    }
+    EXPECT_EQ(received.command_epoch, 5U);
+    EXPECT_TRUE(received.command_sent);
+    ASSERT_TRUE(received.scan.has_value());
+    const vehicle_api::ScanProgress scan = received.scan.value_or(vehicle_api::ScanProgress{});
+    EXPECT_DOUBLE_EQ(scan.yaw_rate_rad_s, -0.2);
+    EXPECT_DOUBLE_EQ(scan.sweep_rad, 3.0);
+    EXPECT_DOUBLE_EQ(scan.timeout_s, 20.0);
+    EXPECT_DOUBLE_EQ(scan.progress_deg, 45.0);
+    EXPECT_EQ(scan.remaining_s, std::optional<double>{12.5});
+}
+
+TEST_F(ZmqCodecsTest, FollowStatusWithoutOptionalValuesArrivesWithoutThem) {
+    FollowStatus sent;
+    sent.mission_state = vehicle_api::MissionState::ScanActive;
+    sent.scan = vehicle_api::ScanProgress{};  // remaining_s 없음
+
+    const FollowStatus received = round_trip(sent, 1).value_or(FollowStatus{});
+
+    EXPECT_EQ(received.mission_state, vehicle_api::MissionState::ScanActive);
+    EXPECT_FALSE(received.selected.has_value());
+    EXPECT_TRUE(received.command_results.empty());
+    ASSERT_TRUE(received.scan.has_value());
+    EXPECT_FALSE(received.scan.value_or(vehicle_api::ScanProgress{}).remaining_s.has_value());
+}
+
+TEST_F(ZmqCodecsTest, FollowStatusUnspecifiedOrUndefinedEnumValuesBecomeUnknown) {
+    msg::FollowStatus message;
+    message.set_mission_state(msg::MISSION_STATE_UNSPECIFIED);
+    // proto3 의 enum 은 정의되지 않은 값도 나르므로, 더 새 버전의 발행자가 보낸 값을 reflection
+    // 으로 넣는다
+    message.GetReflection()->SetEnumValue(
+        &message, msg::FollowStatus::descriptor()->FindFieldByName("target_state"), 99);
+    msg::FollowStatus::CommandResult& entry = *message.add_command_results();
+    entry.GetReflection()->SetEnumValue(
+        &entry, msg::FollowStatus::CommandResult::descriptor()->FindFieldByName("action"), 99);
+    entry.set_outcome(msg::FOLLOW_OUTCOME_SUCCEEDED);
+
+    const FollowStatus received =
+        decode<FollowStatus>(to_body(message)).value_or(full_follow_status());
+
+    EXPECT_EQ(received.mission_state, vehicle_api::MissionState::Unknown);
+    EXPECT_EQ(received.target_state, vehicle_api::TargetState::Unknown);
+    ASSERT_EQ(received.command_results.size(), 1U);
+    EXPECT_EQ(received.command_results[0].action, vehicle_api::FollowAction::Unknown);
+}
+
+TEST_F(ZmqCodecsTest, FollowStatusDropsCommandResultWithUndefinedOutcome) {
+    msg::FollowStatus message;
+    message.add_command_results()->set_command_id(1);  // outcome UNSPECIFIED
+    msg::FollowStatus::CommandResult& kept = *message.add_command_results();
+    kept.set_command_id(2);
+    kept.set_outcome(msg::FOLLOW_OUTCOME_FAILED);
+
+    const FollowStatus received = decode<FollowStatus>(to_body(message)).value_or(FollowStatus{});
+
+    ASSERT_EQ(received.command_results.size(), 1U);
+    EXPECT_EQ(received.command_results[0].command_id, vehicle_api::CommandId{2});
+    EXPECT_EQ(received.command_results[0].outcome, FollowOutcome::Failed);
 }
 
 }  // namespace

@@ -8,10 +8,12 @@
 #include "argus_msg/fc_mode_eventPubSubTypes.hpp"
 #include "argus_msg/fc_statePubSubTypes.hpp"
 #include "argus_msg/follow_commandPubSubTypes.hpp"
+#include "argus_msg/follow_statusPubSubTypes.hpp"
 #include "control_mode_request_idl.hpp"
 #include "control_setpoint_idl.hpp"
 #include "fc_telemetry_idl.hpp"
 #include "follow_command_idl.hpp"
+#include "follow_status_idl.hpp"
 
 namespace argus::vehicle_api_bus {
 namespace {
@@ -41,6 +43,8 @@ bus_dds::DdsTypeTable dds_types() {
                                                                        &from_idl_fc_mode_event);
     add_type<vehicle_api::VelocitySetpoint, idl::ControlSetpointPubSubType>(
         table, &to_idl_control_setpoint, &from_idl_control_setpoint);
+    add_type<vehicle_api::FollowStatus, idl::FollowStatusPubSubType>(table, &to_idl_follow_status,
+                                                                     &from_idl_follow_status);
     add_type<FlightModeRequest, idl::ControlModeRequestPubSubType>(
         table, &to_idl_flight_mode_request, &from_idl_flight_mode_request);
     add_type<vehicle_api::FlightModeReply, idl::ControlModeReplyPubSubType>(

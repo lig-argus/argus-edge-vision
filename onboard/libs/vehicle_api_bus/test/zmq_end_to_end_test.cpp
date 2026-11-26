@@ -14,6 +14,7 @@
 #include <vector>
 #include <zmq.hpp>
 
+#include "argus/bus/typed.hpp"
 #include "argus/bus_zmq/zmq_bus.hpp"
 #include "argus/bus_zmq/zmq_codec.hpp"
 #include "argus/bus_zmq/zmq_poller.hpp"
@@ -25,6 +26,7 @@
 #include "argus/vehicle_api_bus/bus_flight_mode_control_server.hpp"
 #include "argus/vehicle_api_bus/bus_follow_control_client.hpp"
 #include "argus/vehicle_api_bus/bus_follow_control_server.hpp"
+#include "argus/vehicle_api_bus/bus_follow_status_subscriber.hpp"
 #include "argus/vehicle_api_bus/bus_velocity_setpoint_publisher.hpp"
 #include "argus/vehicle_api_bus/bus_velocity_setpoint_subscriber.hpp"
 #include "argus/vehicle_api_bus/message_types.hpp"
@@ -184,6 +186,34 @@ TEST_F(ZmqEndToEndTest, SetpointIsSentAsTopicNameAndControlSetpointBody) {
     ASSERT_EQ(frames.size(), 2U);
     EXPECT_EQ(frames[0], protocol::kControlSetpoint);
     EXPECT_EQ(frames[1], expected.SerializeAsString());
+}
+
+TEST_F(ZmqEndToEndTest, FollowStatusReachesSubscriberWithArrivalTime) {
+    bus_zmq::ZmqBus bus(context_, poller_, clock_,
+                        {{std::string(protocol::kFollowStatus), endpoint("pub")}}, zmq_codecs());
+    // 추종 제어의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<vehicle_api::FollowStatus>(
+        bus, protocol::kFollowStatus, kFollowStatusType, protocol::kFollowStatusQueueDepth);
+    const auto subscriber = BusFollowStatusSubscriber::create(bus, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    clock_.advance_ns(5'000'000);
+    vehicle_api::FollowStatus status;
+    status.mission_state = vehicle_api::MissionState::FollowActive;
+    status.controller_session = "controller-f";
+
+    // 연결이 끝나기 전의 메시지는 도착하지 않으므로 받을 때까지 보낸다
+    for (std::int32_t i = 0; i < 400 && !subscriber->latest(); ++i) {
+        publisher->publish(status);
+        poller_.process_events(milliseconds{5}, kBudget);
+    }
+
+    ASSERT_TRUE(subscriber->latest().has_value());
+    const vehicle_api::ReceivedFollowStatus latest =
+        subscriber->latest().value_or(vehicle_api::ReceivedFollowStatus{});
+    EXPECT_EQ(latest.status.mission_state, vehicle_api::MissionState::FollowActive);
+    EXPECT_EQ(latest.status.controller_session, "controller-f");
+    EXPECT_EQ(latest.arrived_monotonic_ns, 5'000'000);
 }
 
 TEST_F(ZmqEndToEndTest, FlightModeRequestReachesControlAndReplyReturns) {

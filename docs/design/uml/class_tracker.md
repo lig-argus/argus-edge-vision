@@ -49,7 +49,7 @@ classDiagram
 
 ## 검토 필요 사항
 
-1. 해소 (0.5): `VehicleStateSubscriber` 는 `IVehicleTelemetry` 의 구현 `ZmqVehicleTelemetrySubscriber` 와 같은 코드다 (통신 담당이 제공, 두 프로세스가 링크. `class_follow.md`, #39 리뷰).
+1. 해소 (0.5): `VehicleStateSubscriber` 는 `IVehicleTelemetry` 의 구현 `BusVehicleTelemetrySubscriber` 와 같은 코드다 (통신 담당이 제공, 두 프로세스가 링크. `class_follow.md`, #39 리뷰).
 2. `UcmcTracker` 내부 Class Diagram — 추적·추종 담당.
 
 ## 변경 이력

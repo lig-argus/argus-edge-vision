@@ -13,16 +13,19 @@
 #include <utility>
 #include <vector>
 
+#include "argus/bus/typed.hpp"
 #include "argus/bus_dds/dds_bus.hpp"
 #include "argus/bus_dds/dds_type_table.hpp"
 #include "argus/core/poll_poller.hpp"
 #include "argus/core/steady_clock.hpp"
 #include "argus/core/subscription.hpp"
+#include "argus/protocol/topics.hpp"
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_bus/bus_flight_mode_control_client.hpp"
 #include "argus/vehicle_api_bus/bus_flight_mode_control_server.hpp"
 #include "argus/vehicle_api_bus/bus_follow_control_client.hpp"
 #include "argus/vehicle_api_bus/bus_follow_control_server.hpp"
+#include "argus/vehicle_api_bus/bus_follow_status_subscriber.hpp"
 #include "argus/vehicle_api_bus/bus_vehicle_telemetry_publisher.hpp"
 #include "argus/vehicle_api_bus/bus_vehicle_telemetry_subscriber.hpp"
 #include "argus/vehicle_api_bus/bus_velocity_setpoint_publisher.hpp"
@@ -169,6 +172,42 @@ TEST_F(DdsEndToEndTest, TelemetryReachesSubscriber) {
     EXPECT_EQ(events[0].mode, vehicle_api::FlightMode::Hold);
     EXPECT_EQ(events[0].request_command_id,
               std::optional<vehicle_api::CommandId>{vehicle_api::CommandId{42}});
+}
+
+TEST_F(DdsEndToEndTest, FollowStatusReachesSubscriber) {
+    // 추종 제어의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<vehicle_api::FollowStatus>(
+        *sender_, protocol::kFollowStatus, kFollowStatusType, protocol::kFollowStatusQueueDepth);
+    const auto subscriber = BusFollowStatusSubscriber::create(*receiver_, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    std::vector<vehicle_api::ReceivedFollowStatus> received;
+    const core::Subscription subscription = subscriber->subscribe(
+        [&](const vehicle_api::ReceivedFollowStatus& r) { received.push_back(r); });
+    vehicle_api::FollowStatus status;
+    status.mission_state = vehicle_api::MissionState::ScanActive;
+    vehicle_api::FollowCommandResult result;
+    result.command_id = vehicle_api::CommandId{42};
+    result.action = vehicle_api::FollowAction::Search;
+    result.outcome = vehicle_api::FollowOutcome::InProgress;
+    status.command_results.push_back(result);
+    vehicle_api::ScanProgress scan;
+    scan.progress_deg = 30.0;
+    status.scan = scan;
+    const std::int64_t sent_after_ns = clock_.now_monotonic_ns();
+
+    ASSERT_TRUE(pump_until([&] { publisher->publish(status); }, [&] { return !received.empty(); }));
+
+    EXPECT_EQ(received[0].status.mission_state, vehicle_api::MissionState::ScanActive);
+    ASSERT_EQ(received[0].status.command_results.size(), 1U);
+    EXPECT_EQ(received[0].status.command_results[0].command_id, vehicle_api::CommandId{42});
+    ASSERT_TRUE(received[0].status.scan.has_value());
+    EXPECT_FALSE(
+        received[0].status.scan.value_or(vehicle_api::ScanProgress{}).remaining_s.has_value());
+    EXPECT_GE(received[0].arrived_monotonic_ns, sent_after_ns);
+    EXPECT_EQ(
+        subscriber->latest().value_or(vehicle_api::ReceivedFollowStatus{}).arrived_monotonic_ns,
+        received.back().arrived_monotonic_ns);
 }
 
 TEST_F(DdsEndToEndTest, FlightModeRequestReachesControlAndReplyReturns) {

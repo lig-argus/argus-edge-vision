@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace argus::vehicle_api {
 
@@ -215,6 +216,93 @@ struct FollowResult {
     FollowOutcome outcome = FollowOutcome::Rejected;
     bool request_accepted = false;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
     std::string reason;             // 거부·실패의 원인. 판정에는 쓰지 않는다
+};
+
+// 임무 상태 (docs/design/uml/state_machine.md, `follow/status`). 값은 MAVLink ARGUS_MISSION_STATE
+// 와 같다 (common/mavlink/message_definitions/argus.xml). Unknown 은 메시지에 값이
+// 없거나(UNSPECIFIED) 이 코드에 정의되지 않은 값일 때이며 MAVLink 에 대응하는 값이 없다
+enum class MissionState : std::uint8_t {
+    Idle = 0,
+    Preparing = 1,
+    FollowActive = 2,
+    HoldTransition = 3,
+    HoldWait = 4,
+    ScanActive = 5,
+    Manual = 6,
+    Fault = 7,
+    Unknown = 255,
+};
+
+// 표적 상태 (`follow/status`). 값은 MAVLink ARGUS_TARGET_STATE 와 같다. Unknown 은 MissionState 와
+// 같은 경우이다
+enum class TargetState : std::uint8_t {
+    None = 0,
+    Confirmed = 1,
+    Predicted = 2,
+    Lost = 3,
+    Unknown = 255,
+};
+
+// `follow/command` 의 명령 종류. `follow/status` 의 명령 결과가 어느 명령의 것인지 나타낸다.
+// Unknown 은 MissionState 와 같은 경우이다
+enum class FollowAction : std::uint8_t {
+    TrackStart,
+    Stop,
+    Search,
+    Unknown,
+};
+
+// 명령 하나의 최근 결과 (`follow/status` 의 command_results, process_interfaces.md 5.1.2)
+struct FollowCommandResult {
+    CommandId command_id;
+    FollowAction action = FollowAction::Unknown;
+    FollowOutcome outcome = FollowOutcome::Rejected;
+    bool request_accepted = false;      // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
+    std::string reason;                 // 거부·실패의 원인. 판정에는 쓰지 않는다
+    std::optional<TrackTarget> target;  // track_start 의 표적
+};
+
+// Scan 의 진행 (`follow/status` 의 scan)
+struct ScanProgress {
+    double yaw_rate_rad_s = 0.0;  // 부호 포함 (양수 = 시계 방향)
+    double sweep_rad = 0.0;
+    double timeout_s = 0.0;
+    double progress_deg = 0.0;
+    std::optional<double> remaining_s;  // 남은 시간. 계산하지 않으면 nullopt
+};
+
+// `follow/status` (process_interfaces.md 5.1.2). 3장 공통 필드 source, seq 는 bus 어댑터가 다루며
+// 이 타입에 넣지 않는다
+struct FollowStatus {
+    std::string session_id;  // 이 메시지 발행자의 세션
+
+    // 추종 제어 프로세스가 시작할 때 만드는 세션. 추종 제어의 재시작 감지에 사용
+    std::string controller_session;
+
+    std::string client_session;   // 추종 제어가 mavlink_gateway 에 요청할 때의 세션
+    std::string onboard_session;  // 상대 mavlink_gateway 의 세션
+    std::string uid;              // 설정된 대상 FC 의 UID. 이 값만으로 연결이 확인된 것은 아니다
+    std::uint64_t fc_epoch = 0;
+    std::int64_t received_monotonic_ns = 0;  // 발행자가 채우는 값
+    MissionState mission_state = MissionState::Unknown;
+    TargetState target_state = TargetState::Unknown;
+    std::optional<TrackTarget> selected;  // 선택 표적
+
+    // 최근 명령 결과. 최대 32개. 32개가 차면 완료된 결과부터 지우고 진행 중인 결과는 남긴다
+    std::vector<FollowCommandResult> command_results;
+
+    std::uint64_t command_epoch = 0;
+    bool command_sent = false;
+    std::optional<ScanProgress> scan;  // Scan 중이 아니면 nullopt
+};
+
+// 받은 `follow/status` 와 받은 시각 (IFollowStatusSource, IFollowStatusEvents 가 전달)
+struct ReceivedFollowStatus {
+    FollowStatus status;
+
+    // 구현이 이 값을 받은 시각 (RPi monotonic clock). status.received_monotonic_ns 는 발행자가
+    // 채우는 값이므로, 값이 얼마나 오래됐는지는 이 시각으로 판단한다
+    std::int64_t arrived_monotonic_ns = 0;
 };
 
 }  // namespace argus::vehicle_api
