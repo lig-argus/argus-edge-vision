@@ -400,6 +400,9 @@ classDiagram
         +follow_fault(StatusObservation) FollowFault
         +compose_argus_status(StatusObservation) ARGUS_STATUS
     }
+    class HeartbeatSender {
+        +tick() 1 Hz
+    }
     class ICpuTemperature {
         <<interface>>
         +celsius() optional~double~
@@ -513,6 +516,9 @@ classDiagram
     ArgusStatusReporter ..> ICpuTemperature : cpu_temp
     ArgusStatusReporter ..> IGcsLink : ARGUS_STATUS broadcast
     ICpuTemperature <|.. SysfsCpuTemperature
+    HeartbeatSender ..> IGcsLink : HEARTBEAT broadcast
+    HeartbeatSender ..> IMavlinkConnection : HEARTBEAT 를 FC 로
+    HeartbeatSender ..> HealthState : FC 연결
     ArgusSensorStatusReporter ..> sensor_status_policy : 값 구성
     ArgusSensorStatusReporter ..> ITrackingStatusSource : TRACKING
     ArgusSensorStatusReporter ..> IVisionStatusSource : 카메라, 추론, 모델, 영상 크기
@@ -547,6 +553,7 @@ classDiagram
 | `RequestOperatorControlHandler` | 45010. p1(0 해제, 1 요청)과 p4(0 또는 보낸 통제기의 sysid) 검사 뒤 `IControlRequests` 에 요청 또는 해제를 넘긴다. 제어권이 없는 통제기도 보낼 수 있도록 제어권 필요 없음으로 등록한다 | B | icd 4.4 |
 | `GcsLinkMonitor`, `RequestHeaderFactory` | 주인의 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`. 두절이 시작될 때 추종 또는 스캔 중이면 `IFollowControlClient::stop(LinkLoss)` 로 추종 제어에 정지를 요청한다 (TRACK_STOP 과 같은 절차). 다시 받으면 비트만 복구. 두절 판단의 시각은 `IGcsPresence`. 추종 제어에 보내는 요청의 공통 필드(command_id, session_id, seq, fc_epoch, valid_until)는 `RequestHeaderFactory` 가 만든다 (D 단계의 명령 handler 도 사용) | B | icd 6.1, pi 3장 |
 | `ArgusStatusReporter`, `argus_status_policy` (함수), `ICpuTemperature`, `SysfsCpuTemperature` | ARGUS_STATUS 를 모든 통제기에 1 Hz 와 `mission_state`, `target_state`, `health`, `active_sensor` 가 바뀔 때 송신. 값은 `argus_status_policy` 가 `follow/status`(`IFollowStatusSource`), `IControlAuthority::controller()`(→ `control_sysid`), `HealthState`, `ICpuTemperature`(Linux thermal zone 파일)로 구성한다. `active_sensor` 는 PREPARING, FOLLOW_ACTIVE 일 때만 선택 표적의 센서. 추종 제어 두절: `follow/status` 3 s 없음(icd 6.4 ⓑ) → FAULT, 마지막 값이 추종 또는 스캔 중이었으면 `IStopRequester` 로 정지, 두절 뒤 새로 받은 값으로 풀림. setpoint 유효 시간 경과 정지(ⓐ, `IFcCommandStatus::last_setpoint_timeout_ns()`) → 그 뒤의 `follow/status` 가 FOLLOW_ACTIVE, SCAN_ACTIVE 가 아니게 될 때까지 FAULT. 해석하지 못한 `mission_state` 도 FAULT | C | icd 3.1, 6.4, pi 6장 |
+| `HeartbeatSender` | mavlink_gateway(compid 195)의 HEARTBEAT 를 1 Hz 로 모든 통제기에 broadcast 하고 FC 로 보낸다(mavlink-router 경유). `type` MAV_TYPE_ONBOARD_CONTROLLER, `system_status` 는 `HealthState` 의 `ARGUS_HEALTH_FC_CONNECTED` 가 1 이면 ACTIVE, 0 이면 CRITICAL. 통제기는 이 HEARTBEAT 의 3 s 두절로 mavlink_gateway 연결 끊김을 표시한다 | C | icd 2장, 6.7 |
 | `ArgusSensorStatusReporter`, `sensor_status_policy` (함수), `SensorSourceMap` | ARGUS_SENSOR_STATUS 를 `SensorSourceMap` 의 센서마다 1 Hz 와 그 센서의 `flags` 가 바뀔 때 송신 (받은 값이 없어도 flags 0 으로 송신). 값은 `sensor_status_policy` 가 `vision/status`(`IVisionStatusSource`: CAMERA_OK, INFERENCE_OK, infer_fps, model_ver, img_w, img_h)와 `tracking/status`(`ITrackingStatusSource`: TRACKING)로 구성하며 3 s 안에 받은 값만 쓴다. FOLLOWABLE 은 TRACKING 이고 `SensorSourceMap` 이 허용할 때. `SensorSourceMap` 은 `source` 문자열 ↔ `ARGUS_SENSOR` 대응과 FOLLOWABLE 허용(기본값 `camera-ir` → IR, `camera-eo` → EO, 둘 다 허용. 설정 파일 전까지 코드 기본값) | C | icd 3.1, 6.3, pi 5.1.3, 5.1.7 |
 | `IFollowStatusSource`, `IFollowStatusEvents`, `BusFollowStatusSubscriber` | `follow/status` 를 구독해 최신 값과 받은 시각(mavlink_gateway 의 시계) 보관(`IFollowStatusSource::latest()`), 받을 때마다 handler 호출(`IFollowStatusEvents::subscribe()`). 조회와 알림을 인터페이스 둘로 나눠, 최신 값만 조회하는 `ControlAuthority`, `GcsLinkMonitor`(추종, 스캔 중 판단)는 알림에 의존하지 않는다 (`vehicle_api`, `vehicle_api_bus` 모듈) | B | pi 5.1.2 |
 | `ITrackingStatusSource`, `ITrackingStatusEvents`, `BusTrackingStatusSubscriber`, `IVisionStatusSource`, `BusVisionStatusSubscriber` | `tracking/status`, `vision/status` 를 구독해 카메라(`source`)마다 최신 값과 받은 시각 보관 (`perception_api`, `perception_api_bus` 모듈) | C | pi 5.1.3, 5.1.7 |
