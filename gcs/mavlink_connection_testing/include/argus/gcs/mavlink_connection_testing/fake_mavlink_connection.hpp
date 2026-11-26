@@ -1,17 +1,17 @@
 // 테스트용 IMavlinkConnection. 보낸 메시지를 기록하고, 테스트가 넣은 메시지로 messageReceived
-// signal 을 발생시킨다. 통제기 테스트만 쓰므로 gcs/test 에 둔다
-#ifndef ARGUS_GCS_TEST_FAKE_MAVLINK_CONNECTION_HPP_
-#define ARGUS_GCS_TEST_FAKE_MAVLINK_CONNECTION_HPP_
+// signal 을 발생시킨다. 통신 모듈들의 테스트가 함께 쓰므로 테스트용 모듈에 둔다
+#ifndef ARGUS_GCS_MAVLINK_CONNECTION_TESTING_FAKE_MAVLINK_CONNECTION_HPP_
+#define ARGUS_GCS_MAVLINK_CONNECTION_TESTING_FAKE_MAVLINK_CONNECTION_HPP_
 
 #include <QObject>
 #include <QVector>
 
-#include "argus/gcs/mavlink_connection.hpp"
+#include "argus/gcs/mavlink_connection/mavlink_connection.hpp"
 #include "argus/mavlink.h"
 
-namespace argus::gcs {
+namespace argus::gcs::mavlink_connection_testing {
 
-class FakeMavlinkConnection : public IMavlinkConnection {
+class FakeMavlinkConnection : public mavlink_connection::IMavlinkConnection {
     Q_OBJECT
 
 public:
@@ -37,6 +37,6 @@ private:
     bool sendResult_ = true;
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::mavlink_connection_testing
 
-#endif  // ARGUS_GCS_TEST_FAKE_MAVLINK_CONNECTION_HPP_
+#endif  // ARGUS_GCS_MAVLINK_CONNECTION_TESTING_FAKE_MAVLINK_CONNECTION_HPP_

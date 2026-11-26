@@ -1,8 +1,8 @@
 #include <chrono>
 
-#include "argus/gcs/clock.hpp"
+#include "argus/gcs/core/clock.hpp"
 
-namespace argus::gcs {
+namespace argus::gcs::core {
 
 qint64 SteadyClock::nowMonotonicNs() const {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -10,4 +10,4 @@ qint64 SteadyClock::nowMonotonicNs() const {
         .count();
 }
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::core

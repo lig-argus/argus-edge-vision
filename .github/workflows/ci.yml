@@ -78,13 +78,19 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        # Ubuntu 24.04 apt: qt6-base-dev 6.4 (Widgets·Network·Test 포함), OpenGL 헤더
+        # Qt 6.9.3: Ubuntu 24.04 apt 의 Qt 는 6.4 이고 Quick3D 가 없어 aqtinstall 로 받는다 (gcs/CMakeLists.txt).
+        #   기본 설치에 Core·Gui·Network·Qml·Quick·Svg·Test 가 있고, Quick3D 와 ShaderTools 는 -m 으로 더한다
+        # GStreamer 1.24 (apt): 개발 패키지와, RTSP 수신에 쓰는 rtspsrc(plugins-good), avdec_h264(libav)
+        # OpenGL, EGL, xkbcommon 헤더: Qt Gui 의 CMake 설정이 찾는다
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build qt6-base-dev libgl1-mesa-dev
-          pip install clang-tidy==22.1.8
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config \
+            libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-libav
+          pip install clang-tidy==22.1.8 aqtinstall==3.3.0
+          aqt install-qt linux desktop 6.9.3 linux_gcc_64 -m qtquick3d qtshadertools -O "$HOME/Qt"
       - name: Configure
-        run: cmake -S gcs -B build/gcs -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S gcs -B build/gcs -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/Qt/6.9.3/gcc_64"
       - name: Build
         run: cmake --build build/gcs
       - name: Test

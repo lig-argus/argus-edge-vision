@@ -1,10 +1,12 @@
-#include "argus/gcs/clock.hpp"
+#include "argus/gcs/core/clock.hpp"
 
 #include <QtTest>
 
-#include "fake_clock.hpp"
+#include "argus/gcs/core_testing/fake_clock.hpp"
 
-namespace argus::gcs {
+namespace argus::gcs::core {
+
+using core_testing::FakeClock;
 
 class ClockTest : public QObject {
     Q_OBJECT
@@ -36,7 +38,7 @@ private slots:
     }
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::core
 
-QTEST_GUILESS_MAIN(argus::gcs::ClockTest)
+QTEST_GUILESS_MAIN(argus::gcs::core::ClockTest)
 #include "clock_test.moc"
