@@ -1,6 +1,7 @@
 // 통제기가 보낸 명령(COMMAND_LONG)을 받아 공통 규칙을 적용하고 handler 에 넘긴다
 // 규약: docs/spec/icd.md 4.1 (대상, 명령 번호, 재전송, 동시 처리, IN_PROGRESS 재송신, STATUSTEXT),
-//      5.1 (제어권이 없는 통제기의 명령), docs/design/uml/class_mavlink_gateway.md 3절
+//      5.1 (제어권이 없는 통제기의 명령), 5.3, 5.4 (착륙 잠금, 조종사 개입 중의 명령),
+//      docs/design/uml/class_mavlink_gateway.md 3절
 // 사용: mavlink_gateway 의 main 이 하나를 생성하여 handler 를 등록하고 tick() 을 1 초 주기 작업으로
 //      등록
 #ifndef ARGUS_ONBOARD_MAVLINK_COMMAND_RECEIVER_HPP_
@@ -21,7 +22,9 @@
 #include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/gcs_link.hpp"
 #include "argus/mavlink_gateway/gcs_message_source.hpp"
+#include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/mavlink_gateway/mavlink_command_handler.hpp"
+#include "argus/mavlink_gateway/rc_override_state.hpp"
 
 namespace argus::mavlink_gateway {
 
@@ -43,6 +46,10 @@ struct CommandRules {
     bool numbered = true;          // param7 의 명령 번호로 재전송을 판단 (argus 명령, icd 4.1)
     bool requires_control = true;  // 제어권이 없는 통제기의 명령을 거부 (icd 4.1, 5.1)
     CommandKind kind = CommandKind::Other;
+
+    // 착륙 잠금이나 조종사 개입 중에도 받는다 (icd 5.3, 5.4). 45010(해제가 목적),
+    // MAV_CMD_REQUEST_MESSAGE(기체를 움직이지 않는 조회), 45011(복귀가 목적)
+    bool allowed_while_locked = false;
 };
 
 // 명령 하나를 받으면 다음 순서로 처리한다.
@@ -53,9 +60,11 @@ struct CommandRules {
 //    보내고, 보관 번호보다 오래된 번호면 응답 없이 폐기 (24 비트 순환 비교)
 // 4. 제어권이 필요한 명령을 제어권이 없는 통제기가 보내면 TEMPORARILY_REJECTED 와 STATUSTEXT
 //    "제어권 없음"
-// 5. 동시 처리: 진행 중인 명령이 있을 때 같은 MAV_CMD 나 시작 명령은 TEMPORARILY_REJECTED, 정지
+// 5. allowed_while_locked 가 아닌 명령을 착륙 잠금 중에 받으면 TEMPORARILY_REJECTED 와 STATUSTEXT
+//    "착륙 잠금", 조종사 개입 중에 받으면 "조종사 개입 중"
+// 6. 동시 처리: 진행 중인 명령이 있을 때 같은 MAV_CMD 나 시작 명령은 TEMPORARILY_REJECTED, 정지
 //    명령은 진행 중인 시작 명령을 CANCELLED 로 끝낸 뒤 handler 에 넘김
-// 6. handler 에 넘김
+// 7. handler 에 넘김
 // COMMAND_INT 로 온 명령은 handler 가 있으면 COMMAND_LONG_ONLY, 없으면 UNSUPPORTED 로 답한다.
 // 응답은 명령을 보낸 통제기에만 보내며, CommandAck::reason 이 비어 있지 않으면 STATUSTEXT 로 함께
 // 보낸다
@@ -63,7 +72,9 @@ class MavlinkCommandReceiver {
 public:
     // 인자로 받은 객체들은 이 객체보다 오래 유지되어야 한다
     MavlinkCommandReceiver(IGcsMessageSource& messages, IGcsLink& link, const core::IClock& clock,
-                           const IControlAuthority& authority, CommandActivity& activity);
+                           const IControlAuthority& authority, CommandActivity& activity,
+                           const ILandingLockState& landing_lock,
+                           const IRcOverrideState& rc_override);
 
     MavlinkCommandReceiver(const MavlinkCommandReceiver&) = delete;
     MavlinkCommandReceiver& operator=(const MavlinkCommandReceiver&) = delete;
@@ -78,6 +89,10 @@ public:
     // 진행 중인 명령의 마지막 IN_PROGRESS 를 다시 보내고 오래된 명령 번호 기록을 지운다.
     // kCommandReceiverTickPeriod 마다 호출한다
     void tick();
+
+    // 최종 결과를 보내지 않은 명령을 모두 CANCELLED 로 끝낸다. 착륙 잠금이 시작될 때 부른다
+    // (icd 5.3). 그 뒤 handler 가 보내는 결과는 무시된다
+    void cancel_in_progress();
 
 private:
     // 명령 하나의 실행. handler 가 가진 CommandResponder 와 이 객체가 함께 참조한다
@@ -126,6 +141,8 @@ private:
 
     const core::IClock& clock_;
     const IControlAuthority& authority_;
+    const ILandingLockState& landing_lock_;
+    const IRcOverrideState& rc_override_;
     std::shared_ptr<Shared> shared_;
     std::map<std::uint16_t, Registration> registrations_;
     std::map<RecordKey, NumberRecord> records_;

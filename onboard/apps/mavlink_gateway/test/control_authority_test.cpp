@@ -14,6 +14,7 @@
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_testing/fake_follow_status_source.hpp"
+#include "fake_command_restrictions.hpp"
 #include "fake_fc_state_source.hpp"
 #include "fake_gcs_link.hpp"
 #include "gcs_test_messages.hpp"
@@ -33,13 +34,6 @@ public:
     std::optional<std::int64_t> last_setpoint_timeout_ns() const override { return std::nullopt; }
 
     bool sending = false;
-};
-
-class FakeLandingLock : public ILandingLockState {
-public:
-    bool active() const override { return locked; }
-
-    bool locked = false;
 };
 
 class ControlAuthorityTest : public ::testing::Test {
@@ -73,9 +67,10 @@ protected:
     CommandActivity activity_;
     vehicle_api_testing::FakeFollowStatusSource follow_status_;
     FakeLandingLock landing_lock_;
+    FakeRcOverride rc_override_;
     ControlAuthority authority_{ControlAuthorityInputs{registry_, registry_, clock_, fc_state_,
                                                        command_status_, activity_, follow_status_,
-                                                       landing_lock_}};
+                                                       landing_lock_, rc_override_}};
 };
 
 TEST_F(ControlAuthorityTest, FirstGcsHeartbeatGetsControl) {

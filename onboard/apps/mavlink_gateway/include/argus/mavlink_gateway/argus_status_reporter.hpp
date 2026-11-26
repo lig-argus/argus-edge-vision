@@ -19,6 +19,8 @@
 #include "argus/mavlink_gateway/fc_command_status.hpp"
 #include "argus/mavlink_gateway/gcs_link.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
+#include "argus/mavlink_gateway/landing_lock_state.hpp"
+#include "argus/mavlink_gateway/rc_override_state.hpp"
 #include "argus/mavlink_gateway/stop_requester.hpp"
 #include "argus/vehicle_api/follow_status_events.hpp"
 #include "argus/vehicle_api/follow_status_source.hpp"
@@ -42,10 +44,13 @@ struct ArgusStatusReporterInputs {
     const IFcCommandStatus& fc_command_status;        // setpoint 유효 시간 경과 정지
     IStopRequester& stop_requester;                   // follow/status 두절 시 정지
     const ICpuTemperature& cpu_temperature;
+    const ILandingLockState& landing_lock;  // control_flags
+    const IRcOverrideState& rc_override;    // control_flags
 };
 
 // - 값은 compose_argus_status() 가 정한다. 이 클래스는 입력을 모으고 송신과 정지만 한다
-// - kArgusStatusPeriod 마다, 그리고 mission_state, target_state, health, active_sensor 가 바뀌면
+// - kArgusStatusPeriod 마다, 그리고 mission_state, target_state, health, active_sensor,
+//   control_flags 가 바뀌면
 //   바로 송신한다
 // - follow/status 두절(StatusLost)이 시작될 때 마지막 값이 추종 또는 스캔 중이었으면
 //   IStopRequester 로 정지한다. 추종 제어가 멈췄으므로 follow/command 로 요청하지 않는다

@@ -13,11 +13,10 @@
 #include "argus/mavlink.h"
 #include "argus/mavlink_gateway/command_activity.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
-#include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/mavlink_gateway/mavlink_ids.hpp"
-#include "argus/mavlink_gateway/rc_override_state.hpp"
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_testing/fake_follow_status_source.hpp"
+#include "fake_command_restrictions.hpp"
 #include "fake_fc_state_source.hpp"
 #include "fake_gcs_link.hpp"
 #include "fake_mavlink_connection.hpp"
@@ -120,8 +119,8 @@ protected:
     FakeFcCommandStatus command_status_;
     CommandActivity activity_;
     vehicle_api_testing::FakeFollowStatusSource follow_status_;
-    InactiveLandingLock landing_lock_;
-    InactiveRcOverride rc_override_;
+    FakeLandingLock landing_lock_;
+    FakeRcOverride rc_override_;
     FakeStopRequester stop_requester_;
     GcsFcForwarder forwarder_{GcsFcForwarderInputs{
         registry_, link_, registry_, connection_, clock_, authority_, fc_state_, command_status_,

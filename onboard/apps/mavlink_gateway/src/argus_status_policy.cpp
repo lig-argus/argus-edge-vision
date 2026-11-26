@@ -77,6 +77,12 @@ mavlink_argus_status_t compose_argus_status(const StatusObservation& observation
         observation.cpu_celsius.has_value() ? static_cast<float>(*observation.cpu_celsius) : kNan;
     status.health = observation.health;
     status.control_sysid = observation.controller.value_or(0);
+    const auto flag = [](bool set, ARGUS_CONTROL_FLAGS bit) {
+        return set ? static_cast<std::uint8_t>(bit) : std::uint8_t{0};
+    };
+    status.control_flags = static_cast<std::uint8_t>(
+        flag(observation.landing_locked, ARGUS_CONTROL_FLAGS_LANDING_LOCKED) |
+        flag(observation.pilot_in_control, ARGUS_CONTROL_FLAGS_PILOT_IN_CONTROL));
     status.mission_state = ARGUS_MISSION_STATE_IDLE;
     status.target_state = ARGUS_TARGET_STATE_NONE;
     status.active_sensor = ARGUS_SENSOR_UNKNOWN;

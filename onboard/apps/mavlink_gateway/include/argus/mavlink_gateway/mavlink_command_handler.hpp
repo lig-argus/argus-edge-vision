@@ -34,7 +34,8 @@ struct CommandAck {
     // 쓰지 않는다
     std::uint8_t progress = kProgressUnknown;
     // 원인. MavlinkCommandReceiver 가 STATUSTEXT 로 보내 통제기 화면에 표시한다. 비어 있으면
-    // STATUSTEXT 를 보내지 않는다. icd 4.1 에 따라 DENIED, FAILED 에만 넣는다 (제어권 없음의
+    // STATUSTEXT 를 보내지 않는다. icd 4.1 에 따라 DENIED, FAILED 와 45011 의 조건 불충족
+    // TEMPORARILY_REJECTED 에만 넣는다 (제어권 없음, 착륙 잠금, 조종사 개입 중의
     // TEMPORARILY_REJECTED 는 MavlinkCommandReceiver 가 넣는다)
     std::string reason;
 };

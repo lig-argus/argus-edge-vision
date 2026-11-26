@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -105,9 +106,32 @@ bool FcControl::release_lock() {
     return step.denial == FcCommandDenial::None;
 }
 
+void FcControl::release_for_landing() {
+    const FcObservation observation = observe();
+    sync(observation);
+    const FcCommandStep step = on_landing_release(state_);
+    apply(step.state, step.effects, observation);
+}
+
+std::string_view FcControl::request_hover_entry(StillAllowed still_allowed, Done done) {
+    const FcObservation observation = observe();
+    sync(observation);
+    const FcRequestStep step = on_hover_entry_request(state_, observation, config_.policy);
+    if (step.denial != FcCommandDenial::None) {
+        return to_string(step.denial);
+    }
+    hover_still_allowed_ = std::move(still_allowed);
+    hover_done_ = std::move(done);
+    apply(step.state, step.effects, observation);
+    return {};
+}
+
 bool FcControl::sending_setpoints() const { return last_setpoint_kind_ != SetpointKind::None; }
 
-bool FcControl::entering() const { return std::holds_alternative<Entering>(state_); }
+bool FcControl::entering() const {
+    return std::holds_alternative<Entering>(state_) ||
+           std::holds_alternative<HoverEntering>(state_);
+}
 
 core::Subscription FcControl::subscribe_mode_events(ModeEventHandler handler) {
     return mode_event_handlers_.subscribe(std::move(handler));
@@ -153,9 +177,24 @@ std::optional<HoverTarget> FcControl::fresh_pose(const vehicle_api::VehicleState
 }
 
 void FcControl::sync(const FcObservation& observation) {
+    check_hover_entry_allowed(observation);
     const FcCommandStep step = advance(state_, observation, config_.policy);
     apply(step.state, step.effects, observation);
+    // Offboard 진입 명령을 요청 없이 보내는 것은 복귀 명령의 제자리 유지 진입뿐이다
+    if (step.effects.send_entry_command) {
+        send_entry_command(observation);
+    }
     report_mode_change(observation);
+}
+
+void FcControl::check_hover_entry_allowed(const FcObservation& observation) {
+    const auto* entering = std::get_if<HoverEntering>(&state_);
+    if (entering == nullptr || entering->deadline_ns.has_value() || !hover_still_allowed_ ||
+        hover_still_allowed_()) {
+        return;
+    }
+    const FcCommandStep step = on_hover_entry_abort(state_);
+    apply(step.state, step.effects, observation);
 }
 
 void FcControl::apply(const FcCommandState& state, const FcCommandEffects& effects,
@@ -175,7 +214,19 @@ void FcControl::apply(const FcCommandState& state, const FcCommandEffects& effec
              OffboardExitCause::None);
     }
     if (effects.exited_to.has_value()) {
-        emit(*effects.exited_to, received_ns, std::nullopt, exit_cause_of(*effects.exited_to));
+        // 통제기의 착륙 명령에 따른 이탈은 통제기가 모드를 바꾼 것이다 (icd 5.3)
+        const OffboardExitCause cause = effects.exit_requested ? OffboardExitCause::PilotSwitch
+                                                               : exit_cause_of(*effects.exited_to);
+        emit(*effects.exited_to, received_ns, std::nullopt, cause);
+    }
+    if (effects.hover_entered.has_value()) {
+        // 결과를 알린 뒤 handler 가 새 요청을 할 수 있도록 먼저 비운다
+        const Done done = std::move(hover_done_);
+        hover_done_ = nullptr;
+        hover_still_allowed_ = nullptr;
+        if (done) {
+            done(*effects.hover_entered);
+        }
     }
 }
 

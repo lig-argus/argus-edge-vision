@@ -88,7 +88,7 @@ stateDiagram-v2
 
 ## 3. FC 명령 송신 상태 (`FcCommandState`)
 
-mavlink_gateway 가 FC 로 보내는 Offboard 진입 명령과 setpoint 의 상태다. `mission_state`(1절)는 추종 제어가 정하고, 이 상태는 mavlink_gateway 의 `FcControl` 이 가진다 (`class_mavlink_gateway.md` 2절). 규약은 `docs/spec/icd.md` 4.2, 5장, 6.2, 6.6.
+mavlink_gateway 가 FC 로 보내는 Offboard 진입 명령과 setpoint 의 상태다. `mission_state`(1절)는 추종 제어가 정하고, 이 상태는 mavlink_gateway 의 `FcControl` 이 가진다 (`class_mavlink_gateway.md` 2절). 규약은 `docs/spec/icd.md` 4.2, 5장 (5.3 착륙 잠금, 5.4 통제기로의 복귀), 6.2, 6.6.
 
 ```mermaid
 stateDiagram-v2
@@ -105,6 +105,17 @@ stateDiagram-v2
     Hovering --> Following: 진입 요청 수락 (진입 명령 없음)
     Hovering --> Locked: FC 가 Offboard 를 벗어남
     Locked --> Idle: 운용자의 해제 (비행 상태가 최신일 때)
+    Entering --> Landing: 착륙 명령 전달
+    Following --> Landing: 착륙 명령 전달
+    CancellingEntry --> Landing: 착륙 명령 전달
+    Hovering --> Landing: 착륙 명령 전달
+    Landing --> Idle: FC 가 Offboard 가 아님 (진입 기한이 있으면 그 후의 비행 상태)
+    Idle --> HoverEntering: 복귀 명령 (45011, FC 모드 Position)
+    Locked --> HoverEntering: 복귀 명령 (45011, FC 모드 Position)
+    HoverEntering --> Hovering: 위치 setpoint 1 s 뒤 DO_SET_MODE(Offboard), FC 의 응답과 Offboard 를 모두 확인
+    HoverEntering --> Idle: 진입 명령 전의 FC 모드 변경, 조종사 개입, 송신 실패, 정지, 비행 상태를 받지 못함
+    HoverEntering --> CancellingEntry: 진입 명령 뒤의 FC 거부, 확인 시간 초과, 정지, fc_epoch 변경
+    HoverEntering --> Landing: 착륙 명령 전달
 ```
 
 | 상태 | 주기(20 Hz)마다 FC 로 보내는 setpoint | FC 제어 명령 송신권 |
@@ -115,9 +126,12 @@ stateDiagram-v2
 | CancellingEntry | 속도 0 | 없음 |
 | Hovering | 정한 위치와 yaw 를 목표로 하는 위치 setpoint. 자세와 local 위치가 최신(0.2 s 이내)인 첫 주기에 목표를 정하며, 그 전에는 속도 0 | 없음 |
 | Locked | 없음 | 없음 |
+| Landing | 정한 위치와 yaw 를 목표로 하는 위치 setpoint (Hovering 과 같음. 시작 상태의 목표를 이어 감) | 없음 |
+| HoverEntering | 복귀 명령을 받은 때의 위치와 yaw 를 목표로 하는 위치 setpoint | 없음 |
 
 - FC 의 모드는 HEARTBEAT(1 Hz)로만 알 수 있으므로 mavlink_gateway 는 넷 중 하나로 판단한다: Offboard, Offboard 아님, 아직 모름(쓸 수 있는 비행 상태가 아직 없음. 정상), 받지 못함(FC 연결 두절이거나 비행 상태를 받은 지 3 s 초과). "아직 모름" 은 어떤 전환도 일으키지 않는다.
-- setpoint 송신을 끝내는 전환은 CancellingEntry → Idle 과 Following 또는 Hovering → Locked 뿐이다. 둘 다 FC 가 Offboard 가 아님을 비행 상태로 확인한 경우다.
+- setpoint 송신을 끝내는 전환은 CancellingEntry → Idle, Landing → Idle, Following 또는 Hovering → Locked 뿐이다. 모두 FC 가 Offboard 가 아님을 비행 상태로 확인한 경우다. HoverEntering → Idle 은 진입 명령을 보내기 전(FC 가 Offboard 가 아님)에만 일어난다.
+- Landing → Idle 은 통제기의 착륙 명령에 따른 이탈이므로 Locked 로 가지 않고, FC 가 Offboard 였으면 `fc/mode_event` 의 원인을 PilotSwitch(통제기의 모드 변경)로 보낸다 (`icd.md` 5.3). Landing, HoverEntering 에서는 추종 제어의 Offboard 진입 요청을 거부한다.
 - CancellingEntry 는 취소한 진입의 기한 후에 받은 비행 상태만으로 "Offboard 아님" 을 판단한다. 기한 전의 값은 FC 가 아직 전환하지 않은 때의 값일 수 있다.
 - `mission_state` 와의 관계: `fc/state` 의 `offboard_hover` 는 Hovering 에서 위치 setpoint 를 보낸 주기에만 true 다. Locked 가 되면 `fc/mode_event` 로 Offboard 이탈과 원인이 전달되고 추종 제어가 MANUAL 또는 FAULT 를 보고한다.
 

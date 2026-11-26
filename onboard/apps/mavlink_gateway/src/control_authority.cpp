@@ -36,6 +36,7 @@ ControlObservation ControlAuthority::observe() const {
         follow_in_progress(inputs_.follow_status.latest(), observation.now_ns);
     observation.sending_setpoints = inputs_.fc_command_status.sending_setpoints();
     observation.landing_locked = inputs_.landing_lock.active();
+    observation.pilot_in_control = inputs_.rc_override.pilot_in_control();
     return observation;
 }
 

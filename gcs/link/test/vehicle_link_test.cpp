@@ -42,7 +42,7 @@ mavlink_message_t argusStatus(std::uint8_t controlSysid, std::uint8_t missionSta
     mavlink_message_t message{};
     mavlink_msg_argus_status_pack(kVehicleSysid, kGatewayCompid, &message, 0, 45.0F, 0, 0,
                                   ARGUS_HEALTH_FC_CONNECTED, missionState, ARGUS_TARGET_STATE_NONE,
-                                  ARGUS_SENSOR_IR, controlSysid, NAN, NAN);
+                                  ARGUS_SENSOR_IR, controlSysid, NAN, NAN, 0);
     return message;
 }
 

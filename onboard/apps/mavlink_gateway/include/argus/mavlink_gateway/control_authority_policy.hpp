@@ -23,6 +23,7 @@ struct ControlObservation {
     bool follow_in_progress = false;   // 추종 또는 스캔 중
     bool sending_setpoints = false;    // mavlink_gateway 가 FC 로 setpoint 를 보내는 중
     bool landing_locked = false;       // 착륙 잠금 상태
+    bool pilot_in_control = false;     // 조종사(RC) 개입 중
 };
 
 enum class ControlEventKind : std::uint8_t {
@@ -46,7 +47,8 @@ struct ControlDecision {
 // - Heartbeat: 제어권을 가진 통제기가 없고, 진행 중인 명령, 추종, 스캔, setpoint 송신이 없으면
 //   sysid 에 부여한다
 // - Request: sysid 가 이미 가졌으면 ACCEPTED. 거부 조건(제어권을 가진 통제기의 HEARTBEAT 가
-//   kGcsHeartbeatTimeoutNs 이내이고 비행 중, 진행 중인 명령, 추종 또는 스캔 중, 착륙 잠금)이면
+//   kGcsHeartbeatTimeoutNs 이내이고 비행 중, 진행 중인 명령, 추종 또는 스캔 중, 착륙 잠금, 조종사
+//   개입 중)이면
 //   TEMPORARILY_REJECTED. 그 밖에는 sysid 에 부여하고 ACCEPTED
 // - Release: sysid 가 가졌으면 제어권을 없애고 ACCEPTED, 아니면 DENIED
 ControlDecision decide_control(const ControlObservation& observation, const ControlEvent& event);

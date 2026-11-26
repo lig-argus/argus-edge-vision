@@ -16,6 +16,7 @@
 #include "argus/mavlink_gateway/stop_requester.hpp"
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_testing/fake_follow_status_source.hpp"
+#include "fake_command_restrictions.hpp"
 #include "fake_gcs_link.hpp"
 
 namespace argus::mavlink_gateway {
@@ -93,8 +94,11 @@ protected:
     FakeFcCommandStatus fc_status_;
     FakeStopRequester stop_;
     FakeCpuTemperature cpu_;
-    ArgusStatusReporter reporter_{ArgusStatusReporterInputs{
-        link_, clock_, follow_, follow_, authority_, health_, fc_status_, stop_, cpu_}};
+    FakeLandingLock landing_lock_;
+    FakeRcOverride rc_override_;
+    ArgusStatusReporter reporter_{ArgusStatusReporterInputs{link_, clock_, follow_, follow_,
+                                                            authority_, health_, fc_status_, stop_,
+                                                            cpu_, landing_lock_, rc_override_}};
 };
 
 TEST_F(ArgusStatusReporterTest, SendsOncePerSecond) {
@@ -169,6 +173,25 @@ TEST_F(ArgusStatusReporterTest, SetpointTimeoutFaultEndsOnceAndDoesNotReturn) {
     advance_ms(10);
     receive(MissionState::FollowActive);  // 새 명령으로 다시 추종
     EXPECT_EQ(last_mission_state(), ARGUS_MISSION_STATE_FOLLOW_ACTIVE);
+}
+
+TEST_F(ArgusStatusReporterTest, SendsWhenControlFlagsChange) {
+    reporter_.tick();
+    ASSERT_EQ(sent().size(), 1U);
+
+    landing_lock_.locked = true;
+    advance_ms(100);
+    reporter_.tick();
+
+    ASSERT_EQ(sent().size(), 2U);
+    EXPECT_EQ(sent().back().control_flags, ARGUS_CONTROL_FLAGS_LANDING_LOCKED);
+
+    rc_override_.pilot = true;
+    advance_ms(100);
+    reporter_.tick();
+    ASSERT_EQ(sent().size(), 3U);
+    EXPECT_EQ(sent().back().control_flags,
+              ARGUS_CONTROL_FLAGS_LANDING_LOCKED | ARGUS_CONTROL_FLAGS_PILOT_IN_CONTROL);
 }
 
 }  // namespace

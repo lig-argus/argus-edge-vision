@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "argus/mavlink.h"
+#include "argus/mavlink_gateway/follow_activity.hpp"
 #include "argus/vehicle_api/types.hpp"
 
 namespace argus::mavlink_gateway {
@@ -163,6 +164,23 @@ TEST(ArgusStatusPolicyTest, WasFollowingLooksOnlyAtState) {
     EXPECT_TRUE(was_following(with_status(MissionState::ScanActive, 10 * kSecond).follow));
     EXPECT_FALSE(was_following(with_status(MissionState::HoldWait).follow));
     EXPECT_FALSE(was_following(std::nullopt));
+}
+
+TEST(ArgusStatusPolicyTest, ControlFlagsShowLandingLockAndPilot) {
+    StatusObservation observation = with_status(MissionState::Idle);
+    EXPECT_EQ(compose_argus_status(observation).control_flags, 0);
+
+    observation.landing_locked = true;
+    EXPECT_EQ(compose_argus_status(observation).control_flags, ARGUS_CONTROL_FLAGS_LANDING_LOCKED);
+
+    observation.pilot_in_control = true;
+    EXPECT_EQ(compose_argus_status(observation).control_flags,
+              ARGUS_CONTROL_FLAGS_LANDING_LOCKED | ARGUS_CONTROL_FLAGS_PILOT_IN_CONTROL);
+
+    // follow/status 두절(FAULT)에서도 표시한다
+    StatusObservation lost = with_status(MissionState::Idle, kFollowStatusTimeoutNs + 1);
+    lost.pilot_in_control = true;
+    EXPECT_EQ(compose_argus_status(lost).control_flags, ARGUS_CONTROL_FLAGS_PILOT_IN_CONTROL);
 }
 
 }  // namespace
