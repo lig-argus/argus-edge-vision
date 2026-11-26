@@ -1,0 +1,9 @@
+# 2026-11-26 ARGUS 전용 Ruff 설정. 팀 저장소 안에 넣어도 Ruff 는 가장 가까운 설정을 쓰므로
+# 이 폴더의 Python 에는 이 설정이 적용된다. 형식은 ruff format 으로 맞추고, 규칙 검사는
+# 문법 오류와 정의되지 않은 이름만 본다 (팀 규칙 전체 적용은 미실시, 후속 작업).
+line-length = 100
+target-version = "py312"
+extend-exclude = ["vendor", "**/*_pb2.py", "**/*_pb2.pyi"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]

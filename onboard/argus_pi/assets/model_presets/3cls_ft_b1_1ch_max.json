@@ -1,0 +1,13 @@
+{
+  "path": "assets/models/yolox_s_leaky_3cls_ft_b1_480x640_1ch_max.hef",
+  "sha256": "740e2a23c32998b058641561138f60e948763d3d22df545eb907599cb44603de",
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-10-30 기본. 3클래스 ft_b1 640x480 1채널 max, Pi NPU 7.17 ms, INT8 탱크 FN 112 FP 63"
+}

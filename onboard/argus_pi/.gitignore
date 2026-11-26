@@ -1,0 +1,8 @@
+# 실행 때 설정에서 다시 만드는 사본 (run_*.sh 가 digest 폴더로 생성)
+run/config/
+
+# 2026-11-26 팀 저장소(공개) 반입: 제조사 카메라 SDK 는 Pi 에만 둔다 (vendor/camera/sdk_2_12_2, 라이선스 미확인)
+vendor/camera/sdk_2_12_2/
+# 실행 중 생기는 기록과 진단 출력
+run/
+gui-guidance.json

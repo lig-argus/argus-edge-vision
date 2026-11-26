@@ -1,0 +1,13 @@
+{
+  "path": "assets/models/yolox_s_leaky_3cls_toy1_480x640_1ch_max.hef",
+  "sha256": "dcdd3c9dc0ed317601d3820ad1d64c52bfe908c5fe32d6826eec2d7454f3e6f0",
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-11-02 ft_b1 + 장난감 차 추가 학습(toy1). 3클래스 640x480 1채널 max, Pi NPU 7.20 ms. 장난감 차를 탱크로 봄 173 -> 0, 대신 탱크 FN 100 -> 118 (Pi 실기, 클래스별 기준)"
+}

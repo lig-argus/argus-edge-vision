@@ -1,0 +1,11 @@
+{
+  "path": "assets/models/yolox_s_leaky_480x640_1ch.hef",
+  "sha256": "ba15a893cf16d9312a9c7f7d57104be2f634ef6bb88ddd40896ddd4583fc0496",
+  "labels": "config/tank_labels.txt",
+  "classes": [
+    "tank"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-10-21~29 기본. v7.3 640x480 1채널 기본 컴파일"
+}

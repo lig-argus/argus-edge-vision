@@ -1,0 +1,18 @@
+{
+  "path": "assets/models/yolox_s_leaky_3cls_demo_B2_480x640_1ch_max.hef",
+  "sha256": "cfe46f5ed8f11807e78c27740ea25c5be161488bccc9b710e1f31d85c81bb94a",
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-11-10 실내 데모 B2 (road1에서 30 epoch 추가 학습, 데모 장난감 탱크/차 + v7.3 일부 + 배경). 사람은 학습 안 함 → 사람 기준 1.01로 끔. 탱크 0.5, 차 0.35, tank:car:0.3. HEF NMS 하한 0.2",
+  "env": {
+    "ARGUS_SCORE_THRESHOLD": "0.25",
+    "ARGUS_CLASS_SCORE_THRESHOLDS": "0.5,1.01,0.35",
+    "ARGUS_CLASS_SUPPRESS": "tank:car:0.3"
+  }
+}
