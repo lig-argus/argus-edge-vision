@@ -1,0 +1,13 @@
+{
+  "schema": "argus.platform.v1",
+  "target": "Ubuntu 24.04 aarch64, Python 3.12",
+  "system_runtime_packages": ["python3-venv", "python3-numpy", "python3-opencv", "python3-zmq", "python3-msgpack", "python3-netifaces", "libzmq5", "libopencv-core406", "libopencv-videoio406", "zlib1g", "libusb-1.0-0", "util-linux", "psmisc"],
+  "build_packages": ["build-essential", "cmake", "libzmq3-dev", "zlib1g-dev"],
+  "external_runtime": ["mavlink-routerd", "HailoRT 4.23.0 and matching Hailo PCIe driver"],
+  "hailort_wheel": {
+    "filename": "hailort-4.23.0-cp312-cp312-linux_aarch64.whl",
+    "sha256": "6f0d31c476edab85e41280b893d8d75aabe296354493c4574a49b6ddc37b2a37"
+  },
+  "vision_system_versions_observed": {"numpy": "1.26.4", "pyzmq": "24.0.1", "msgpack": "1.0.3", "netifaces": "0.11.0"},
+  "driver_installation": "Manual target-specific step; never install/reload drivers or initialize generation automatically."
+}
