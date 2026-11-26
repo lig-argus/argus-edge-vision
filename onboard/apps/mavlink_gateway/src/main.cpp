@@ -236,9 +236,14 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
     argus::bus_dds::DdsTypeTable perception_types = argus::perception_api_bus::dds_types();
     types.merge(video_types);
     types.merge(perception_types);
+    argus::bus_dds::DdsTopicQosTable qos = argus::vehicle_api_bus::dds_topic_qos();
+    argus::bus_dds::DdsTopicQosTable video_qos = argus::video_api_bus::dds_topic_qos();
+    argus::bus_dds::DdsTopicQosTable perception_qos = argus::perception_api_bus::dds_topic_qos();
+    qos.merge(video_qos);
+    qos.merge(perception_qos);
     // 원인은 DdsBus 가 기록한다
     return argus::bus_dds::DdsBus::create(poller, poller, clock, options.dds_domain,
-                                          std::move(types));
+                                          std::move(types), std::move(qos));
 #else
     std::cerr << kLogPrefix << "DDS 없이 빌드됨 (ARGUS_BUILD_BUS_DDS=OFF). " << kBusOption << " "
               << kBusZmq << " 로 실행해야 한다\n";

@@ -25,6 +25,10 @@ target_link_libraries(argus_bus_dds_test_types PUBLIC fastdds fastcdr)
 # 같은 프로세스 안 전달 (Fast DDS 의 기본 설정)
 argus_add_test(bus_dds_test SOURCES test/dds_bus_test.cpp
                LIBS argus::bus_dds argus_bus_dds_test_types)
+# 토픽별 발행자 QoS 와 위반 로그. DdsBus 를 사용하지 않는 상대를 Fast DDS 의 엔티티로 직접 만든다.
+# 같은 프로세스 안 전달을 끄므로 따로 실행한다
+argus_add_test(bus_dds_qos_test SOURCES test/dds_bus_qos_test.cpp
+               LIBS argus::bus_dds argus_bus_dds_test_types)
 # 전송 계층을 거치는 전달. 같은 프로세스 안 전달을 끄는 설정이 프로세스 전체에 적용되므로 따로 실행한다
 argus_add_test(bus_dds_transport_test SOURCES test/dds_bus_transport_test.cpp
                LIBS argus::bus_dds argus_bus_dds_test_types)

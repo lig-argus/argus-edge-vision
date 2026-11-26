@@ -7,6 +7,9 @@
 // - 값과 IDL 표본 사이의 변환은 생성할 때 받은 표(argus/bus_dds/dds_type_table.hpp)의 함수로 한다.
 //   from_idl 이 실패한 표본은 폐기하고 로그에 남긴다.
 // - 토픽: Reliability RELIABLE, Durability VOLATILE, History KEEP_LAST(depth = queue_depth).
+//   발행자에는 생성할 때 받은 표(argus/bus_dds/dds_topic_qos.hpp)의 Deadline 을 더한다.
+//   Deadline 초과와 QoS 불일치는 로그에만 남기고 사용하는 쪽에 알리지 않는다.
+//   수신 두절의 판단은 받는 프로세스가 메시지 값으로 한다 (process_interfaces.md 6장).
 //   구독자는 처리하지 못한 표본이 queue_depth 개를 넘으면 오래된 표본부터 폐기한다.
 //   MessageInfo::sequence 는 DDS 가 발행자의 표본마다 붙이는 순번(1 부터)이다.
 // - 구독자가 연결되기 전에 발행된 표본은 전달되지 않는다 (VOLATILE).
@@ -29,6 +32,7 @@
 
 #include "argus/bus/bus.hpp"
 #include "argus/bus/message_type.hpp"
+#include "argus/bus_dds/dds_topic_qos.hpp"
 #include "argus/bus_dds/dds_type_table.hpp"
 #include "argus/core/clock.hpp"
 #include "argus/core/fd_watcher.hpp"
@@ -43,11 +47,12 @@ struct DdsBusState;
 
 class DdsBus : public bus::IBus {
 public:
+    // topic_qos 는 토픽별 발행자 QoS. 표에 없는 토픽은 Deadline 을 두지 않는다.
     // DomainParticipant 를 만들지 못하면 nullptr 를 반환하고 이유를 std::cerr 에 남긴다
     static std::unique_ptr<DdsBus> create(core::IFdWatcher& watcher,
                                           core::ITimerScheduler& scheduler,
                                           const core::IClock& clock, std::uint32_t domain_id,
-                                          DdsTypeTable types);
+                                          DdsTypeTable types, DdsTopicQosTable topic_qos);
     ~DdsBus() override;
 
     // 아래 넷은 실패하면 nullptr 를 반환하고 이유를 std::cerr 에 남긴다. 실패하는 경우: 빈 이름,

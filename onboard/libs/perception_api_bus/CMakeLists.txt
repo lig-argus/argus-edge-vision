@@ -50,8 +50,9 @@ if(ARGUS_BUILD_BUS_DDS)
     add_library(argus_perception_api_bus_dds STATIC src/dds_types.cpp)
     add_library(argus::perception_api_bus_dds ALIAS argus_perception_api_bus_dds)
     # protocol_idl 은 PRIVATE 이다. 생성된 IDL 타입은 src/ 안에서만 사용하고 헤더에 나오지 않는다
+    # protocol_names 는 dds_topic_qos() 의 토픽 이름에 사용한다
     target_link_libraries(argus_perception_api_bus_dds
-                          PRIVATE argus::protocol_idl
+                          PRIVATE argus::protocol_idl argus::protocol_names
                           PUBLIC argus::perception_api_bus argus::bus_dds argus_onboard_warnings)
 
     # IDL 경로와 .proto 경로로 각각 바꾼 결과를 비교하므로 protocol 과 perception_api_bus_zmq 도 링크한다

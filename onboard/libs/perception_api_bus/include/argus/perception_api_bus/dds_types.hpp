@@ -17,11 +17,19 @@
 #ifndef ARGUS_PERCEPTION_API_BUS_DDS_TYPES_HPP_
 #define ARGUS_PERCEPTION_API_BUS_DDS_TYPES_HPP_
 
+#include "argus/bus_dds/dds_topic_qos.hpp"
 #include "argus/bus_dds/dds_type_table.hpp"
 
 namespace argus::perception_api_bus {
 
 bus_dds::DdsTypeTable dds_types();
+
+// 토픽별 발행자 QoS (process_interfaces.md 3장). 주기가 고정된 토픽에 Deadline(주기의 3배)
+// - tracking/status, vision/status: 1 Hz → 3 s
+// - tracking/tracks (탐지 결과 프레임마다), perception/observations, vision/frame/gray8 (최대 30
+// FPS)
+//   는 주기가 고정되지 않아 없음
+bus_dds::DdsTopicQosTable dds_topic_qos();
 
 }  // namespace argus::perception_api_bus
 

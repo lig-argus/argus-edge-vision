@@ -14,12 +14,15 @@
 #include <fastdds/rtps/common/SampleIdentity.hpp>
 #include <optional>
 
+#include "argus/bus_dds/dds_topic_qos.hpp"
+
 namespace argus::bus_dds::detail {
 
 using SampleIdentity = eprosima::fastdds::rtps::SampleIdentity;
 
-// RELIABLE, VOLATILE, KEEP_LAST(depth), Data Sharing 끔
-eprosima::fastdds::dds::DataWriterQos writer_qos(std::int32_t depth);
+// RELIABLE, VOLATILE, KEEP_LAST(depth), Data Sharing 끔. 발행자는 topic 의 Deadline 을 더한다
+// (argus/bus_dds/dds_topic_qos.hpp)
+eprosima::fastdds::dds::DataWriterQos writer_qos(std::int32_t depth, const DdsTopicQos& topic);
 eprosima::fastdds::dds::DataReaderQos reader_qos(std::int32_t depth);
 
 // 표본을 송신하고 그 표본의 식별자를 반환한다. 송신하지 못하면 nullopt

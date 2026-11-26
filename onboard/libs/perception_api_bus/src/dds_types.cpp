@@ -1,5 +1,6 @@
 #include "argus/perception_api_bus/dds_types.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -7,6 +8,7 @@
 #include <utility>
 
 #include "argus/perception_api/types.hpp"
+#include "argus/protocol/topics.hpp"
 #include "argus_msg/perception_observationsPubSubTypes.hpp"
 #include "argus_msg/tracking_statusPubSubTypes.hpp"
 #include "argus_msg/tracking_tracksPubSubTypes.hpp"
@@ -318,6 +320,14 @@ bus_dds::DdsTypeTable dds_types() {
     bus_dds::add_dds_type<perception_api::VisionStatus, idl::VisionStatusPubSubType>(
         table, &vision_status_to_idl, &vision_status_from_idl);
     return table;
+}
+
+bus_dds::DdsTopicQosTable dds_topic_qos() {
+    using std::chrono::seconds;
+    return {
+        {std::string(protocol::kTrackingStatus), {seconds{3}}},
+        {std::string(protocol::kVisionStatus), {seconds{3}}},
+    };
 }
 
 }  // namespace argus::perception_api_bus

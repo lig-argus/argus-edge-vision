@@ -1,5 +1,7 @@
 #include "fastdds_specific.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <fastdds/dds/core/ReturnCode.hpp>
 #include <fastdds/dds/core/policy/QosPolicies.hpp>
 #include <fastdds/rtps/common/WriteParams.hpp>
@@ -18,11 +20,21 @@ void set_common(Qos& qos, std::int32_t depth) {
     qos.data_sharing().off();
 }
 
+dds::Duration_t duration_of(std::chrono::nanoseconds value) {
+    constexpr std::int64_t kNsPerSecond = 1'000'000'000;
+    const std::int64_t ns = value.count();
+    return {static_cast<std::int32_t>(ns / kNsPerSecond),
+            static_cast<std::uint32_t>(ns % kNsPerSecond)};
+}
+
 }  // namespace
 
-dds::DataWriterQos writer_qos(std::int32_t depth) {
+dds::DataWriterQos writer_qos(std::int32_t depth, const DdsTopicQos& topic) {
     dds::DataWriterQos qos = dds::DATAWRITER_QOS_DEFAULT;
     set_common(qos, depth);
+    if (topic.deadline.has_value()) {
+        qos.deadline().period = duration_of(topic.deadline.value());
+    }
     return qos;
 }
 

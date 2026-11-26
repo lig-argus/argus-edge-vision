@@ -28,6 +28,8 @@
 //   request() 를 부른 때부터 잰다.
 // - 응답하는 쪽은 handler 가 등록되어 있는 동안에만 요청을 읽는다. 등록 전이나 해제 뒤에 온
 //   요청에는 응답하지 않는다 (요청한 쪽은 timeout 으로 안다).
+// - 토픽별 QoS(Deadline 등, process_interfaces.md 3장)는 제공하지 않는다. ZeroMQ 에 대응하는 기능이
+//   없으며, 수신 두절의 판단은 받는 프로세스가 메시지 값으로 한다 (process_interfaces.md 6장).
 // - context, poller, clock 은 ZmqBus 와 ZmqBus 가 만든 객체보다 오래 살아야 한다.
 #ifndef ARGUS_BUS_ZMQ_ZMQ_BUS_HPP_
 #define ARGUS_BUS_ZMQ_ZMQ_BUS_HPP_

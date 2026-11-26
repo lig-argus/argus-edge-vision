@@ -2,9 +2,11 @@
 
 #include <chrono>
 #include <fastdds/dds/core/ReturnCode.hpp>
+#include <fastdds/dds/core/status/StatusMask.hpp>
 #include <fastdds/dds/domain/DomainParticipant.hpp>
 #include <fastdds/dds/domain/DomainParticipantFactory.hpp>
 #include <fastdds/dds/publisher/DataWriter.hpp>
+#include <fastdds/dds/publisher/DataWriterListener.hpp>
 #include <fastdds/dds/publisher/Publisher.hpp>
 #include <fastdds/dds/subscriber/DataReader.hpp>
 #include <fastdds/dds/subscriber/DataReaderListener.hpp>
@@ -34,12 +36,13 @@ namespace dds = eprosima::fastdds::dds;
 
 namespace detail {
 
-void log_error(const std::string& text) { std::cerr << "[bus_dds] " << text << '\n'; }
+// Fast DDS 의 스레드에서도 부르므로 한 줄을 한 번에 기록한다 (std::cerr 는 동시 사용에 안전)
+void log_error(const std::string& text) { std::cerr << ("[bus_dds] " + text + '\n'); }
 
 struct DdsBusState {
     DdsBusState(core::IFdWatcher& w, core::ITimerScheduler& s, const core::IClock& c,
-                DdsTypeTable t)
-        : watcher(w), scheduler(s), clock(c), types(std::move(t)) {}
+                DdsTypeTable t, DdsTopicQosTable q)
+        : watcher(w), scheduler(s), clock(c), types(std::move(t)), topic_qos(std::move(q)) {}
 
     ~DdsBusState() {
         if (participant != nullptr) {
@@ -78,6 +81,12 @@ struct DdsBusState {
         }
         registered_types.emplace(name, support);
         return support;
+    }
+
+    // 토픽 name 의 발행자 QoS 값. 표에 없으면 빈 값 (Deadline 무한)
+    DdsTopicQos qos_of(const std::string& name) const {
+        const auto found = topic_qos.find(name);
+        return found != topic_qos.end() ? found->second : DdsTopicQos{};
     }
 
     // 이름이 name 인 토픽을 반환한다. DomainParticipant 안에서 토픽 이름은 하나여야 하므로 같은
@@ -121,6 +130,7 @@ struct DdsBusState {
     core::ITimerScheduler& scheduler;
     const core::IClock& clock;
     DdsTypeTable types;
+    DdsTopicQosTable topic_qos;
     dds::DomainParticipant* participant = nullptr;
     dds::Publisher* publisher = nullptr;
     dds::Subscriber* subscriber = nullptr;
@@ -142,12 +152,14 @@ constexpr std::int64_t kNsPerMs = 1'000'000;
 // 응답하는 쪽이 처리하기 전에 여러 요청하는 쪽의 요청이 쌓여도 버리지 않을 만큼으로 정한다
 constexpr std::int32_t kRequestReplyDepth = 16;
 
-// 토픽 하나의 DataWriter 와 표본 버퍼
-class Writer {
+// 토픽 하나의 DataWriter 와 표본 버퍼. 발행하는 쪽의 Deadline 초과와 구독자와의 QoS 불일치는
+// Fast DDS 의 스레드에서 로그에 남긴다
+class Writer : public dds::DataWriterListener {
 public:
+    // qos 는 토픽의 Deadline. 요청-응답의 토픽은 빈 값
     static std::unique_ptr<Writer> create(std::shared_ptr<DdsBusState> state,
                                           const std::string& topic_name, const DdsType& type,
-                                          std::int32_t depth) {
+                                          std::int32_t depth, const DdsTopicQos& qos) {
         const std::optional<dds::TypeSupport> support = state->register_type(type);
         if (!support.has_value()) {
             return nullptr;
@@ -156,19 +168,24 @@ public:
         if (topic == nullptr) {
             return nullptr;
         }
-        dds::DataWriter* const writer =
-            state->publisher->create_datawriter(topic, detail::writer_qos(depth));
-        if (writer == nullptr) {
+        std::unique_ptr<Writer> writer(
+            new Writer(std::move(state), topic_name, type, support.value()));
+        const dds::StatusMask mask = dds::StatusMask::offered_deadline_missed()
+                                     << dds::StatusMask::offered_incompatible_qos();
+        writer->writer_ = writer->state_->publisher->create_datawriter(
+            topic, detail::writer_qos(depth, qos), writer.get(), mask);
+        if (writer->writer_ == nullptr) {
             log_error("DataWriter 생성 실패: " + topic_name);
-            state->release_topic(topic_name);
             return nullptr;
         }
-        return std::unique_ptr<Writer>(
-            new Writer(std::move(state), topic_name, type, support.value(), writer));
+        return writer;
     }
 
-    ~Writer() {
-        state_->publisher->delete_datawriter(writer_);
+    ~Writer() override {
+        if (writer_ != nullptr) {
+            writer_->set_listener(nullptr);
+            state_->publisher->delete_datawriter(writer_);
+        }
         support_.delete_data(sample_);
         state_->release_topic(topic_name_);
     }
@@ -179,6 +196,16 @@ public:
     Writer& operator=(Writer&&) = delete;
 
     const std::string& topic_name() const { return topic_name_; }
+
+    // 아래 둘은 Fast DDS 의 스레드에서 불린다. 로그만 남긴다
+    void on_offered_deadline_missed(dds::DataWriter* /*writer*/,
+                                    const dds::OfferedDeadlineMissedStatus& /*status*/) override {
+        log_error("Deadline 초과 (발행 지연): " + topic_name_);
+    }
+    void on_offered_incompatible_qos(dds::DataWriter* /*writer*/,
+                                     const dds::OfferedIncompatibleQosStatus& /*status*/) override {
+        log_error("구독자와 QoS 불일치: " + topic_name_);
+    }
 
     bool write(const void* value) {
         return fill(value) && writer_->write(sample_) == dds::RETCODE_OK;
@@ -197,12 +224,11 @@ public:
 
 private:
     Writer(std::shared_ptr<DdsBusState> state, std::string topic_name, const DdsType& type,
-           dds::TypeSupport support, dds::DataWriter* writer)
+           dds::TypeSupport support)
         : state_(std::move(state)),
           topic_name_(std::move(topic_name)),
           type_(type),
           support_(std::move(support)),
-          writer_(writer),
           sample_(support_.create_data()) {}
 
     bool fill(const void* value) {
@@ -217,12 +243,13 @@ private:
     std::string topic_name_;
     const DdsType& type_;  // state_->types 의 원소
     dds::TypeSupport support_;
-    dds::DataWriter* writer_;
     void* sample_;
+    dds::DataWriter* writer_ = nullptr;
 };
 
 // 토픽 하나의 DataReader. Fast DDS 스레드의 수신 알림은 pipe 를 깨우기만 하고, IFdWatcher 에 등록한
-// handler 가 process_events() 안에서 표본을 꺼내 on_sample 을 부른다
+// handler 가 process_events() 안에서 표본을 꺼내 on_sample 을 부른다. 발행자와의 QoS 불일치는
+// Fast DDS 의 스레드에서 로그에 남긴다
 class Reader : public dds::DataReaderListener {
 public:
     using SampleHandler = std::function<void(const void* sample, const dds::SampleInfo& info)>;
@@ -251,8 +278,10 @@ public:
         if (!reader->registration_.active()) {
             return nullptr;
         }
-        reader->reader_ = state->subscriber->create_datareader(
-            topic, detail::reader_qos(depth), reader.get(), dds::StatusMask::data_available());
+        const dds::StatusMask mask = dds::StatusMask::data_available()
+                                     << dds::StatusMask::requested_incompatible_qos();
+        reader->reader_ = state->subscriber->create_datareader(topic, detail::reader_qos(depth),
+                                                               reader.get(), mask);
         if (reader->reader_ == nullptr) {
             log_error("DataReader 생성 실패: " + topic_name);
             return nullptr;
@@ -277,6 +306,13 @@ public:
 
     // Fast DDS 의 수신 스레드에서 불린다. pipe 에 기록하는 일만 한다
     void on_data_available(dds::DataReader* /*reader*/) override { pipe_.notify(); }
+
+    // Fast DDS 의 스레드에서 불린다. 로그만 남긴다
+    void on_requested_incompatible_qos(
+        dds::DataReader* /*reader*/,
+        const dds::RequestedIncompatibleQosStatus& /*status*/) override {
+        log_error("발행자와 QoS 불일치: " + topic_name_);
+    }
 
 private:
     Reader(std::shared_ptr<DdsBusState> state, std::string topic_name, dds::TypeSupport support,
@@ -487,8 +523,9 @@ bool valid_name(std::string_view name) {
 
 std::unique_ptr<DdsBus> DdsBus::create(core::IFdWatcher& watcher, core::ITimerScheduler& scheduler,
                                        const core::IClock& clock, std::uint32_t domain_id,
-                                       DdsTypeTable types) {
-    auto state = std::make_shared<DdsBusState>(watcher, scheduler, clock, std::move(types));
+                                       DdsTypeTable types, DdsTopicQosTable topic_qos) {
+    auto state = std::make_shared<DdsBusState>(watcher, scheduler, clock, std::move(types),
+                                               std::move(topic_qos));
     state->participant = dds::DomainParticipantFactory::get_instance()->create_participant(
         domain_id, dds::PARTICIPANT_QOS_DEFAULT);
     if (state->participant == nullptr) {
@@ -515,7 +552,8 @@ std::unique_ptr<bus::ITopicPublisher> DdsBus::create_publisher(std::string_view 
     if (!valid_name(topic) || dds_type == nullptr || queue_depth < 1) {
         return nullptr;
     }
-    auto writer = Writer::create(state_, std::string(topic), *dds_type, queue_depth);
+    auto writer = Writer::create(state_, std::string(topic), *dds_type, queue_depth,
+                                 state_->qos_of(std::string(topic)));
     if (!writer) {
         return nullptr;
     }
@@ -562,7 +600,8 @@ std::unique_ptr<bus::IRequester> DdsBus::create_requester(std::string_view name,
         return nullptr;
     }
     const std::string base(name);
-    auto writer = Writer::create(state_, base + "_Request", *request_type, kRequestReplyDepth);
+    auto writer =
+        Writer::create(state_, base + "_Request", *request_type, kRequestReplyDepth, DdsTopicQos{});
     if (!writer) {
         return nullptr;
     }
@@ -603,7 +642,8 @@ std::unique_ptr<bus::IReplier> DdsBus::create_replier(std::string_view name,
         return nullptr;
     }
     const std::string base(name);
-    auto writer = Writer::create(state_, base + "_Reply", *reply_type, kRequestReplyDepth);
+    auto writer =
+        Writer::create(state_, base + "_Reply", *reply_type, kRequestReplyDepth, DdsTopicQos{});
     if (!writer) {
         return nullptr;
     }

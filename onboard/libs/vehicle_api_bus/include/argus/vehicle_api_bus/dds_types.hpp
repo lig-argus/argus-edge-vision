@@ -15,11 +15,18 @@
 #ifndef ARGUS_VEHICLE_API_BUS_DDS_TYPES_HPP_
 #define ARGUS_VEHICLE_API_BUS_DDS_TYPES_HPP_
 
+#include "argus/bus_dds/dds_topic_qos.hpp"
 #include "argus/bus_dds/dds_type_table.hpp"
 
 namespace argus::vehicle_api_bus {
 
 bus_dds::DdsTypeTable dds_types();
+
+// 토픽별 발행자 QoS (process_interfaces.md 3장). 주기가 고정된 토픽에 Deadline(주기의 3배)
+// - fc/attitude, fc/state: 30 Hz 이상 → 100 ms
+// - follow/status: 1 Hz + 변경 시 → 3 s
+// - control/setpoint (추종 중에만 발행), fc/mode_event (변경 시) 는 주기가 고정되지 않아 없음
+bus_dds::DdsTopicQosTable dds_topic_qos();
 
 }  // namespace argus::vehicle_api_bus
 

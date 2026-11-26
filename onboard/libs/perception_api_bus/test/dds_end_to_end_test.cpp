@@ -34,8 +34,8 @@ constexpr std::int32_t kDepth = 4;
 class DdsEndToEndTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        sender_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types());
-        receiver_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types());
+        sender_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types(), {});
+        receiver_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types(), {});
         ASSERT_NE(sender_, nullptr);
         ASSERT_NE(receiver_, nullptr);
     }
