@@ -41,6 +41,7 @@
 #include "argus/mavlink_gateway/gcs_link_monitor.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
+#include "argus/mavlink_gateway/heartbeat_sender.hpp"
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
 #include "argus/mavlink_gateway/rc_override_state.hpp"
@@ -393,6 +394,11 @@ std::int32_t run(const Options& options) {
                          health)) {
         return EXIT_FAILURE;
     }
+
+    // gcs 보다 뒤에 선언하여 먼저 소멸시킨다 (통제기 연결을 참조)
+    mavlink_gateway::HeartbeatSender heartbeat{*gcs.link, *connection, health};
+    const core::PeriodicTimer heartbeat_timer =
+        loop.add_periodic(mavlink_gateway::kHeartbeatPeriod, [&heartbeat] { heartbeat.tick(); });
 
     log_configuration(*connection, udp_config, *gcs.link, gcs_config, options, table);
     loop.run();

@@ -65,4 +65,12 @@ mavlink_message_t encode_argus_sensor_status(const mavlink_argus_sensor_status_t
     return message;
 }
 
+mavlink_message_t encode_heartbeat(MAV_STATE system_status) {
+    mavlink_message_t message{};
+    mavlink_msg_heartbeat_pack_chan(kVehicleSysid, kOnboardCommandCompid, kCommandChannel, &message,
+                                    MAV_TYPE_ONBOARD_CONTROLLER, MAV_AUTOPILOT_INVALID, 0, 0,
+                                    static_cast<std::uint8_t>(system_status));
+    return message;
+}
+
 }  // namespace argus::mavlink_gateway::detail

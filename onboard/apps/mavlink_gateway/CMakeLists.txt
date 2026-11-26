@@ -37,6 +37,7 @@ add_library(argus_mavlink_gateway_core STATIC
     src/gcs_link_monitor.cpp
     src/gcs_message_encoding.cpp
     src/gcs_registry.cpp
+    src/heartbeat_sender.cpp
     src/mavlink_command_receiver.cpp
     src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
@@ -142,6 +143,8 @@ argus_add_test(mavlink_gateway_sensor_status_policy_test SOURCES test/sensor_sta
                LIBS argus::mavlink_gateway_core)
 argus_add_test(mavlink_gateway_argus_sensor_status_reporter_test
                SOURCES test/argus_sensor_status_reporter_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_heartbeat_sender_test SOURCES test/heartbeat_sender_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)
 
 # E 단계: 통제기 메시지의 FC 전달과 FC telemetry 전달

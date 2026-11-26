@@ -95,7 +95,7 @@ flowchart LR
 
 | 메시지 (id) | 송신 → 수신 | 주기 | 용도 |
 |---|---|---|---|
-| HEARTBEAT (0) | 모든 MAVLink 노드 → 전체 | 1 Hz | 생존·비행 모드·armed 상태. 통제기는 `custom_mode` 로 PX4 모드를 해석한다 (부록 A) |
+| HEARTBEAT (0) | 모든 MAVLink 노드 → 전체 | 1 Hz | 생존·비행 모드·armed 상태. 통제기는 `custom_mode` 로 PX4 모드를 해석한다 (부록 A). mavlink_gateway 는 compid 195 로만 통제기와 FC 에 보낸다: `type` MAV_TYPE_ONBOARD_CONTROLLER, `autopilot` MAV_AUTOPILOT_INVALID, `system_status` 는 FC 와 연결되어 있으면(`ARGUS_HEALTH_FC_CONNECTED`) MAV_STATE_ACTIVE, 아니면 MAV_STATE_CRITICAL. compid 191 은 FC telemetry 수신과 TIMESYNC 요청 전용이라 보내지 않는다 |
 | SYS_STATUS (1) | FC → 전체 | 1 Hz | 센서 상태, 배터리 |
 | GPS_RAW_INT (24) | FC → 전체 | 1 Hz | 위성 수, fix 종류 |
 | ATTITUDE (30) | FC → 전체 | **30 Hz 이상** | 자세. mavlink_gateway 가 ATTITUDE 메시지마다 수신 시각을 붙여 추적기·추종 제어에 넘긴다. 2026-10-15 기체 실측 약 100 Hz 수신 |
@@ -312,6 +312,7 @@ mavlink_gateway 는 제어권을 가진 통제기가 보낸 아래 메시지만 
 | 6.4 추종 제어 → mavlink_gateway | ⓐ 추종 중 setpoint 의 유효 시간(`valid_until`)이 지남 ⓑ 추종 제어 상태 보고가 **3 초** 없음 ⓒ Scan 중 추종 제어의 setpoint 가 감시 시간 동안 없음 | ⓐ 즉시: mavlink_gateway 가 setpoint 전달을 멈추고 정지한다. ⓑ: 추종 제어가 멈춘 것으로 보고 추종·스캔 중이면 정지한다. ⓐ·ⓑ 는 `mission_state` FAULT 보고, 복구 뒤 자동 재개 없음 (`docs/spec/process_interfaces.md` 6장). ⓒ: mavlink_gateway 가 독립적으로 회전을 멈추고 자동으로 다시 시작하지 않는다. 감시 시간과 정지 절차는 E3 |
 | 6.5 FC 자체 failsafe | RC 두절, 데이터링크 두절, 배터리 | PX4 파라미터(배포 문서). 통제기는 HEARTBEAT 모드 변화와 STATUSTEXT 로 표시만 한다 |
 | 6.6 mavlink_gateway 독립 감시 | 추종 제어의 상태 보고와 관계없이 mavlink_gateway 가 FC 상태·RC 개입·유효 시간을 스스로 확인 | 위험한 송신을 막는다. RC 개입이 항상 우선한다. 오래된 정상 상태 보고로 FAULT 를 덮어쓰지 않는다 (`docs/spec/process_interfaces.md` 6장) |
+| 6.7 mavlink_gateway → 통제기 | mavlink_gateway(compid 195)의 HEARTBEAT 가 **3 초** 없음 | 통제기가 "mavlink_gateway 연결 끊김" 을 표시한다. `ARGUS_STATUS` 는 상태가 바뀔 때도 송신되므로 생존 판단에 사용하지 않는다. FC 의 HEARTBEAT 로 판단하는 "연결 끊김"(아래 항목)과 독립이다 |
 
 - mavlink_gateway 가 멈추면 통제기의 메시지가 FC 에 도달하지 않는다. 이때는 조종사의 조종기와 FC 의 자체 동작에 의존한다 (setpoint 두절 시 `COM_OBL_RC_ACT`, 통제기 HEARTBEAT 두절 시 `NAV_DLL_ACT`).
 - 통제기 화면의 "연결 끊김" 표시: FC HEARTBEAT 3 초 없음 (통제기 기준). mavlink_gateway 의 6.1 과 독립이다.
