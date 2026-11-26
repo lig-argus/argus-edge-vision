@@ -1,0 +1,12 @@
+{
+  "schema": "argus.follow.v2_1.v1",
+  "enabled": true,
+  "box_motion_guard": true,
+  "cv_gap": true,
+  "cv_visibility": true,
+  "vertical_center": true,
+  "vertical_center_weight": 0.5,
+  "cv_gap_max_s": 3.0,
+  "receipt_retry_ms": 50,
+  "frame_diagnostics": true
+}

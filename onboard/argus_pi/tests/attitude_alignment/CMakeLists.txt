@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.16)
+project(attitude_alignment_checks LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+get_filename_component(ARGUS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+add_library(alignment_core STATIC
+ ${ARGUS_ROOT}/src/argus/perception/geometry/pi_ground_projector.cpp
+ ${ARGUS_ROOT}/src/argus/perception/geometry/frame_transform.cpp
+ ${ARGUS_ROOT}/src/argus/control/target/target_manager.cpp
+ ${ARGUS_ROOT}/src/argus/control/target/target_reacquirer.cpp
+ ${ARGUS_ROOT}/src/argus/tracking/motion/short_motion_estimator.cpp)
+target_include_directories(alignment_core PUBLIC ${ARGUS_ROOT}/src ${ARGUS_ROOT}/vendor/vmy ${ARGUS_ROOT}/vendor/vmy/eigen ${ARGUS_ROOT}/vendor/yaw/msgpack/include)
+if(MSVC)
+ target_compile_options(alignment_core PUBLIC /utf-8)
+endif()
+if(MSVC)
+ target_compile_options(alignment_core PUBLIC /UNDEBUG)
+else()
+ target_compile_options(alignment_core PUBLIC -UNDEBUG)
+endif()
+enable_testing()
+add_executable(attitude_interpolation_test attitude_interpolation_test.cpp)
+target_link_libraries(attitude_interpolation_test PRIVATE alignment_core)
+add_test(NAME attitude_interpolation COMMAND attitude_interpolation_test)
+add_executable(clock_alignment_test ${ARGUS_ROOT}/tests/follow_b/indoor_clock_alignment_test.cpp)
+target_link_libraries(clock_alignment_test PRIVATE alignment_core)
+add_test(NAME indoor_outdoor_clock_alignment COMMAND clock_alignment_test ${ARGUS_ROOT}/config/device/camera.json ${ARGUS_ROOT}/config/tracking/measurement.json)
+add_executable(receipt_retry_test ${ARGUS_ROOT}/tests/follow_b/receipt_alignment_retry_test.cpp)
+target_link_libraries(receipt_retry_test PRIVATE alignment_core)
+add_test(NAME receipt_alignment_retry COMMAND receipt_retry_test)

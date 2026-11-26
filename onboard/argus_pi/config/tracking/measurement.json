@@ -1,0 +1,11 @@
+{
+  "image_width": 640,
+  "image_height": 480,
+  "minimum_down_ray": 0.15,
+  "max_ground_range_m": 50.0,
+  "max_ground_std_m": 2.0,
+  "ground_pose_std_m": 0.15,
+  "contact_height_std_m": 0.3,
+  "ground_center_radius_m": 0.1573125755264183,
+  "sdk_time_alignment": true
+}

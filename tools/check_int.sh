@@ -7,6 +7,7 @@
 # - main 의 선언: C++ 표준이 반환 타입과 argc 를 int 로 정한다
 # - 주석만 있는 줄
 # - 생성 코드(*/generated/*, common/mavlink/generated)와 탐지 담당 코드(onboard/vision/python/native)
+# - Pi ARGUS 반입본(onboard/argus_pi): 팀 정수 타입 규칙 적용 전 구현과 외부 라이브러리(vendor). 정리는 후속 작업
 # 단어 경계는 앞뒤가 영문자, 숫자, _, - 가 아닌 경우로 본다 (문자열 "key-int-max" 등을 제외하기 위해)
 set -euo pipefail
 
@@ -14,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 found="$(git grep -nP '(?<![\w-])(int|unsigned)(?![\w-])' -- \
     'onboard/*.cpp' 'onboard/*.hpp' 'onboard/*.h' 'gcs/*.cpp' 'gcs/*.hpp' 'gcs/*.h' \
-    ':!*/generated/*' ':!common/mavlink/generated' ':!onboard/vision/python/native' |
+    ':!*/generated/*' ':!common/mavlink/generated' ':!onboard/vision/python/native' ':!onboard/argus_pi' |
     grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' |
     grep -vE '(^|[^[:alnum:]_])int main\(' || true)"
 
