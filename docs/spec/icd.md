@@ -104,6 +104,10 @@ flowchart LR
 | DISTANCE_SENSOR (132) | FC → 전체 | 30 Hz (센서가 있을 때) | 지면 기준 높이(하향 거리). 추적기가 쓴다. 2026-10-15 실측에서 미수신 → 센서 유무·스트림 설정 확인 [미결 D5] |
 | VFR_HUD (74) | FC → 전체 | 5 Hz | 대기속도, 고도, 상승률, 방위 |
 | BATTERY_STATUS (147) | FC → 전체 | 1 Hz | 전압·잔량 |
+| EXTENDED_SYS_STATE (245) | FC → 전체 | PX4 스트림 설정 | 비행 여부(`landed_state`). 통제기 표시 |
+| ESTIMATOR_STATUS (230) | FC → 전체 | PX4 스트림 설정 | 자세·위치 추정 상태(`flags`). 통제기 표시 |
+| RC_CHANNELS (65) | FC → 전체 | PX4 스트림 설정 | 조종기 수신기 입력. 통제기의 조종기 상태 표시 |
+| SERVO_OUTPUT_RAW (36) | FC → 전체 | PX4 스트림 설정 | 모터 출력. 통제기 표시 |
 | STATUSTEXT (253) | FC, mavlink_gateway → 전체 | 이벤트 | 사람이 읽는 상태 문구. mavlink_gateway 는 임무 상태 변화·거부 이유를 보낸다 |
 | TIMESYNC (111) | mavlink_gateway(191) ↔ FC | mavlink_gateway 가 주기적으로 요청 | RPi 시계와 FC `time_boot_ms` 의 차이 (아키텍처 문서 1.9) |
 | COMMAND_LONG (76) | 통제기 → FC 또는 mavlink_gateway | 이벤트 | 명령 (4장). `target_component` 로 FC(1)·mavlink_gateway(195) 구분. FC 로 가는 명령은 mavlink_gateway 가 검사한 뒤 전달 (5.2) |
@@ -111,8 +115,11 @@ flowchart LR
 | SET_POSITION_TARGET_LOCAL_NED (84) | mavlink_gateway → FC | 20 Hz | Offboard 속도 setpoint 와 yaw 회전 속도(추종, Scan), 위치 setpoint(제자리 유지). Offboard 진입 전부터 보내고, 정지한 뒤에도 제자리 유지 중에는 계속 보낸다 (4.2) |
 | MANUAL_CONTROL (69) | 통제기 → FC | 20 Hz | 가상 조종 (조이스틱 대체). 켜져 있는 동안만. mavlink_gateway 가 검사한 뒤 전달 (5.2) |
 | VIDEO_STREAM_INFORMATION (269) | RPi → 통제기 (송신 컴포넌트는 `docs/spec/video.md`) | 요청 시 (MAV_CMD_REQUEST_MESSAGE) | RTSP 주소, 해상도, fps 알림. `type` = `VIDEO_STREAM_TYPE_RTSP`(0), `encoding` = `VIDEO_STREAM_ENCODING_H264`(1) (JPEG 를 선택한 경우 MAVLink 에 JPEG 값이 없어 `VIDEO_STREAM_ENCODING_UNKNOWN`(0). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP `a=rtpmap` 에서 읽는다, `docs/spec/video.md` 1장) |
-| PARAM_* , MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·mavlink_gateway 는 쓰지 않는다 |
+| PARAM_REQUEST_READ (20), PARAM_SET (23) | 통제기 → FC | 요청 시 | 통제기의 비행 환경 파라미터 읽기·쓰기. mavlink_gateway 가 검사한 뒤 전달 (5.2) |
+| PARAM_VALUE (22) | FC → 전체 | 요청 시 | PARAM_REQUEST_READ, PARAM_SET 의 응답 |
+| 그 밖의 PARAM_*, MISSION_* | QGC ↔ FC | — | QGC 전용. 통제기·mavlink_gateway 는 쓰지 않는다 |
 
+- mavlink_gateway 는 FC 가 보낸 메시지 중 이 표에서 "FC → 전체" 인 메시지만 받은 그대로(FC 의 sysid, compid 유지) 접속한 모든 통제기에 전달하며, 주기를 줄이지 않는다. 그 밖의 FC 메시지는 통제기에 보내지 않는다. 이유: PX4 USB 연결의 스트림을 모두 Wi-Fi 로 보내지 않고, 이 표를 통제기와의 계약으로 유지한다.
 - telemetry 주기는 PX4 가 USB 연결의 MAVLink 스트림 설정으로 정한다. RPi 쪽 프로세스는 `SET_MESSAGE_INTERVAL` 을 보내지 않는다. 통제기는 위 주기를 **기대값**으로 쓰고, 두 배 이상 늦으면 "지연" 으로 표시한다.
 - 자세·위치·거리 30 Hz 는 추적기의 요구값이다 (프레임 시각과 가장 가까운 FC 메시지(ATTITUDE, LOCAL_POSITION_NED 등) 시각의 차가 50 ms 이내여야 한다). 2026-10-15 기체 실측(FC·카메라 동시 수신)에서 자세 약 100 Hz, local 위치 약 30 Hz 가 들어오고, 영상 1,787 프레임 전부에서 프레임 시각과 50 ms 이내의 FC 메시지가 있었으며 추적기가 그 메시지를 고른 시점에서 그 메시지의 호스트 수신 시각을 뺀 값이 200 ms 를 넘지 않았다. 이 결과는 읽기 전용 계측이며, 실제 추적·추종 실행이나 거리 센서를 포함한 지면 투영까지 검증한 것은 아니다. 거리·전역 위치는 들어오지 않았다 [미결 D5]. 30 Hz 메시지 네 개의 전송량은 약 5 kB/s 다.
 - PX4 는 Offboard 진입 전부터 setpoint 가 2 Hz 이상 와야 Offboard 에 들어가고 유지한다. setpoint 가 끊긴 뒤 `COM_OF_LOSS_T` (기체 FC 1.0 s, PX4 v1.16 기본값과 같음, 2026-10-06 FC 에서 읽음)가 지나면 `COM_OBL_RC_ACT` 동작으로 Offboard 를 빠져나간다. mavlink_gateway 는 추종 중 20 Hz 를 유지한다.
@@ -141,7 +148,7 @@ flowchart LR
 ### 4.1 공통 규칙
 
 - 명령은 `COMMAND_LONG` 으로 보내고, 수신자는 `COMMAND_ACK` 로 답한다. `target_system = 1`, `target_component` 는 FC 가 1, mavlink_gateway 가 195. mavlink_gateway 는 `target_system` 이 1 이 아니거나 `target_component` 가 195 가 아닌 명령(0 포함)을 응답 없이 폐기한다 (0 은 FC 와 mavlink_gateway 가 모두 응답하므로 허용하지 않는다). `COMMAND_INT` 로 온 argus 명령에는 MAV_RESULT_COMMAND_LONG_ONLY 로 답한다.
-- 통제기가 FC 로 보내는 명령(4.3)도 mavlink_gateway 가 받는다. mavlink_gateway 는 5.2 의 조건을 만족하면 FC 로 전달하고, 만족하지 않으면 FC 로 전달하지 않고 직접 답한다 (제어권 없음과 상태 조건 모두 TEMPORARILY_REJECTED. 제어권 없음은 STATUSTEXT "제어권 없음" 을 함께 보낸다).
+- 통제기가 FC 로 보내는 명령(4.3)도 mavlink_gateway 가 받는다. mavlink_gateway 는 5.2 의 조건을 만족하면 FC 로 전달하고, 만족하지 않으면 FC 로 전달하지 않고 직접 답한다 (제어권 없음과 상태 조건 모두 TEMPORARILY_REJECTED. 제어권 없음은 STATUSTEXT "제어권 없음" 을 함께 보낸다). 직접 답하는 COMMAND_ACK 와 STATUSTEXT 의 송신자는 mavlink_gateway(sysid 1, compid 195)다. FC(compid 1)의 식별자로 보내지 않는다 (다른 컴포넌트의 식별자로 보내면 수신자의 송신자별 `seq` 손실 계산이 틀린다). 통제기는 FC 에 보낸 명령의 응답을 ACK 의 `command` 로 찾는다. FC 를 대상으로 한 `COMMAND_INT` 에도 MAV_RESULT_COMMAND_LONG_ONLY 로 답한다.
 - **명령 번호**: 4.2 의 argus 명령은 `param7` 이 명령 번호이다. 통제기는 명령을 보낼 때마다 번호를 1 증가시킨다 (16,777,215 를 넘으면 0). 시작값은 통제기 기동 시각(ms)을 16,777,216 으로 나눈 나머지다. 0 에서 시작하면 통제기 재시작 뒤 첫 명령이 mavlink_gateway 가 보관한 이전 번호와 겹쳐 재전송으로 처리될 수 있다. 재전송 시에는 동일한 번호로 보낸다. 사용하지 않는 param 은 NaN 으로 보낸다 (MAVLink COMMAND_LONG 의 빈 param 규칙). mavlink_gateway 는 이 번호로 재전송과 새 명령을 구분한다 (아래 재전송 판단).
 - `COMMAND_ACK` 의 `target_system`, `target_component` 는 명령을 보낸 쪽의 sysid, compid 이다. 수신자는 두 필드가 자신의 sysid, compid 이고 `command` 가 기다리는 MAV_CMD 와 같은 ACK 만 처리한다. 이유: 통제기(compid 190)와 mavlink_gateway(195)가 모두 FC 에 DO_SET_MODE 를 보내고 FC 의 ACK 는 모두 라우터를 거쳐 mavlink_gateway 에 도착하므로, mavlink_gateway 는 두 필드로 자기 명령의 ACK 와 통제기에 전달할 ACK 를 나눈다.
 - 통제기는 ACK 가 **1 초** 안에 오지 않으면 같은 명령을 다시 보내고, 3 회 뒤에도 없으면 "응답 없음" 으로 표시한다. `confirmation` 필드에 재전송 횟수를 기록한다 (mavlink_gateway 는 읽지 않는다). 같은 compid 에 같은 MAV_CMD 의 응답을 기다리는 동안에는 새 명령을 보내지 않는다 (화면에서 차단).
@@ -151,7 +158,7 @@ flowchart LR
 - mavlink_gateway 는 명령을 동시에 하나만 처리한다. 진행 중(PREPARING, HOLD_TRANSITION, SCAN_ACTIVE)에 번호가 다른 명령을 받으면 다음과 같이 답한다. 같은 MAV_CMD, 또는 다른 시작 명령(TRACK_START, SCAN_START)은 handler 를 부르지 않고 TEMPORARILY_REJECTED (MAVLink command protocol: 진행 중 같은 명령은 바쁨, 병렬 처리를 지원하지 않으면 새 명령도 바쁨). 시작 명령이 진행 중일 때 받은 TRACK_STOP 은 받는다: 진행 중이던 명령의 최종 ACK 를 CANCELLED 로 보낸 뒤 TRACK_STOP 을 처리한다. 정지 명령은 진행 중인 시작 명령을 취소하는 반대 동작이므로 바쁨으로 거부하지 않는다. 통제기는 ACK 의 `command` 로 어느 명령의 결과인지 구분한다. 진행 중인 시작 명령을 새 내용으로 바꾸려면 끝난 뒤 다시 보낸다. `COMMAND_CANCEL` 은 사용하지 않는다 (MAVLink 정의가 "Work in Progress" 로 표시한 메시지이고 PX4, ArduPilot, MAVSDK, QGroundControl 이 구현하지 않는다).
 - IN_PROGRESS 를 받은 뒤에는 통제기가 재전송하지 않으므로, 그 뒤의 최종 ACK 가 유실되면 통제기는 위 3 초 규칙으로 "응답 없음" 을 표시한다. 운용자는 실제 상태를 `ARGUS_STATUS` 의 `mission_state` 로 확인한다.
 - `COMMAND_ACK.result` 의 뜻: ACCEPTED 실행함 / IN_PROGRESS 진행 중(뒤에 최종 결과가 한 번 더 온다) / DENIED 값이 잘못됨(재시도해도 같음) / TEMPORARILY_REJECTED 상태 때문에 지금은 안 됨(나중에 가능) / FAILED 시도했으나 실패 / CANCELLED 진행 중에 받은 TRACK_STOP 으로 취소됨 / UNSUPPORTED 모르는 명령. 4.2 의 조건 중 상태 조건(비행 중, FOLLOWABLE, `mission_state`, FC 모드)은 TEMPORARILY_REJECTED, 값 조건(트랙 없음, generation 불일치, 매개변수 범위)은 DENIED 이다. 제어권 없음은 제어권을 얻으면 같은 명령이 성공하므로 상태 조건과 같이 TEMPORARILY_REJECTED 로 답하고, 원인을 구분할 수 있도록 STATUSTEXT "제어권 없음" 을 함께 보낸다. MAVLink 의 `MAV_RESULT_NOT_IN_CONTROL` 은 사용하지 않는다 (MAVLink 정의가 work in progress 로 표시한 값이고 PX4, ArduPilot, QGroundControl 의 배포 버전이 구현하지 않는다. 아래 `COMMAND_CANCEL` 과 같은 이유).
-- mavlink_gateway 는 DENIED, FAILED 와 제어권 없음의 TEMPORARILY_REJECTED 때 이유를 `STATUSTEXT` 로 같이 보낸다.
+- mavlink_gateway 는 DENIED, FAILED 와 제어권 없음의 TEMPORARILY_REJECTED 때 이유를 `STATUSTEXT` 로 같이 보낸다. FC 로 전달하지 않고 직접 답하는 경우(5.2)에는 상태 조건의 TEMPORARILY_REJECTED 에도 이유를 보낸다 (예: "setpoint 송신 중", "착륙 잠금", "조종사 조종 중", "FC 상태 모름").
 - 명령 매개변수는 float 다. 정수 값(track_id, generation 등)은 2^24−1 = 16,777,215 까지만 정확하게 전달되므로, 그 범위를 넘는 값은 쓰지 않는다.
 - mavlink_gateway 는 아래 명령의 제어권·매개변수 범위 검사를 하고, 표적 존재·상태·FC 조건 검사와 실행은 추종 제어가 한다 (`docs/spec/process_interfaces.md`).
 
@@ -210,6 +217,8 @@ sequenceDiagram
 | MAV_CMD_NAV_LAND (21) | |
 | MAV_CMD_NAV_RETURN_TO_LAUNCH (20) | |
 | MAV_CMD_DO_SET_MODE (176) | PX4 모드 변경 (부록 A 의 번호). Hold, Position, Altitude, Stabilized |
+| MAV_CMD_DO_SET_HOME (179) | 지상에서 시동이 꺼져 있을 때만 |
+| MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (246) | FC 재부팅. 지상에서 시동이 꺼져 있을 때만 |
 
 - 통제기는 이 명령을 `target_component = 1` 로 보내고, mavlink_gateway 가 5.2 의 조건을 확인한 뒤 FC 로 전달한다. FC 의 COMMAND_ACK 는 mavlink_gateway 가 그 명령을 보낸 통제기에 전달한다. FC 로 전달하는 메시지 전체와 조건은 5.2.
 - mavlink_gateway 는 추종·스캔 중에 모드가 Offboard 에서 벗어난 것을 HEARTBEAT 로 알아채면 추종을 끝내고 `mission_state` 를 MANUAL(조종사·통제기가 모드를 바꾼 경우) 또는 FAULT 로 보고한다. 분류 규칙은 아키텍처 문서 2.11·2.20.
@@ -242,23 +251,29 @@ sequenceDiagram
 
 ### 5.2 FC 로 전달하는 메시지
 
-mavlink_gateway 는 제어권을 가진 통제기가 보낸 아래 메시지만 FC 로 전달한다. 그 밖의 메시지는 전달하지 않는다. 명령이면 제어권이 없는 통제기에는 TEMPORARILY_REJECTED (STATUSTEXT "제어권 없음"), 제어권을 가진 통제기에는 DENIED 로 답한다.
+mavlink_gateway 는 제어권을 가진 통제기가 보낸 아래 메시지만 FC 로 전달한다. 그 밖의 메시지는 전달하지 않는다. 명령이면 제어권이 없는 통제기에는 TEMPORARILY_REJECTED (STATUSTEXT "제어권 없음"), 제어권을 가진 통제기에는 DENIED 로 답한다. 명령이 아닌 메시지는 조건에 맞지 않으면 응답 없이 폐기한다.
 
 | 메시지 | 전달 조건 |
 |---|---|
 | HEARTBEAT | 항상 |
-| MAV_CMD_COMPONENT_ARM_DISARM (400) | `param2` 가 0 (강제 시동, 강제 시동 끔은 거부). mavlink_gateway 가 setpoint 를 보내는 중이 아님 |
-| MAV_CMD_NAV_TAKEOFF (22), MAV_CMD_NAV_RETURN_TO_LAUNCH (20) | 전역 위치가 유효함. mavlink_gateway 가 setpoint 를 보내는 중이 아님. 조종사 개입 중이 아님 |
+| MAV_CMD_COMPONENT_ARM_DISARM (400) | `param2` 가 0 (강제 시동, 강제 시동 끔은 DENIED). mavlink_gateway 가 setpoint 를 보내는 중이 아님 |
+| MAV_CMD_NAV_TAKEOFF (22), MAV_CMD_NAV_RETURN_TO_LAUNCH (20) | mavlink_gateway 가 setpoint 를 보내는 중이 아님. 전역 위치의 유효 여부는 FC 가 판단한다 (PX4 는 모드에 필요한 추정이 없으면 거부 ACK 를 보낸다. mavlink_gateway 는 GLOBAL_POSITION_INT 를 받았는지만 알고 추정이 유효한지는 모른다, 7장 E11 ②) |
 | MAV_CMD_NAV_LAND (21) | 항상. 다른 명령의 처리를 기다리지 않고 바로 전달 (5.3) |
-| MAV_CMD_DO_SET_MODE (176) | 모드가 Position, Altitude, Stabilized 중 하나. mavlink_gateway 가 setpoint 를 보내는 중이면 FC 가 새 모드를 보고한 뒤에 송신을 멈춤 |
-| MAV_CMD_DO_SET_HOME (179), MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (246) | 지상이고 시동이 꺼져 있음 |
+| MAV_CMD_DO_SET_MODE (176) | 모드가 Position, Altitude, Stabilized 중 하나(그 밖의 모드는 DENIED). mavlink_gateway 가 setpoint 를 보내는 중이면 FC 가 새 모드를 보고한 뒤에 송신을 멈춤. Hold 는 아래 항목 |
+| MAV_CMD_DO_SET_HOME (179), MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (246) | 시동이 꺼져 있음 |
 | PARAM_REQUEST_READ | 항상 |
-| PARAM_SET | 지상이고 시동이 꺼져 있음. 추종, 스캔 중이 아님 |
-| MANUAL_CONTROL | FC 모드가 Position, Altitude, Stabilized 중 하나. mavlink_gateway 가 setpoint 를 보내는 중이 아님. 조종사 개입 중이 아님 |
-| MAV_CMD_REQUEST_MESSAGE (512) | 항상 |
+| PARAM_SET | 시동이 꺼져 있음 |
+| MANUAL_CONTROL | FC 모드가 Position, Altitude, Stabilized 중 하나. mavlink_gateway 가 setpoint 를 보내는 중이 아님 |
 
-- 통제기의 HOLD 는 FC 로 전달하지 않고 mavlink_gateway 가 제자리 유지로 처리한다 (4.2 정지 명령과 같은 동작).
-- FC 의 COMMAND_ACK 는 제어권을 가진 통제기에만 전달한다.
+- "시동이 꺼져 있음" 은 FC 의 HEARTBEAT 로 판단한다. 비행 여부(`in_air`)를 알 수 없으므로 시동이 꺼져 있으면 지상으로 본다 (7장 E11 ②). HEARTBEAT 를 3 초 넘게 받지 못했으면 FC 상태를 모르는 것으로 보고, 시동 상태나 모드가 필요한 조건을 충족하지 않은 것으로 처리한다.
+- "mavlink_gateway 가 setpoint 를 보내는 중" 에는 Offboard 진입을 기다리는 중을 포함한다.
+- 착륙 잠금(5.3)과 조종사 개입(5.4) 중에는 HEARTBEAT, MAV_CMD_NAV_LAND, PARAM_REQUEST_READ 만 전달한다. 그 밖의 명령은 TEMPORARILY_REJECTED 이고 MANUAL_CONTROL, PARAM_SET 은 폐기한다. 이유: PX4 는 자동 모드에서 스틱 입력을 받으면 Position 으로 바꿀 수 있어(`COM_RC_OVERRIDE`) 가상 조종이 착륙을 끝낼 수 있다.
+- 통제기의 HOLD (MAV_CMD_DO_SET_MODE 의 Hold)
+  - mavlink_gateway 가 setpoint 를 보내지 않을 때(FC 가 Offboard 가 아님): FC 로 전달한다. GPS 가 없으면 FC 가 거부하고, 그 ACK 를 통제기에 전달한다.
+  - setpoint 를 보내는 중이고 추종, 스캔 또는 진행 중인 명령이 있을 때: FC 로 전달하지 않고 TEMPORARILY_REJECTED (STATUSTEXT "추종 중: 추종 정지 사용"). 정지 절차를 TRACK_STOP 한 곳에 두기 위해서이며, 통제기는 이때 TRACK_STOP 을 보낸다.
+  - 그 밖(제자리 유지 중, Offboard 진입 대기): FC 로 전달하지 않고 mavlink_gateway 가 정지시킨다(4.2 의 정지 상태). 정지를 시작하면 ACCEPTED, 시작하지 못하면 TEMPORARILY_REJECTED.
+- FC 로 전달하는 메시지는 받은 그대로(통제기의 sysid, compid 유지) 보낸다. FC 의 COMMAND_ACK 대상이 통제기가 되어 mavlink_gateway 자신의 명령의 ACK 와 구분된다 (4.1).
+- FC 의 COMMAND_ACK 는 `target_system` 의 통제기(명령을 보낸 통제기)에만 전달한다. 명령을 보낸 뒤 제어권이 바뀌어도 그 통제기에 보낸다.
 
 ### 5.3 착륙 잠금
 

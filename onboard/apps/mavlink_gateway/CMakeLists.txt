@@ -29,8 +29,11 @@ add_library(argus_mavlink_gateway_core STATIC
     src/fc_control.cpp
     src/fc_gateway.cpp
     src/fc_link_tracker.cpp
+    src/fc_telemetry_relay.cpp
     src/fc_telemetry_receiver.cpp
     src/follow_activity.cpp
+    src/gcs_fc_forwarder.cpp
+    src/gcs_forward_policy.cpp
     src/gcs_link_monitor.cpp
     src/gcs_message_encoding.cpp
     src/gcs_registry.cpp
@@ -139,4 +142,12 @@ argus_add_test(mavlink_gateway_sensor_status_policy_test SOURCES test/sensor_sta
                LIBS argus::mavlink_gateway_core)
 argus_add_test(mavlink_gateway_argus_sensor_status_reporter_test
                SOURCES test/argus_sensor_status_reporter_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+
+# E 단계: 통제기 메시지의 FC 전달과 FC telemetry 전달
+argus_add_test(mavlink_gateway_gcs_forward_policy_test SOURCES test/gcs_forward_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_gcs_fc_forwarder_test SOURCES test/gcs_fc_forwarder_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_fc_telemetry_relay_test SOURCES test/fc_telemetry_relay_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)

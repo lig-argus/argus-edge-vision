@@ -2,13 +2,13 @@
 // 규약: docs/design/uml/class_mavlink_gateway.md 2절, 4절
 // 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계를 생성하는 유일한 곳이다. 그 밖의 코드는
 // 인터페이스로만 사용한다. 구성은 FC 쪽(FcGateway)과 통제기 쪽(통제기 연결, 제어권, 명령 수신, 두절
-// 감시, 요청 메시지 응답)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig,
+// 감시, 요청 메시지 응답, FC 전달)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig,
 // protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다 인자
 // - --bus dds|zmq: 통신 구현. 기본값 dds. ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수
 // 있다
 // - --dds-domain N: DDS domain. 기본값 protocol::kDefaultDdsDomain
-// - --gcs-port N: 통제기 UDP 포트. 기본값 14550 (icd 1.2). mavlink-router 가 14550 을 여는 동안
-//   (통제기 엔드포인트를 router 설정에서 지우기 전) 함께 실행할 때 다른 포트를 지정한다
+// - --gcs-port N: 통제기 UDP 포트. 기본값 14550 (icd 1.2). 같은 컴퓨터에서 다른 프로그램이 14550 을
+//   사용할 때 다른 포트를 지정한다
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -36,11 +36,14 @@
 #include "argus/mavlink_gateway/command_activity.hpp"
 #include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/fc_gateway.hpp"
+#include "argus/mavlink_gateway/fc_telemetry_relay.hpp"
+#include "argus/mavlink_gateway/gcs_fc_forwarder.hpp"
 #include "argus/mavlink_gateway/gcs_link_monitor.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
+#include "argus/mavlink_gateway/rc_override_state.hpp"
 #include "argus/mavlink_gateway/request_header_factory.hpp"
 #include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
@@ -249,6 +252,7 @@ struct GcsSide {
     std::unique_ptr<mavlink_gateway::GcsRegistry> registry;
     mavlink_gateway::CommandActivity activity;
     mavlink_gateway::InactiveLandingLock landing_lock;
+    mavlink_gateway::InactiveRcOverride rc_override;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowStatusSubscriber> follow_status;
     std::unique_ptr<argus::vehicle_api_bus::BusFollowControlClient> follow_control;
     std::unique_ptr<argus::video_api_bus::BusVideoStreamInfoSubscriber> video_stream_info;
@@ -257,6 +261,8 @@ struct GcsSide {
     std::unique_ptr<mavlink_gateway::RequestOperatorControlHandler> request_control_handler;
     std::unique_ptr<mavlink_gateway::RequestMessageHandler> request_message_handler;
     std::unique_ptr<mavlink_gateway::MavlinkCommandReceiver> receiver;
+    std::unique_ptr<mavlink_gateway::GcsFcForwarder> forwarder;
+    std::unique_ptr<mavlink_gateway::FcTelemetryRelay> telemetry_relay;
     std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
     mavlink_gateway::SysfsCpuTemperature cpu_temperature;
     std::unique_ptr<mavlink_gateway::ArgusStatusReporter> status_reporter;
@@ -274,8 +280,8 @@ struct GcsSide {
 // UdpGcsLink 와 bus 구현이 기록한다)
 bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
                      argus::bus::IBus& bus, bus_zmq::ZmqPoller& poller, const core::IClock& clock,
-                     core::EventLoop& loop, mavlink_gateway::FcGateway& fc,
-                     mavlink_gateway::HealthState& health) {
+                     core::EventLoop& loop, mavlink_gateway::IMavlinkConnection& connection,
+                     mavlink_gateway::FcGateway& fc, mavlink_gateway::HealthState& health) {
     gcs.link = mavlink_gateway::UdpGcsLink::create(poller, config);
     gcs.follow_status = argus::vehicle_api_bus::BusFollowStatusSubscriber::create(bus, clock);
     gcs.follow_control = argus::vehicle_api_bus::BusFollowControlClient::create(bus);
@@ -308,6 +314,14 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
         });
     gcs.receiver->add_handler(*gcs.request_message_handler,
                               mavlink_gateway::RequestMessageHandler::kRules);
+    // ControlAuthority 보다 뒤에 만들어, 제어권을 부여한 HEARTBEAT 부터 FC 로 전달한다
+    gcs.forwarder =
+        std::make_unique<mavlink_gateway::GcsFcForwarder>(mavlink_gateway::GcsFcForwarderInputs{
+            *gcs.registry, *gcs.link, *gcs.registry, connection, clock, *gcs.authority,
+            fc.fc_state(), fc.command_status(), gcs.activity, *gcs.follow_status, gcs.landing_lock,
+            gcs.rc_override, fc.stop_requester()});
+    gcs.telemetry_relay =
+        std::make_unique<mavlink_gateway::FcTelemetryRelay>(connection, *gcs.link);
     gcs.monitor =
         std::make_unique<mavlink_gateway::GcsLinkMonitor>(mavlink_gateway::GcsLinkMonitorInputs{
             *gcs.registry, *gcs.authority, clock, *gcs.follow_status, *gcs.follow_control,
@@ -375,7 +389,8 @@ std::int32_t run(const Options& options) {
     mavlink_gateway::UdpGcsConfig gcs_config;
     gcs_config.local_port = options.gcs_port;
     GcsSide gcs;
-    if (!create_gcs_side(gcs, gcs_config, *bus, poller, clock, loop, *gateway, health)) {
+    if (!create_gcs_side(gcs, gcs_config, *bus, poller, clock, loop, *connection, *gateway,
+                         health)) {
         return EXIT_FAILURE;
     }
 
