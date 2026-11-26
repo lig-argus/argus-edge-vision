@@ -45,6 +45,7 @@ add_subdirectory(core)
 add_subdirectory(core_testing)
 add_subdirectory(mavlink_connection)
 add_subdirectory(mavlink_connection_testing)
+add_subdirectory(net)
 add_subdirectory(app)
 
 # 모듈의 include 가 선언한 의존을 넘지 않는지 확인한다
