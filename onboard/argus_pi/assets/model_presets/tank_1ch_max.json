@@ -1,0 +1,14 @@
+{
+  "path": "assets/models/yolox_s_leaky_480x640_1ch_max.hef",
+  "sha256": "652d935ab19ab452a231346da6493c8729010a9161bdc5163a77081b359b4665",
+  "labels": "config/tank_labels.txt",
+  "classes": [
+    "tank"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-10-29~30 기본. v7.3 640x480 1채널 max, Pi NPU 7.14 ms, INT8 탱크 FN 173 FP 58",
+  "env": {
+    "ARGUS_SCORE_THRESHOLD": "0.5"
+  }
+}

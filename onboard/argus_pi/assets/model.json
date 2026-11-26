@@ -1,0 +1,12 @@
+{
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "path": "assets/models/yolox_s_leaky_3cls_indoor_TA_480x640_1ch_max.hef",
+  "sha256": "526d200030387dc1c33ae4d9b70c992cd3b6c3c4e4b136793f6c8b6a12ad3d92"
+}

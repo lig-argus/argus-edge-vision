@@ -1,0 +1,18 @@
+{
+  "path": "assets/models/yolox_s_leaky_3cls_ft_b1_480x640_1ch_max.hef",
+  "sha256": "740e2a23c32998b058641561138f60e948763d3d22df545eb907599cb44603de",
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "2026-11-09 ft_b1 탱크 0.3 (사람 0.45, 차 0.35, tank:car:0.3). HEF NMS 하한 0.2",
+  "env": {
+    "ARGUS_SCORE_THRESHOLD": "0.25",
+    "ARGUS_CLASS_SCORE_THRESHOLDS": "0.3,0.45,0.35",
+    "ARGUS_CLASS_SUPPRESS": "tank:car:0.3"
+  }
+}

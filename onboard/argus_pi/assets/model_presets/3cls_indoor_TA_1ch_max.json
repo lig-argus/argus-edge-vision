@@ -1,0 +1,18 @@
+{
+  "labels": "config/tank_person_car_labels.txt",
+  "classes": [
+    "tank",
+    "person",
+    "car"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "path": "assets/models/yolox_s_leaky_3cls_indoor_TA_480x640_1ch_max.hef",
+  "sha256": "526d200030387dc1c33ae4d9b70c992cd3b6c3c4e4b136793f6c8b6a12ad3d92",
+  "note": "2026-11-12 실내 TA (실내 데모 A에 장난감 차 261110 추가 학습 30 epoch). 장난감 차를 탱크로 잡던 문제 해결. 사람은 학습 안 함 → 사람 기준 1.01로 끔. 탱크 0.5, 차 0.35, tank:car:0.3. HEF NMS 하한 0.2",
+  "env": {
+    "ARGUS_SCORE_THRESHOLD": "0.25",
+    "ARGUS_CLASS_SCORE_THRESHOLDS": "0.5,1.01,0.35",
+    "ARGUS_CLASS_SUPPRESS": "tank:car:0.3"
+  }
+}

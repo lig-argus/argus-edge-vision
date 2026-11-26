@@ -1,0 +1,11 @@
+{
+  "path": "assets/models/yolox_s_leaky_v7.3.hef",
+  "sha256": "61784279a273840ec4ae7505c6504912ff2c20e9b2dededa8dcf64c28d0cdae6",
+  "labels": "config/tank_labels.txt",
+  "classes": [
+    "tank"
+  ],
+  "accelerator": "Hailo-8",
+  "runtime_version": "4.23.0",
+  "note": "원래 v7.3 640x640 3채널, INT8 탱크 FN 125 FP 20"
+}
