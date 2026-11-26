@@ -1,0 +1,16 @@
+// vision/status: 탐지 → mavlink_gateway, 1 Hz, 카메라(source)마다 (vision_status.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여)
+module argus {
+    module idl {
+        struct VisionStatus {
+            string source;                 // 카메라 식별 문자열
+            int64 published_monotonic_ns;  // 발행 시각 (CLOCK_MONOTONIC)
+            boolean camera_ok;             // 카메라 프레임을 정상 수신 중
+            boolean inference_ok;          // 이 카메라의 탐지 추론이 정상 동작 중
+            double infer_fps;              // 최근 1 초의 추론 FPS
+            uint32 model_ver;              // 탐지 모델 버전 (docs/spec/video.md 의 모델 표). 모르면 0
+            uint32 image_width;            // 추론 입력 영상의 너비 (px). 모르면 0
+            uint32 image_height;           // 추론 입력 영상의 높이 (px). 모르면 0
+        };
+    };
+};

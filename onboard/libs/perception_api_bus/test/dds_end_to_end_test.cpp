@@ -16,6 +16,7 @@
 #include "argus/core/subscription.hpp"
 #include "argus/perception_api/types.hpp"
 #include "argus/perception_api_bus/bus_tracking_status_subscriber.hpp"
+#include "argus/perception_api_bus/bus_vision_status_subscriber.hpp"
 #include "argus/perception_api_bus/dds_types.hpp"
 #include "argus/perception_api_bus/message_types.hpp"
 #include "argus/perception_api_bus/subscribers.hpp"
@@ -165,6 +166,27 @@ TEST_F(DdsEndToEndTest, TrackingStatusArrives) {
     EXPECT_EQ(received[0].status.generation, 2U);
     EXPECT_TRUE(received[0].status.cmc_valid);
     EXPECT_GE(received[0].arrived_monotonic_ns, sent_after_ns);
+}
+
+TEST_F(DdsEndToEndTest, VisionStatusArrives) {
+    // 탐지의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<perception_api::VisionStatus>(
+        *sender_, protocol::kVisionStatus, kVisionStatusType, kDepth);
+    const auto subscriber = BusVisionStatusSubscriber::create(*receiver_, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    perception_api::VisionStatus status;
+    status.source = "camera-ir";
+    status.inference_ok = true;
+    status.model_ver = 2;
+
+    ASSERT_TRUE(pump_until([&] { publisher->publish(status); },
+                           [&] { return subscriber->latest("camera-ir").has_value(); }));
+
+    const perception_api::ReceivedVisionStatus received =
+        subscriber->latest("camera-ir").value_or(perception_api::ReceivedVisionStatus{});
+    EXPECT_TRUE(received.status.inference_ok);
+    EXPECT_EQ(received.status.model_ver, 2U);
 }
 
 }  // namespace

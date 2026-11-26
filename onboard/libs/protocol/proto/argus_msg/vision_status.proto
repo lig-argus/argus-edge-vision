@@ -1,0 +1,20 @@
+// vision/status: 탐지 → mavlink_gateway, 1 Hz, 카메라(source)마다 (docs/spec/process_interfaces.md 5.1,
+// 5.1.7). ARGUS_SENSOR_STATUS 의 CAMERA_OK, INFERENCE_OK, infer_fps, model_ver, img_w, img_h 보고에
+// 사용한다 (docs/spec/icd.md 3.1, 6.3).
+// C++ 값 타입 perception_api::VisionStatus 에 대응한다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+message VisionStatus {
+  string source = 1;                 // 카메라 식별 문자열 (3장 공통 필드)
+  uint64 seq = 2;                    // 발행마다 1 증가 (3장 공통 필드)
+  int64 published_monotonic_ns = 3;  // 발행 시각 (CLOCK_MONOTONIC)
+  bool camera_ok = 4;                // 카메라 프레임을 정상 수신 중
+  bool inference_ok = 5;             // 이 카메라의 탐지 추론이 정상 동작 중
+  double infer_fps = 6;              // 최근 1 초의 추론 FPS
+  uint32 model_ver = 7;              // 탐지 모델 버전 (docs/spec/video.md 의 모델 표). 모르면 0
+  uint32 image_width = 8;            // 추론 입력 영상의 너비 (px). 모르면 0
+  uint32 image_height = 9;           // 추론 입력 영상의 높이 (px). 모르면 0
+}

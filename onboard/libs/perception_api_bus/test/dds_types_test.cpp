@@ -20,6 +20,7 @@
 #include "argus_msg/tracking_status.hpp"
 #include "argus_msg/tracking_tracks.hpp"
 #include "argus_msg/vision_frame_gray8.hpp"
+#include "argus_msg/vision_status.hpp"
 
 namespace argus::perception_api_bus {
 namespace {
@@ -187,6 +188,20 @@ TEST_F(DdsTypesTest, TrackingStatusKeepsEveryField) {
     status.fps = 14.25;
 
     expect_same_zmq_frames<perception_api::TrackingStatus, idl::TrackingStatus>(status);
+}
+
+TEST_F(DdsTypesTest, VisionStatusKeepsEveryField) {
+    perception_api::VisionStatus status;
+    status.source = "camera-eo";
+    status.published_monotonic_ns = 5'000'000'000;
+    status.camera_ok = true;
+    status.inference_ok = false;
+    status.infer_fps = 9.75;
+    status.model_ver = 3;
+    status.image_width = 640;
+    status.image_height = 480;
+
+    expect_same_zmq_frames<perception_api::VisionStatus, idl::VisionStatus>(status);
 }
 
 }  // namespace

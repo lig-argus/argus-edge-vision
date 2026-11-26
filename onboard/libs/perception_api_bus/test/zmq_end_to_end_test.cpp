@@ -16,6 +16,7 @@
 #include "argus/core_testing/fake_clock.hpp"
 #include "argus/perception_api/types.hpp"
 #include "argus/perception_api_bus/bus_tracking_status_subscriber.hpp"
+#include "argus/perception_api_bus/bus_vision_status_subscriber.hpp"
 #include "argus/perception_api_bus/message_types.hpp"
 #include "argus/perception_api_bus/subscribers.hpp"
 #include "argus/perception_api_bus/zmq_codecs.hpp"
@@ -129,6 +130,28 @@ TEST_F(ZmqEndToEndTest, TrackingStatusArrivesPerCamera) {
         subscriber->latest("ir").value_or(perception_api::ReceivedTrackingStatus{});
     EXPECT_EQ(received.status.generation, 3U);
     EXPECT_DOUBLE_EQ(received.status.fps, 30.0);
+}
+
+TEST_F(ZmqEndToEndTest, VisionStatusArrivesPerCamera) {
+    bus_zmq::ZmqBus bus(context_, poller_, clock_,
+                        {{std::string(protocol::kVisionStatus), endpoint()}}, zmq_codecs());
+    // 탐지의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<perception_api::VisionStatus>(
+        bus, protocol::kVisionStatus, kVisionStatusType, kDepth);
+    const auto subscriber = BusVisionStatusSubscriber::create(bus, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    perception_api::VisionStatus status;
+    status.source = "camera-ir";
+    status.infer_fps = 15.0;
+
+    ASSERT_TRUE(publish_until([&] { publisher->publish(status); },
+                              [&] { return subscriber->latest("camera-ir").has_value(); }));
+
+    EXPECT_DOUBLE_EQ(subscriber->latest("camera-ir")
+                         .value_or(perception_api::ReceivedVisionStatus{})
+                         .status.infer_fps,
+                     15.0);
 }
 
 }  // namespace

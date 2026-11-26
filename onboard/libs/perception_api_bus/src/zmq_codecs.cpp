@@ -12,6 +12,7 @@
 #include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
 #include "argus_msg/vision_frame_gray8.pb.h"
+#include "argus_msg/vision_status.pb.h"
 
 namespace argus::perception_api_bus {
 namespace {
@@ -308,6 +309,39 @@ std::optional<perception_api::TrackingStatus> decode_tracking_status(const Bytes
     return status;
 }
 
+Bytes encode_vision_status(const perception_api::VisionStatus& status, std::uint64_t seq) {
+    msg::VisionStatus message;
+    message.set_source(status.source);
+    message.set_seq(seq);
+    message.set_published_monotonic_ns(status.published_monotonic_ns);
+    message.set_camera_ok(status.camera_ok);
+    message.set_inference_ok(status.inference_ok);
+    message.set_infer_fps(status.infer_fps);
+    message.set_model_ver(status.model_ver);
+    message.set_image_width(status.image_width);
+    message.set_image_height(status.image_height);
+    return to_bytes(message);
+}
+
+std::optional<perception_api::VisionStatus> decode_vision_status(const Bytes& body,
+                                                                 std::uint64_t& seq) {
+    msg::VisionStatus message;
+    if (!parse(body, message)) {
+        return std::nullopt;
+    }
+    seq = message.seq();
+    perception_api::VisionStatus status;
+    status.source = message.source();
+    status.published_monotonic_ns = message.published_monotonic_ns();
+    status.camera_ok = message.camera_ok();
+    status.inference_ok = message.inference_ok();
+    status.infer_fps = message.infer_fps();
+    status.model_ver = message.model_ver();
+    status.image_width = message.image_width();
+    status.image_height = message.image_height();
+    return status;
+}
+
 // 본문만 있는 토픽 메시지. 발행 번호를 본문의 seq 에 싣는다. 바이너리가 있는 메시지는 형식이 맞지
 // 않는 것이다
 template <typename T>
@@ -342,6 +376,8 @@ bus_zmq::ZmqCodecTable zmq_codecs() {
     add_body_only_codec<perception_api::Tracks>(table, encode_tracks, decode_tracks);
     add_body_only_codec<perception_api::TrackingStatus>(table, encode_tracking_status,
                                                         decode_tracking_status);
+    add_body_only_codec<perception_api::VisionStatus>(table, encode_vision_status,
+                                                      decode_vision_status);
     return table;
 }
 

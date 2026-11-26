@@ -1,6 +1,6 @@
 // perception_api_bus 의 메시지(argus/perception_api_bus/message_types.hpp)를 DdsBus 로 주고받기
 // 위한 변환 표. 값 타입을 IDL 타입(onboard/libs/protocol/idl/argus_msg/*.idl)의 표본으로 바꾼다.
-// 규약: docs/spec/process_interfaces.md 3장, 5.1, 5.1.3, 5.1.5
+// 규약: docs/spec/process_interfaces.md 3장, 5.1, 5.1.3, 5.1.5, 5.1.7
 // 사용: Fast DDS 로 통신하는 실행 파일의 main() 이 DdsBus::create() 에 넘긴다. 다른 모듈의 표와
 // 합칠 때는 std::map 의 merge() 를 사용한다. CMake 타깃은 argus::perception_api_bus_dds
 //

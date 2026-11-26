@@ -119,6 +119,7 @@ flowchart LR
 | `perception/observations` | 탐지 → 추적기, 영상 송신부 | 최대 30 FPS | `argus_msg/perception_observations.proto` (5.1.4). 추론한 프레임마다 발행하며 객체가 없으면 `detections` 가 비어 있다. 큐에서 버린 프레임은 발행하지 않으므로 frame_id 는 건너뛸 수 있다 |
 | `tracking/tracks` | 추적기 → 추종 제어, mavlink_gateway, 영상 송신부 | 탐지 결과 프레임마다 (고정 주기 아님) | `argus_msg/tracking_tracks.proto` (5.1.1) |
 | `tracking/status` | 추적기 → mavlink_gateway | 1 Hz | `argus_msg/tracking_status.proto` (5.1.3). generation, fc_fresh, cmc_valid, fps. `ARGUS_SENSOR_STATUS` 보고에 사용 |
+| `vision/status` | 탐지 → mavlink_gateway | 1 Hz, 카메라마다 | `argus_msg/vision_status.proto` (5.1.7). camera_ok, inference_ok, infer_fps, model_ver, image_width, image_height. `ARGUS_SENSOR_STATUS` 보고에 사용. 탐지가 자기 상태를 직접 보고하고 mavlink_gateway 는 MAVLink 로 바꾸기만 한다 |
 | `fc/attitude` | mavlink_gateway → 추적기, 추종 제어 | FC ATTITUDE 메시지마다, **30 Hz 이상** | roll·pitch·yaw(rad), 각속도(rad/s), fc_time_boot_ms, received_monotonic_ns(원수신 시각. 재발행 시각으로 덮어쓰지 않음), fc_time_monotonic_ns(TIMESYNC 변환, 무효면 null), timesync_valid, fc_epoch(3장). 필드 이름은 **[미결 7]** |
 | `fc/state` | mavlink_gateway → 추적기, 추종 제어 | 30 Hz 이상 | local NED 위치·속도(m, m/s), 하향 거리(m), 위치(lat·lon·고도), 비행 모드, armed, in_air, offboard_hover(mavlink_gateway 가 Offboard 상태에서 제자리 유지 setpoint 를 송신 중인지. 기체가 실제로 정지한 상태는 비행 모드가 Hold 이거나, Offboard 이면서 이 값이 true 인 경우). 값(local 위치, 하향 거리, 전역 위치, 비행 모드)마다 그 FC 메시지(LOCAL_POSITION_NED, DISTANCE_SENSOR, GLOBAL_POSITION_INT, HEARTBEAT)의 원수신 시각과 fc_epoch(3장)를 따로 가진다. 추적기가 쓰는 것은 자세·local NED 위치·하향 거리. 필드 이름은 **[미결 7]** |
 | `control/setpoint` | 추종 제어 → mavlink_gateway | 20 Hz | forward·right·down(m/s), yaw_rate(rad/s), seq, valid_until_monotonic_ns |
@@ -126,7 +127,7 @@ flowchart LR
 | `video/stream_info` | 영상 송신부 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/video_stream_info.proto` (5.1.6). 영상 송신부가 실제로 송신하는 스트림의 정보. `VIDEO_STREAM_INFORMATION` 응답에 사용. 늦게 시작한 구독자도 받도록 1 Hz 로 다시 발행한다 |
 | `fc/mode_event` | mavlink_gateway → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
-- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. `video/stream_info` 는 **6376** 영상 송신부 bind. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
+- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개와 `vision/status` 는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. `video/stream_info` 는 **6376** 영상 송신부 bind. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. mavlink_gateway 는 FC 메시지를 그대로 넘긴다.
 - `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 
@@ -232,6 +233,19 @@ flowchart LR
 | `streams[].bitrate_bps` | uint32 | 인코더 설정의 비트 전송률. 모르면 0 |
 | `streams[].hfov_deg` | double | 수평 화각. 모르면 0 |
 | `streams[].running` | bool | 최근 1 초 안에 bus 에서 프레임을 받아 RTSP 서버로 내보냈으면 true. 서버만 열려 있고 프레임이 오지 않으면 false. 1 초는 통제기의 영상 정지 판단(`video.md` 미결 7)과 같은 값 |
+
+#### 5.1.7 `vision/status` 필드 (`vision_status.proto` 의 `VisionStatus`)
+
+탐지가 카메라(`source`)마다 1 Hz 로 발행한다. mavlink_gateway 는 3 s 안에 받은 값만 `ARGUS_SENSOR_STATUS` 에 쓴다 (`docs/spec/icd.md` 3.1, 6.3).
+
+| 필드 | 형 | 뜻 |
+|---|---|---|
+| source, seq, published_monotonic_ns | string, uint64, int64 | 3장 공통 필드와 발행 시각 |
+| camera_ok | bool | 카메라 프레임을 정상 수신 중 → `ARGUS_SENSOR_FLAGS_CAMERA_OK` |
+| inference_ok | bool | 이 카메라의 탐지 추론이 정상 동작 중 → `ARGUS_SENSOR_FLAGS_INFERENCE_OK` |
+| infer_fps | double | 최근 1 초의 추론 FPS → `infer_fps` |
+| model_ver | uint32 | 탐지 모델 버전 (`docs/spec/video.md` 의 모델 표). 모르면 0 → `model_ver` |
+| image_width, image_height | uint32, uint32 | 추론 입력 영상의 크기 (px). 모르면 0 → `img_w`, `img_h` |
 
 ### 5.2 요청-응답 (REQ/REP)
 

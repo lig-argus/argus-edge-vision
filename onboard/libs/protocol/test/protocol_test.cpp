@@ -11,9 +11,19 @@ namespace argus::protocol {
 namespace {
 
 constexpr std::array kAllNames = {
-    kVisionFrameGray8, kVisionOverlayJpeg, kVisionNpuInputJpeg, kPerceptionObservations,
-    kTrackingTracks,   kTrackingStatus,    kFcAttitude,         kFcState,
-    kFcModeEvent,      kControlSetpoint,   kFollowStatus,       kControlModeRequest,
+    kVisionFrameGray8,
+    kVisionOverlayJpeg,
+    kVisionNpuInputJpeg,
+    kVisionStatus,
+    kPerceptionObservations,
+    kTrackingTracks,
+    kTrackingStatus,
+    kFcAttitude,
+    kFcState,
+    kFcModeEvent,
+    kControlSetpoint,
+    kFollowStatus,
+    kControlModeRequest,
     kFollowCommand,
 };
 
@@ -24,11 +34,17 @@ constexpr std::array kAllEndpoints = {
 };
 
 constexpr std::array kAllQueueDepths = {
-    kVisionFrameGray8QueueDepth,   kVisionOverlayJpegQueueDepth,
-    kVisionNpuInputJpegQueueDepth, kPerceptionObservationsQueueDepth,
-    kTrackingTracksQueueDepth,     kTrackingStatusQueueDepth,
-    kFcAttitudeQueueDepth,         kFcStateQueueDepth,
-    kFcModeEventQueueDepth,        kControlSetpointQueueDepth,
+    kVisionFrameGray8QueueDepth,
+    kVisionOverlayJpegQueueDepth,
+    kVisionNpuInputJpegQueueDepth,
+    kVisionStatusQueueDepth,
+    kPerceptionObservationsQueueDepth,
+    kTrackingTracksQueueDepth,
+    kTrackingStatusQueueDepth,
+    kFcAttitudeQueueDepth,
+    kFcStateQueueDepth,
+    kFcModeEventQueueDepth,
+    kControlSetpointQueueDepth,
     kFollowStatusQueueDepth,
 };
 

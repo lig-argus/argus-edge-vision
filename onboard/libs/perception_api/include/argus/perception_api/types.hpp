@@ -169,6 +169,27 @@ struct TrackingStatus {
     double fps = 0.0;
 };
 
+// 탐지 상태 (`vision/status`, 카메라마다 1 Hz). ARGUS_SENSOR_STATUS 보고에 쓴다
+// (process_interfaces.md 5.1.7)
+struct VisionStatus {
+    std::string source;
+    std::int64_t published_monotonic_ns = 0;  // 발행 시각 (발행자의 CLOCK_MONOTONIC)
+    bool camera_ok = false;                   // 카메라 프레임을 정상 수신 중
+    bool inference_ok = false;                // 이 카메라의 탐지 추론이 정상 동작 중
+    double infer_fps = 0.0;                   // 최근 1 초의 추론 FPS
+    std::uint32_t model_ver = 0;              // 탐지 모델 버전 (video.md 의 모델 표). 모르면 0
+    std::uint32_t image_width = 0;            // 추론 입력 영상의 너비 (px). 모르면 0
+    std::uint32_t image_height = 0;           // 추론 입력 영상의 높이 (px). 모르면 0
+};
+
+// 받은 `vision/status` 와 받은 시각 (IVisionStatusSource 가 전달)
+struct ReceivedVisionStatus {
+    VisionStatus status;
+
+    // 구현이 이 값을 받은 시각 (RPi monotonic clock). 값이 얼마나 오래됐는지는 이 시각으로 판단한다
+    std::int64_t arrived_monotonic_ns = 0;
+};
+
 // 받은 `tracking/status` 와 받은 시각 (ITrackingStatusSource, ITrackingStatusEvents 가 전달)
 struct ReceivedTrackingStatus {
     TrackingStatus status;

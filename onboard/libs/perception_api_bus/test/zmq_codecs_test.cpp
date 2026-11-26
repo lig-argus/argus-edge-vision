@@ -14,6 +14,7 @@
 #include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
 #include "argus_msg/vision_frame_gray8.pb.h"
+#include "argus_msg/vision_status.pb.h"
 
 namespace argus::perception_api_bus {
 namespace {
@@ -196,6 +197,8 @@ TEST_F(ZmqCodecsTest, MessagesWithBinaryOrBrokenBodyAreRejected) {
     EXPECT_FALSE(decode<perception_api::Tracks>(body, Bytes{1}).has_value());
     EXPECT_FALSE(decode<perception_api::TrackingStatus>(body, Bytes{1}).has_value());
     EXPECT_FALSE(decode<perception_api::TrackingStatus>(broken, Bytes{}).has_value());
+    EXPECT_FALSE(decode<perception_api::VisionStatus>(body, Bytes{1}).has_value());
+    EXPECT_FALSE(decode<perception_api::VisionStatus>(broken, Bytes{}).has_value());
     EXPECT_FALSE(decode<perception_api::Observations>(broken, Bytes{}).has_value());
     EXPECT_FALSE(decode<perception_api::Frame>(broken, Bytes{}).has_value());
 }
@@ -289,6 +292,37 @@ TEST_F(ZmqCodecsTest, TrackingStatusRoundTripKeepsEveryFieldAndSequence) {
     EXPECT_TRUE(value.fc_fresh);
     EXPECT_TRUE(value.cmc_valid);
     EXPECT_DOUBLE_EQ(value.fps, 29.5);
+}
+
+TEST_F(ZmqCodecsTest, VisionStatusRoundTripKeepsEveryFieldAndSequence) {
+    perception_api::VisionStatus status;
+    status.source = "camera-ir";
+    status.published_monotonic_ns = 5'000'000'000;
+    status.camera_ok = true;
+    status.inference_ok = true;
+    status.infer_fps = 14.5;
+    status.model_ver = 7;
+    status.image_width = 640;
+    status.image_height = 512;
+    Bytes body;
+    Bytes binary;
+    ASSERT_TRUE(encode(status, 4, body, binary));
+    EXPECT_TRUE(binary.empty());
+
+    std::uint64_t sequence = 0;
+    const perception_api::VisionStatus value =
+        decode<perception_api::VisionStatus>(body, binary, &sequence)
+            .value_or(perception_api::VisionStatus{});
+
+    EXPECT_EQ(sequence, 4U);
+    EXPECT_EQ(value.source, "camera-ir");
+    EXPECT_EQ(value.published_monotonic_ns, 5'000'000'000);
+    EXPECT_TRUE(value.camera_ok);
+    EXPECT_TRUE(value.inference_ok);
+    EXPECT_DOUBLE_EQ(value.infer_fps, 14.5);
+    EXPECT_EQ(value.model_ver, 7U);
+    EXPECT_EQ(value.image_width, 640U);
+    EXPECT_EQ(value.image_height, 512U);
 }
 
 }  // namespace
