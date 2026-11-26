@@ -76,8 +76,8 @@ bus_dds::DdsTypeTable with_unspecified_mode_action() {
 class DdsEndToEndTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        sender_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types());
-        receiver_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types());
+        sender_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types(), {});
+        receiver_ = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain, dds_types(), {});
         ASSERT_NE(sender_, nullptr);
         ASSERT_NE(receiver_, nullptr);
     }
@@ -284,7 +284,7 @@ TEST_F(DdsEndToEndTest, FollowCommandReachesControlAndResultReturns) {
 // 통과하지 않도록 요청을 3번 보낸다 (3번의 timeout 동안 발견이 끝난다)
 TEST_F(DdsEndToEndTest, FlightModeRequestThatCannotBeConvertedGetsNoReply) {
     const auto broken_sender = bus_dds::DdsBus::create(poller_, poller_, clock_, kTestDomain,
-                                                       with_unspecified_mode_action());
+                                                       with_unspecified_mode_action(), {});
     ASSERT_NE(broken_sender, nullptr);
     vehicle_api_testing::FakeFlightModeControl control;
     const auto server = BusFlightModeControlServer::create(*receiver_, control);

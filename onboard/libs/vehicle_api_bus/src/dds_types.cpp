@@ -1,5 +1,9 @@
 #include "argus/vehicle_api_bus/dds_types.hpp"
 
+#include <chrono>
+#include <string>
+
+#include "argus/protocol/topics.hpp"
 #include "argus/vehicle_api/types.hpp"
 #include "argus/vehicle_api_bus/message_types.hpp"
 #include "argus_msg/control_mode_requestPubSubTypes.hpp"
@@ -54,6 +58,16 @@ bus_dds::DdsTypeTable dds_types() {
     add_type<vehicle_api::FollowResult, idl::FollowResultPubSubType>(table, &to_idl_follow_result,
                                                                      &from_idl_follow_result);
     return table;
+}
+
+bus_dds::DdsTopicQosTable dds_topic_qos() {
+    using std::chrono::milliseconds;
+    using std::chrono::seconds;
+    return {
+        {std::string(protocol::kFcAttitude), {milliseconds{100}}},
+        {std::string(protocol::kFcState), {milliseconds{100}}},
+        {std::string(protocol::kFollowStatus), {seconds{3}}},
+    };
 }
 
 }  // namespace argus::vehicle_api_bus

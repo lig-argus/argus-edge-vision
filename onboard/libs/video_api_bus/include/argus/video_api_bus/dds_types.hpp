@@ -11,11 +11,16 @@
 #ifndef ARGUS_VIDEO_API_BUS_DDS_TYPES_HPP_
 #define ARGUS_VIDEO_API_BUS_DDS_TYPES_HPP_
 
+#include "argus/bus_dds/dds_topic_qos.hpp"
 #include "argus/bus_dds/dds_type_table.hpp"
 
 namespace argus::video_api_bus {
 
 bus_dds::DdsTypeTable dds_types();
+
+// 토픽별 발행자 QoS (process_interfaces.md 3장). video/stream_info: 1 Hz + 변경 시 → Deadline 3 s
+// (주기의 3배)
+bus_dds::DdsTopicQosTable dds_topic_qos();
 
 }  // namespace argus::video_api_bus
 

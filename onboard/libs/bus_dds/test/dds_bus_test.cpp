@@ -33,8 +33,8 @@ constexpr milliseconds kTimeout{2000};
 class DdsBusTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        sender_ = DdsBus::create(poller_, poller_, clock_, kTestDomain, test_types());
-        receiver_ = DdsBus::create(poller_, poller_, clock_, kTestDomain, test_types());
+        sender_ = DdsBus::create(poller_, poller_, clock_, kTestDomain, test_types(), {});
+        receiver_ = DdsBus::create(poller_, poller_, clock_, kTestDomain, test_types(), {});
         ASSERT_NE(sender_, nullptr);
         ASSERT_NE(receiver_, nullptr);
     }
