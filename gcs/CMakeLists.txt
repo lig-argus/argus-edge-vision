@@ -49,6 +49,10 @@ add_subdirectory(net)
 add_subdirectory(link)
 add_subdirectory(theme)
 add_subdirectory(brand)
+add_subdirectory(rtsp)
+add_subdirectory(rtsp_gstreamer)
+add_subdirectory(video)
+add_subdirectory(video_rtsp)
 add_subdirectory(app)
 
 # 모듈의 include 가 선언한 의존을 넘지 않는지 확인한다

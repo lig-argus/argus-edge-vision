@@ -119,6 +119,10 @@ gcs/
   theme/                        # 디자인 토큰(색, 크기)과 움직임 값
   brand/                        # 실행 아이콘 그리기
   resources/                    # 글꼴, 아이콘, LIG 워드마크, FC 비행 환경 파라미터 묶음 (resources/README.md)
+  rtsp/                         # RTSP 영상의 메타데이터 해석, 프레임 동기화, IRtspReceiver
+  rtsp_gstreamer/               # GstRtspReceiver (GStreamer 로 RTSP 수신, 영상 해독)
+  video/                        # IVideoSource (화면, 녹화가 보는 영상 출처)
+  video_rtsp/                   # RtspVideoSource (RTSP 영상 출처)
   app/                          # 실행 파일. 구체 구현을 만들어 다른 모듈에 넘긴다
 ```
 
