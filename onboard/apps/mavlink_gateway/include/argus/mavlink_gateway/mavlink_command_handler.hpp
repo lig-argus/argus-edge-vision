@@ -2,7 +2,7 @@
 // 규약: docs/spec/icd.md 4.1 (COMMAND_ACK, 재전송),
 //      4.2 (TRACK_START, TRACK_STOP, SCAN_START), 4.4
 // 구현: RequestOperatorControlHandler, RequestMessageHandler,
-//      TrackStartHandler, TrackStopHandler, ScanStartHandler (다음 작업)
+//      TrackStartHandler, TrackStopHandler, ScanStartHandler
 // 사용: MavlinkCommandReceiver 가 MAV_CMD 번호로 handler 를 찾아 부른다
 #ifndef ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_
 #define ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_

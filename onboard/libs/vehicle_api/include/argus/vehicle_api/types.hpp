@@ -187,8 +187,9 @@ struct TrackTarget {
     std::string label;
 };
 
-// Scan 요청. 비어 있는 항목은 추종 제어 설정의 기본값을 쓴다.
-// 메시지 및 MAVLink 에서는 NaN 으로 표현하며, NaN 과의 변환은 bus 어댑터(vehicle_api_bus)가 한다
+// Scan 요청. mavlink_gateway 는 통제기가 NaN 으로 보낸 항목을 자기 기본값으로 보완해 모두 넣어
+// 보낸다 (docs/spec/icd.md 4.2). 비어 있는 항목은 추종 제어 설정의 기본값을 사용한다.
+// 메시지에서는 NaN 으로 표현하며, NaN 과의 변환은 bus 어댑터(vehicle_api_bus)가 한다
 struct ScanRequest {
     std::optional<double> yaw_range_rad;
     std::optional<double> yaw_rate_rad_s;  // 양수 = 시계 방향

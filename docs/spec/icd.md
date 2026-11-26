@@ -160,7 +160,7 @@ flowchart LR
 - `COMMAND_ACK.result` 의 뜻: ACCEPTED 실행함 / IN_PROGRESS 진행 중(뒤에 최종 결과가 한 번 더 온다) / DENIED 값이 잘못됨(재시도해도 같음) / TEMPORARILY_REJECTED 상태 때문에 지금은 안 됨(나중에 가능) / FAILED 시도했으나 실패 / CANCELLED 진행 중에 받은 TRACK_STOP 으로 취소됨 / UNSUPPORTED 모르는 명령. 4.2 의 조건 중 상태 조건(비행 중, FOLLOWABLE, `mission_state`, FC 모드)은 TEMPORARILY_REJECTED, 값 조건(트랙 없음, generation 불일치, 매개변수 범위)은 DENIED 이다. 제어권 없음은 제어권을 얻으면 같은 명령이 성공하므로 상태 조건과 같이 TEMPORARILY_REJECTED 로 답하고, 원인을 구분할 수 있도록 STATUSTEXT "제어권 없음" 을 함께 보낸다. MAVLink 의 `MAV_RESULT_NOT_IN_CONTROL` 은 사용하지 않는다 (MAVLink 정의가 work in progress 로 표시한 값이고 PX4, ArduPilot, QGroundControl 의 배포 버전이 구현하지 않는다. 아래 `COMMAND_CANCEL` 과 같은 이유).
 - mavlink_gateway 는 DENIED, FAILED 와 제어권 없음의 TEMPORARILY_REJECTED 때 이유를 `STATUSTEXT` 로 같이 보낸다. FC 로 전달하지 않고 직접 답하는 경우(5.2)에는 상태 조건의 TEMPORARILY_REJECTED 에도 이유를 보낸다 (예: "setpoint 송신 중", "착륙 잠금", "조종사 조종 중", "FC 상태 모름").
 - 명령 매개변수는 float 다. 정수 값(track_id, generation 등)은 2^24−1 = 16,777,215 까지만 정확하게 전달되므로, 그 범위를 넘는 값은 쓰지 않는다.
-- mavlink_gateway 는 아래 명령의 제어권·매개변수 범위 검사를 하고, 표적 존재·상태·FC 조건 검사와 실행은 추종 제어가 한다 (`docs/spec/process_interfaces.md`).
+- 4.2 명령의 검사 분담: mavlink_gateway 는 ① 제어권, ③ 센서의 FOLLOWABLE, ④ 최신 추적 결과의 표적, 매개변수 범위를 검사한다. 추종 제어는 ② FC armed 이고 비행 중, ⑤ `mission_state`, ⑥ 기체의 정지 상태를 검사하고 명령을 실행한다 (`docs/spec/process_interfaces.md` 5.2). DENIED 조건(④, 매개변수 범위)을 모두 mavlink_gateway 가 검사하므로, 추종 제어의 거부(`follow/result` 의 REJECTED)는 TEMPORARILY_REJECTED 로 전달한다. 추종 제어가 1 초 안에 응답하지 않으면 FAILED, 수락 뒤 `follow/status` 를 3 초 동안 받지 못하면 FAILED 로 답한다.
 
 ### 4.2 추종·Scan 명령 (mavlink_gateway 가 받는다)
 

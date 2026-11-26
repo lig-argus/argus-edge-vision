@@ -32,31 +32,38 @@ add_library(argus_mavlink_gateway_core STATIC
     src/fc_telemetry_relay.cpp
     src/fc_telemetry_receiver.cpp
     src/follow_activity.cpp
+    src/follow_command_policy.cpp
+    src/follow_command_tracker.cpp
     src/gcs_fc_forwarder.cpp
     src/gcs_forward_policy.cpp
     src/gcs_link_monitor.cpp
     src/gcs_message_encoding.cpp
     src/gcs_registry.cpp
     src/heartbeat_sender.cpp
+    src/latest_tracks.cpp
     src/mavlink_command_receiver.cpp
     src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
     src/request_message_handler.cpp
     src/request_operator_control_handler.cpp
+    src/scan_start_handler.cpp
     src/sensor_status_policy.cpp
     src/setpoint_encoding.cpp
     src/sysfs_cpu_temperature.cpp
     src/time_sync.cpp
+    src/track_start_handler.cpp
+    src/track_stop_handler.cpp
     src/udp_gcs_link.cpp
     src/udp_mavlink_connection.cpp
     src/udp_socket.cpp
     src/video_stream_information.cpp)
 add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
 # FcGateway 가 bus 인터페이스와 vehicle_api 의 bus 어댑터를 사용한다. VIDEO_STREAM_INFORMATION 은
-# video_api 의 조회 인터페이스로 값을 읽는다. 통신 구현(bus_zmq)은 링크하지 않는다 (실행 파일만 링크)
+# video_api 의 조회 인터페이스로 값을 읽는다. LatestTracks 가 perception_api 의 bus 어댑터로
+# tracking/tracks 를 구독한다. 통신 구현(bus_zmq)은 링크하지 않는다 (실행 파일만 링크)
 target_link_libraries(argus_mavlink_gateway_core
     PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus::bus argus::vehicle_api_bus
-           argus::video_api argus::perception_api
+           argus::video_api argus::perception_api argus::perception_api_bus
            argus_onboard_warnings)
 
 # 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
@@ -154,3 +161,18 @@ argus_add_test(mavlink_gateway_gcs_fc_forwarder_test SOURCES test/gcs_fc_forward
                LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
 argus_add_test(mavlink_gateway_fc_telemetry_relay_test SOURCES test/fc_telemetry_relay_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)
+
+# D 단계: 추종 명령(TRACK_START, TRACK_STOP, SCAN_START)
+argus_add_test(mavlink_gateway_latest_tracks_test SOURCES test/latest_tracks_test.cpp
+               LIBS argus::mavlink_gateway_core argus::bus_testing argus::protocol_names)
+argus_add_test(mavlink_gateway_follow_command_policy_test
+               SOURCES test/follow_command_policy_test.cpp LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_follow_command_tracker_test
+               SOURCES test/follow_command_tracker_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_track_start_handler_test SOURCES test/track_start_handler_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_scan_start_handler_test SOURCES test/scan_start_handler_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_track_stop_handler_test SOURCES test/track_stop_handler_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)

@@ -2,8 +2,10 @@
 // 규약: docs/design/uml/class_mavlink_gateway.md 2절, 4절
 // 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계를 생성하는 유일한 곳이다. 그 밖의 코드는
 // 인터페이스로만 사용한다. 구성은 FC 쪽(FcGateway)과 통제기 쪽(통제기 연결, 제어권, 명령 수신, 두절
-// 감시, 요청 메시지 응답, FC 전달)이다. 설정 값은 코드의 기본값(UdpMavlinkConfig, UdpGcsConfig,
-// protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다 인자
+// 감시, 요청 메시지 응답, FC 전달, 상태 송신, 추종 명령)이다. 설정 값은 코드의 기본값
+// (UdpMavlinkConfig, UdpGcsConfig, protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을
+// 사용한다.
+// 인자
 // - --bus dds|zmq: 통신 구현. 기본값 dds. ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수
 // 있다
 // - --dds-domain N: DDS domain. 기본값 protocol::kDefaultDdsDomain
@@ -37,19 +39,24 @@
 #include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/fc_gateway.hpp"
 #include "argus/mavlink_gateway/fc_telemetry_relay.hpp"
+#include "argus/mavlink_gateway/follow_command_tracker.hpp"
 #include "argus/mavlink_gateway/gcs_fc_forwarder.hpp"
 #include "argus/mavlink_gateway/gcs_link_monitor.hpp"
 #include "argus/mavlink_gateway/gcs_registry.hpp"
 #include "argus/mavlink_gateway/health_state.hpp"
 #include "argus/mavlink_gateway/heartbeat_sender.hpp"
 #include "argus/mavlink_gateway/landing_lock_state.hpp"
+#include "argus/mavlink_gateway/latest_tracks.hpp"
 #include "argus/mavlink_gateway/mavlink_command_receiver.hpp"
 #include "argus/mavlink_gateway/rc_override_state.hpp"
 #include "argus/mavlink_gateway/request_header_factory.hpp"
 #include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
+#include "argus/mavlink_gateway/scan_start_handler.hpp"
 #include "argus/mavlink_gateway/sensor_source_map.hpp"
 #include "argus/mavlink_gateway/sysfs_cpu_temperature.hpp"
+#include "argus/mavlink_gateway/track_start_handler.hpp"
+#include "argus/mavlink_gateway/track_stop_handler.hpp"
 #include "argus/mavlink_gateway/udp_gcs_link.hpp"
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
 #include "argus/mavlink_gateway/video_stream_information.hpp"
@@ -197,6 +204,7 @@ bus_zmq::ZmqEndpointTable endpoints() {
         {std::string(protocol::kVideoStreamInfo),
          std::string(protocol::kDefaultVideoStreamInfoEndpoint)},
         {std::string(protocol::kTrackingStatus), std::string(protocol::kDefaultTrackingEndpoint)},
+        {std::string(protocol::kTrackingTracks), std::string(protocol::kDefaultTrackingEndpoint)},
         {std::string(protocol::kVisionStatus), std::string(protocol::kDefaultVisionEndpoint)},
     };
 }
@@ -271,11 +279,47 @@ struct GcsSide {
     std::unique_ptr<argus::perception_api_bus::BusVisionStatusSubscriber> vision_status;
     mavlink_gateway::SensorSourceMap sensors = mavlink_gateway::SensorSourceMap::default_map();
     std::unique_ptr<mavlink_gateway::ArgusSensorStatusReporter> sensor_status_reporter;
+    std::unique_ptr<mavlink_gateway::LatestTracks> latest_tracks;
+    std::unique_ptr<mavlink_gateway::FollowCommandTracker> follow_tracker;
+    std::unique_ptr<mavlink_gateway::TrackStartHandler> track_start_handler;
+    std::unique_ptr<mavlink_gateway::TrackStopHandler> track_stop_handler;
+    std::unique_ptr<mavlink_gateway::ScanStartHandler> scan_start_handler;
     core::PeriodicTimer receiver_timer;
     core::PeriodicTimer monitor_timer;
     core::PeriodicTimer status_timer;
     core::PeriodicTimer sensor_status_timer;
+    core::PeriodicTimer follow_tracker_timer;
 };
+
+// 추종 명령(TRACK_START, TRACK_STOP, SCAN_START)의 handler 를 만들어 등록한다. create_gcs_side 가
+// 통제기 쪽의 나머지 객체를 만든 뒤 부른다. tracking/tracks 구독자를 만들지 못하면 false
+bool add_follow_commands(GcsSide& gcs, argus::bus::IBus& bus, const core::IClock& clock,
+                         core::EventLoop& loop, mavlink_gateway::FcGateway& fc) {
+    gcs.latest_tracks = mavlink_gateway::LatestTracks::create(bus);
+    if (!gcs.latest_tracks) {
+        return false;
+    }
+    gcs.follow_tracker = std::make_unique<mavlink_gateway::FollowCommandTracker>(
+        clock, *gcs.follow_status, *gcs.follow_status, gcs.request_headers->session_id());
+    gcs.track_start_handler = std::make_unique<mavlink_gateway::TrackStartHandler>(
+        mavlink_gateway::TrackStartHandlerInputs{
+            clock, gcs.sensors, *gcs.tracking_status, *gcs.vision_status, *gcs.latest_tracks,
+            *gcs.request_headers, *gcs.follow_control, *gcs.follow_tracker});
+    gcs.track_stop_handler =
+        std::make_unique<mavlink_gateway::TrackStopHandler>(mavlink_gateway::TrackStopHandlerInputs{
+            clock, fc.lock_release(), *gcs.follow_status, *gcs.request_headers, *gcs.follow_control,
+            *gcs.follow_tracker});
+    gcs.scan_start_handler =
+        std::make_unique<mavlink_gateway::ScanStartHandler>(mavlink_gateway::ScanStartHandlerInputs{
+            *gcs.request_headers, *gcs.follow_control, *gcs.follow_tracker});
+    gcs.receiver->add_handler(*gcs.track_start_handler, mavlink_gateway::TrackStartHandler::kRules);
+    gcs.receiver->add_handler(*gcs.track_stop_handler, mavlink_gateway::TrackStopHandler::kRules);
+    gcs.receiver->add_handler(*gcs.scan_start_handler, mavlink_gateway::ScanStartHandler::kRules);
+    mavlink_gateway::FollowCommandTracker* const follow_tracker = gcs.follow_tracker.get();
+    gcs.follow_tracker_timer = loop.add_periodic(mavlink_gateway::kFollowCommandTrackerTickPeriod,
+                                                 [follow_tracker] { follow_tracker->tick(); });
+    return true;
+}
 
 // 통제기 쪽 객체를 만들어 연결하고 주기 작업을 등록한다. 하나라도 만들지 못하면 false (원인은
 // UdpGcsLink 와 bus 구현이 기록한다)
@@ -355,7 +399,7 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     gcs.sensor_status_timer =
         loop.add_periodic(mavlink_gateway::kSensorStatusCheckPeriod,
                           [sensor_status_reporter] { sensor_status_reporter->tick(); });
-    return true;
+    return add_follow_commands(gcs, bus, clock, loop, fc);
 }
 
 std::int32_t run(const Options& options) {
