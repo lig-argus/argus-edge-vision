@@ -1,8 +1,7 @@
 // mavlink_gateway 가 추종 제어에 보내는 요청(follow/command)의 공통 필드 생성
 // 규약: docs/spec/process_interfaces.md 3장 (요청 공통 필드: command_id, session_id, seq, fc_epoch,
 //      valid_until_monotonic_ns)
-// 사용: GcsLinkMonitor (두절 정지), TrackStartHandler, TrackStopHandler, ScanStartHandler (다음
-// 작업)
+// 사용: GcsLinkMonitor (두절 정지), TrackStartHandler, TrackStopHandler, ScanStartHandler
 #ifndef ARGUS_ONBOARD_REQUEST_HEADER_FACTORY_HPP_
 #define ARGUS_ONBOARD_REQUEST_HEADER_FACTORY_HPP_
 

@@ -385,6 +385,21 @@ classDiagram
     class TrackStartHandler
     class TrackStopHandler
     class ScanStartHandler
+    class follow_command_policy {
+        <<function>>
+        +parse_track_start(command) TrackStartParams 또는 거부
+        +select_track_target(TrackSelection) TrackTarget 또는 거부
+        +parse_scan_start(command) ScanRequest 또는 거부
+        +follow_stop_needed(follow/status, now) bool
+    }
+    class FollowCommandTracker {
+        +track(command_id, scan 범위, CommandResponder, 요청 함수)
+        +tick() 1 s
+    }
+    class ILatestTracks {
+        <<interface>>
+        +latest(source) Tracks
+    }
     class RequestMessageHandler {
         -responders map~message id, 응답 함수~
     }
@@ -493,11 +508,20 @@ classDiagram
     IMavlinkCommandHandler <|.. RequestMessageHandler
     IMavlinkCommandHandler <|.. EndRcOverrideHandler
     RequestOperatorControlHandler ..> IControlRequests
-    TrackStartHandler ..> LatestTracks : 조건 ④
+    ILatestTracks <|.. LatestTracks
+    TrackStartHandler ..> ILatestTracks : 조건 ④
+    TrackStartHandler ..> ITrackingStatusSource : 조건 ③
+    TrackStartHandler ..> follow_command_policy
     TrackStartHandler ..> IFollowControlClient
     TrackStartHandler ..> RequestHeaderFactory
+    TrackStartHandler ..> FollowCommandTracker
+    TrackStopHandler ..> IFcCommandLockRelease : Locked 해제
     TrackStopHandler ..> IFollowControlClient
+    TrackStopHandler ..> FollowCommandTracker
+    ScanStartHandler ..> follow_command_policy
     ScanStartHandler ..> IFollowControlClient
+    ScanStartHandler ..> FollowCommandTracker
+    FollowCommandTracker ..> IFollowStatusEvents : command_results
     RequestMessageHandler ..> IVideoStreamInfoSource : 269
     EndRcOverrideHandler ..> rc_override_policy : 복귀 조건
     EndRcOverrideHandler ..> IStopRequester : 제자리 유지
@@ -557,8 +581,9 @@ classDiagram
 | `ArgusSensorStatusReporter`, `sensor_status_policy` (함수), `SensorSourceMap` | ARGUS_SENSOR_STATUS 를 `SensorSourceMap` 의 센서마다 1 Hz 와 그 센서의 `flags` 가 바뀔 때 송신 (받은 값이 없어도 flags 0 으로 송신). 값은 `sensor_status_policy` 가 `vision/status`(`IVisionStatusSource`: CAMERA_OK, INFERENCE_OK, infer_fps, model_ver, img_w, img_h)와 `tracking/status`(`ITrackingStatusSource`: TRACKING)로 구성하며 3 s 안에 받은 값만 쓴다. FOLLOWABLE 은 TRACKING 이고 `SensorSourceMap` 이 허용할 때. `SensorSourceMap` 은 `source` 문자열 ↔ `ARGUS_SENSOR` 대응과 FOLLOWABLE 허용(기본값 `camera-ir` → IR, `camera-eo` → EO, 둘 다 허용. 설정 파일 전까지 코드 기본값) | C | icd 3.1, 6.3, pi 5.1.3, 5.1.7 |
 | `IFollowStatusSource`, `IFollowStatusEvents`, `BusFollowStatusSubscriber` | `follow/status` 를 구독해 최신 값과 받은 시각(mavlink_gateway 의 시계) 보관(`IFollowStatusSource::latest()`), 받을 때마다 handler 호출(`IFollowStatusEvents::subscribe()`). 조회와 알림을 인터페이스 둘로 나눠, 최신 값만 조회하는 `ControlAuthority`, `GcsLinkMonitor`(추종, 스캔 중 판단)는 알림에 의존하지 않는다 (`vehicle_api`, `vehicle_api_bus` 모듈) | B | pi 5.1.2 |
 | `ITrackingStatusSource`, `ITrackingStatusEvents`, `BusTrackingStatusSubscriber`, `IVisionStatusSource`, `BusVisionStatusSubscriber` | `tracking/status`, `vision/status` 를 구독해 카메라(`source`)마다 최신 값과 받은 시각 보관 (`perception_api`, `perception_api_bus` 모듈) | C | pi 5.1.3, 5.1.7 |
-| `TrackStartHandler`, `TrackStopHandler`, `ScanStartHandler` | 조건 ③④⑤ 와 범위 검사 → DENIED, TEMPORARILY_REJECTED 또는 `IFollowControlClient`(`BusFollowControlClient`) 호출. MAVLink param 변환 함수와 조건 판정 함수를 나눈다. IN_PROGRESS 의 `progress` 는 `follow/status` 의 스캔 진행 | D | icd 4.2 |
-| `LatestTracks` | 센서별 최신 `tracking/tracks` 보관 (최신 기준 시간은 아키텍처 문서 2.3) | D | icd 4.2 ④ |
+| `TrackStartHandler`, `TrackStopHandler`, `ScanStartHandler`, `follow_command_policy` (함수) | 검사 분담(icd 4.1)의 mavlink_gateway 쪽 검사 뒤 `IFollowControlClient`(`BusFollowControlClient`)로 요청한다. MAVLink param 변환, 범위 검사, 조건 ③④ 판정은 `follow_command_policy` 가 하고 handler 는 입력을 모아 부른다. TRACK_START: 범위 밖, ④ 불충족 → DENIED, 센서 설정 없음, ③ 불충족 → TEMPORARILY_REJECTED, 통과하면 최신 트랙의 label 을 넣어 track_start. SCAN_START: NaN 은 기본값(2π, 10 deg/s, 60 s)으로 보완, 범위 밖 → DENIED. TRACK_STOP: `IFcCommandLockRelease` 로 Locked 해제, `mission_state` 가 IDLE, HOLD_WAIT 이외이면(MANUAL, FAULT 의 복구 포함) stop(Operator), 그 밖에는 즉시 ACCEPTED. ②⑤⑥ 은 추종 제어가 검사한다 | D | icd 4.1, 4.2, 6장 |
+| `FollowCommandTracker` | 세 handler 의 요청 결과를 COMMAND_ACK 로 옮긴다. IN_PROGRESS 송신 뒤 `follow/command` 응답을 1 s 대기(없으면 FAILED). REJECTED → TEMPORARILY_REJECTED, IN_PROGRESS → `follow/status` 의 `command_results` 에서 같은 command_id 의 최종 결과 대기(SUCCEEDED → ACCEPTED, FAILED → FAILED). `onboard_session` 이 자기 세션인 결과만 사용한다. 최종 결과 대기 중 `follow/status` 3 s 두절 → FAILED. SCAN_START 의 `progress` 는 `follow/status` 의 스캔 진행 | D | icd 4.1, 4.2, pi 5.1.2, 5.2.1 |
+| `ILatestTracks`, `LatestTracks` | 카메라(`source`)별 최신 `tracking/tracks` 보관. 최신 판정(명령 수신 시각 기준 250 ms, 아키텍처 문서 2.3)은 `follow_command_policy` 가 한다 | D | icd 4.2 ④ |
 | `gcs_forward_policy` (함수) | 통제기가 FC 로 보낸 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(MAV_RESULT 와 STATUSTEXT 이유), 응답 없이 폐기, 정지(HOLD). 입력은 `ForwardObservation`(보낸 통제기의 제어권, FC 상태를 아는지와 모드, armed, setpoint 송신 또는 Offboard 진입 대기, 추종 또는 스캔 중, 진행 중인 명령, 착륙 잠금, 조종사 개입 중)와 `GcsMessageRequest`(메시지 종류, MAV_CMD, param1~3). icd 5.2 표를 이 함수 하나에 둔다. DO_SET_MODE 의 요청 모드는 `set_mode_request()` 로 읽는다 | E | icd 4.1, 5.2 |
 | `GcsFcForwarder` | 통제기의 HEARTBEAT, COMMAND_LONG, COMMAND_INT, MANUAL_CONTROL, PARAM_REQUEST_READ, PARAM_SET 중 FC 가 대상인 것을 받아 `gcs_forward_policy` 의 결과를 실행한다: 받은 그대로(통제기의 sysid, compid 유지) FC 로 전달(`IMavlinkConnection`), COMMAND_ACK 와 STATUSTEXT 직접 응답(송신 compid 195, 보낸 통제기에만), HOLD 의 `IStopRequester` 호출. FC 의 COMMAND_ACK 중 대상이 통제기인 것을 그 통제기의 마지막 주소(`IGcsPresence`)로만 전달한다. 전달한 명령과 FC 의 응답을 `IForwardedCommandEvents` 로 알린다 | E | icd 4.1, 4.3, 5.2 |
 | `IForwardedCommandEvents`, `ForwardedCommandEvent` | FC 로 전달한 COMMAND_LONG 마다 보낸 직후 Forwarded, 대상이 통제기인 FC 의 COMMAND_ACK 마다 Answered 를 알린다. 값은 보낸 통제기, MAV_CMD, 단계, FC 의 결과(Answered), 요청 모드(DO_SET_MODE). `LandingLock` 은 NAV_LAND 로 잠금의 시작과 해제를, `RcOverrideMonitor` 는 DO_SET_MODE 로 통제기의 모드 변경을 안다. 전달하는 쪽이 받는 쪽을 모르도록 인터페이스로 둔다 (`IFollowStatusEvents` 와 같은 모양) | E | icd 5.3, 5.4 |

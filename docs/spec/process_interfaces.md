@@ -254,8 +254,8 @@ flowchart LR
 | `follow/command` | mavlink_gateway → 추종 제어 | action(`track_start`·`stop`·`search`. search = Scan), track_start 는 sensor·generation·class_id·track_id·label(mavlink_gateway 가 최신 `tracking/tracks` 에서 보완), search 는 yaw 범위·yaw 속도·제한 시간(NaN 은 기본값), stop 은 reason(운용자·링크 두절·mavlink_gateway 판단) | `follow/result` (5.2.1). 이후 진행은 `follow/status` 의 command_results |
 | `control/mode_request` | 추종 제어 → mavlink_gateway | mode(OFFBOARD·HOLD) | 수락·거부. 실제 전환 완료는 `fc/mode_event` |
 
-- 엔드포인트(기본값): `control/mode_request` 는 mavlink_gateway RPC REP **6371** (mavlink_gateway bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 필드와 두 요청의 타임아웃은 추적 및 추종 구현과 함께 고정한다 **[미결 1]**.
-- 검사 분담: 제어권·매개변수 범위 검사는 mavlink_gateway, 표적 존재·상태·FC 조건 검사는 추종 제어. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
+- 엔드포인트(기본값): `control/mode_request` 는 mavlink_gateway RPC REP **6371** (mavlink_gateway bind), `follow/command` 는 추종 명령 REP **6373** (추종 제어 bind). `control/mode_request` 의 필드와 타임아웃은 추적 및 추종 구현과 함께 고정한다 **[미결 1]**. `follow/command` 의 응답 대기 시간은 1 s 이고, 요청의 `valid_until_monotonic_ns` 도 요청 시각 + 1 s 다.
+- 검사 분담 (`docs/spec/icd.md` 4.1): mavlink_gateway 는 제어권, 센서의 FOLLOWABLE, 최신 `tracking/tracks` 의 표적, 매개변수 범위를 검사한 뒤 요청한다. 추종 제어는 FC armed 이고 비행 중, `mission_state`, 기체의 정지 상태를 검사한다. 추종 제어의 REJECTED 는 상태 조건의 거부로 보고 mavlink_gateway 가 TEMPORARILY_REJECTED 로 전달한다. 추종 제어는 FC 가 실제로 Hold 일 때 track_start 를 수락한다. Position 모드라는 것만으로는 수락하지 않으며, Position 모드에서 조종을 넘기는 절차는 아직 정의되지 않았다 (`docs/spec/icd.md` 4.2 ⑥, E5).
 
 #### 5.2.1 `follow/result` 필드 (`follow_command.proto` 의 `FollowResult`)
 

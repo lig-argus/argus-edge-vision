@@ -3,7 +3,7 @@
 // 규약: docs/spec/icd.md 4.2 (운용자의 명시적 TRACK_STOP),
 //      6장 (FAULT, MANUAL 에서의 복구)
 // 구현: FcControl
-// 사용: 통제기 명령 처리 (TrackStopHandler, 다음 작업)
+// 사용: TrackStopHandler
 #ifndef ARGUS_ONBOARD_FC_COMMAND_LOCK_RELEASE_HPP_
 #define ARGUS_ONBOARD_FC_COMMAND_LOCK_RELEASE_HPP_
 
