@@ -4,6 +4,10 @@
 # - include/, src/ 의 파일은 자기 모듈과 DEPS 의 모듈만 include 한다 (#include "argus/gcs/<모듈>/...")
 # - test/ 의 파일은 위에 더해 그 모듈들의 <모듈>_testing 을 include 할 수 있다
 # 링크만으로는 의존 모듈이 PUBLIC 으로 가져온 다른 모듈의 헤더도 보이므로, 선언하지 않은 의존을 여기서 잡는다
+# -P 로 실행하는 스크립트에는 프로젝트의 정책이 적용되지 않으므로 같은 버전으로 정한다. 없으면 CMake 3.x 가
+# if(... IN_LIST ...) 를 지원하지 않는 옛 정책(CMP0057)으로 실행한다
+cmake_minimum_required(VERSION 3.16)
+
 include(${MODULE_LIST})
 
 set(violations "")
