@@ -1,8 +1,9 @@
 // follow/status 토픽을 구독하는 IFollowStatusSource, IFollowStatusEvents 구현
-// 규약: docs/spec/process_interfaces.md 5.1.2. 조회 규칙은
-// argus/vehicle_api/follow_status_source.hpp, 알림 규칙은
-// argus/vehicle_api/follow_status_events.hpp 사용: mavlink_gateway 의 main() 이 만들어, 사용하는
-// 쪽에 필요한 인터페이스로만 넘긴다
+// 규약: docs/spec/process_interfaces.md 5.1.2
+//      조회 규칙은 argus/vehicle_api/follow_status_source.hpp,
+//      알림 규칙은 argus/vehicle_api/follow_status_events.hpp
+// 사용: mavlink_gateway 의 main() 이 만들어, 사용하는 쪽에 필요한
+//      인터페이스로만 넘긴다
 #ifndef ARGUS_VEHICLE_API_BUS_BUS_FOLLOW_STATUS_SUBSCRIBER_HPP_
 #define ARGUS_VEHICLE_API_BUS_BUS_FOLLOW_STATUS_SUBSCRIBER_HPP_
 
