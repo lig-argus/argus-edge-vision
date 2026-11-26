@@ -1,0 +1,21 @@
+# 실내 비행 환경 파라미터: GPS 없이 optical flow(수평 위치)와 거리 센서(고도)로 비행한다.
+# 통제기의 FC 설정 [실내]가 이 값을 PARAM_SET 으로 FC 에 쓴다 (icd 5.2: 지상, 시동 꺼짐에서만).
+# EKF2_HGT_REF 는 재부팅해야 적용되므로 쓴 뒤 FC 를 재부팅한다.
+# 형식: 기체 ID, 컴포넌트 ID, 이름, 값, 형식(6 = INT32, 9 = REAL32). 탭으로 나눈다.
+#
+# PX4 1.16.2 이상이 필요하다. 그 전 버전은 고도 기준이 거리 센서(EKF2_HGT_REF 2)일 때 optical flow
+# 융합이 시작되지 않는다.
+# SYS_HAS_MAG, EKF2_BARO_CTRL, SENS_FLOW_MAXHGT 는 이 묶음에 없어 바꾸지 않는다 (실외 값이 남는다).
+#
+# --- GPS 끔 ---
+1	1	SYS_HAS_GPS	0	6
+1	1	EKF2_GPS_CTRL	0	6
+#
+# --- optical flow, 거리 센서 ---
+# flow 사용(1), 거리 센서 항상 사용(2: Enabled), 고도 기준은 거리 센서(2: Range sensor)
+1	1	EKF2_OF_CTRL	1	6
+1	1	EKF2_RNG_CTRL	2	6
+1	1	EKF2_HGT_REF	2	6
+# 비행 전 검사가 flow 센서 1 개와 거리 센서 1 개를 요구한다
+1	1	SYS_HAS_NUM_OF	1	6
+1	1	SYS_HAS_NUM_DIST	1	6

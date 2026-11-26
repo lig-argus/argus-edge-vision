@@ -116,6 +116,9 @@ gcs/
   mavlink_connection_testing/   # FakeMavlinkConnection
   net/                          # UdpMavlinkConnection (mavlink_gateway 와의 MAVLink UDP 연결)
   link/                         # 기체 상태 해석, 링크 판단, 명령 송신과 응답 처리 (VehicleLink)
+  theme/                        # 디자인 토큰(색, 크기)과 움직임 값
+  brand/                        # 실행 아이콘 그리기
+  resources/                    # 글꼴, 아이콘, LIG 워드마크, FC 비행 환경 파라미터 묶음 (resources/README.md)
   app/                          # 실행 파일. 구체 구현을 만들어 다른 모듈에 넘긴다
 ```
 
