@@ -509,8 +509,8 @@ classDiagram
 | `gcs_forward_policy` (함수) | 통제기 메시지 하나의 처리를 정한다: FC 로 전달, 직접 응답(결과 값), mavlink_gateway 가 처리(HOLD → 제자리 유지). 입력은 `ForwardObservation`(보낸 통제기의 제어권, 메시지 종류와 인자, FC 모드, armed, 비행 중, 전역 위치 유효, setpoint 송신 중, 추종 또는 스캔 중, 착륙 잠금, 조종사 개입 중). icd 5.2 표를 이 함수 하나에 둔다 | E | icd 5.2 |
 | `GcsFcForwarder` | 통제기의 메시지를 받아 `gcs_forward_policy` 의 결과를 실행한다: FC 로 전달(`IMavlinkConnection`), COMMAND_ACK 직접 응답, `IStopRequester` 호출. FC 가 보낸 COMMAND_ACK 중 대상이 통제기인 것을 그 통제기에만 전달한다 | E | icd 4.1, 4.3, 5.2 |
 | `FcTelemetryRelay` | FC 의 telemetry(icd 2장의 FC → 통제기 메시지)를 모든 통제기에 전달한다 | E | icd 1.2, 2장 |
-| `RequestMessageHandler` | `MAV_CMD_REQUEST_MESSAGE`. 메시지 번호별 응답 함수를 등록받는 표를 두고, 처음 등록하는 것은 `VIDEO_STREAM_INFORMATION`(269). 없는 번호와 아직 받지 못한 값은 DENIED | E | icd 4.1, video 7장 |
-| `IVideoStreamInfoSource`, `BusVideoStreamInfoSubscriber` | 영상 송신부가 발행한 `video/stream_info` 의 최신 값 조회. RTSP 주소의 호스트는 `IGcsLink::local_address()` 로 정한다 | E | video 7장, pi 5.1 |
+| `RequestMessageHandler` | `MAV_CMD_REQUEST_MESSAGE`. 메시지 번호별 응답 함수를 등록받는 표를 두고, 처음 등록하는 것은 `VIDEO_STREAM_INFORMATION`(269, `build_video_stream_information`). 없는 번호와 아직 받지 못한 값은 DENIED. COMMAND_ACK 를 먼저 보내고 요청한 메시지는 요청한 통제기에만 보낸다 (param7 의 응답 대상은 보지 않음: RTSP 주소의 호스트가 요청한 통제기에 맞춘 값). 제어권이 없는 통제기도 요청할 수 있다 (`CommandRules` 의 제어권 필요 없음, 기체를 움직이지 않는 조회) | E | icd 4.1, video 7장 |
+| `IVideoStreamInfoSource`, `BusVideoStreamInfoSubscriber` | 영상 송신부가 발행한 `video/stream_info` 의 최신 값 조회 (`onboard/libs/video_api`, `onboard/libs/video_api_bus`). RTSP 주소의 호스트는 `IGcsLink::local_address()` 로 정한다 | E | video 7장, pi 5.1 |
 | `landing_lock_policy` (함수), `LandingLock` | `ILandingLockState` 구현. 착륙 잠금의 시작(착륙 명령 전달)과 해제(지상이고 시동 꺼짐, 조종사 개입 뒤 복귀 완료) 판단과 상태 보관. 시작할 때 `IFcLandingRelease` 로 진행 중 명령 취소와 setpoint 송신 중지 | F | icd 5.3 |
 | `rc_override_policy` (함수), `RcOverrideMonitor` | 조종사 개입 판정(FC 의 STATUSTEXT, Offboard 이탈)과 복귀 조건(FC 모드 Hold 또는 Position, 스틱 4축 중립 유지 시간, RC 수신기 정상, 추정 유효, 진행 중 명령 없음) 판단과 상태 보관. `pilot_in_control()` 제공 | F | icd 5.4 |
 | `EndRcOverrideHandler` | 45011. `rc_override_policy` 의 복귀 조건 확인 뒤 `IStopRequester` 로 제자리 유지 시작 | F | icd 4.4, 5.4 |

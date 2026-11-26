@@ -34,17 +34,20 @@ add_library(argus_mavlink_gateway_core STATIC
     src/mavlink_command_receiver.cpp
     src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
+    src/request_message_handler.cpp
     src/request_operator_control_handler.cpp
     src/setpoint_encoding.cpp
     src/time_sync.cpp
     src/udp_gcs_link.cpp
     src/udp_mavlink_connection.cpp
-    src/udp_socket.cpp)
+    src/udp_socket.cpp
+    src/video_stream_information.cpp)
 add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
-# FcGateway 가 bus 인터페이스와 vehicle_api 의 bus 어댑터를 사용한다. 통신 구현(bus_zmq)은 링크하지
-# 않는다 (실행 파일만 링크)
+# FcGateway 가 bus 인터페이스와 vehicle_api 의 bus 어댑터를 사용한다. VIDEO_STREAM_INFORMATION 은
+# video_api 의 조회 인터페이스로 값을 읽는다. 통신 구현(bus_zmq)은 링크하지 않는다 (실행 파일만 링크)
 target_link_libraries(argus_mavlink_gateway_core
     PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus::bus argus::vehicle_api_bus
+           argus::video_api
            argus_onboard_warnings)
 
 # 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
@@ -54,12 +57,13 @@ add_executable(argus_mavlink_gateway src/main.cpp)
 # vehicle_api_bus_zmq 보다 먼저 적는다. include 경로가 적은 순서대로 붙는데, cppzmq 의 include 경로(macOS
 # Homebrew 는 /opt/homebrew/include)에 다른 버전의 Fast DDS 헤더가 있으면 그 헤더가 먼저 잡힌다
 if(ARGUS_BUILD_BUS_DDS)
-    target_link_libraries(argus_mavlink_gateway PRIVATE argus::vehicle_api_bus_dds)
+    target_link_libraries(argus_mavlink_gateway
+                          PRIVATE argus::vehicle_api_bus_dds argus::video_api_bus_dds)
     target_compile_definitions(argus_mavlink_gateway PRIVATE ARGUS_HAS_BUS_DDS)
 endif()
 target_link_libraries(argus_mavlink_gateway
-    PRIVATE argus::mavlink_gateway_core argus::vehicle_api_bus_zmq argus::protocol_names
-            argus_onboard_warnings)
+    PRIVATE argus::mavlink_gateway_core argus::vehicle_api_bus_zmq argus::video_api_bus_zmq
+            argus::protocol_names argus_onboard_warnings)
 
 argus_add_test(mavlink_gateway_health_state_test SOURCES test/health_state_test.cpp
                LIBS argus::mavlink_gateway_interfaces)
@@ -105,6 +109,11 @@ argus_add_test(mavlink_gateway_control_authority_test SOURCES test/control_autho
 argus_add_test(mavlink_gateway_mavlink_command_receiver_test
                SOURCES test/mavlink_command_receiver_test.cpp
                LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_request_message_handler_test
+               SOURCES test/request_message_handler_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_video_stream_information_test
+               SOURCES test/video_stream_information_test.cpp LIBS argus::mavlink_gateway_core)
 argus_add_test(mavlink_gateway_request_operator_control_handler_test
                SOURCES test/request_operator_control_handler_test.cpp
                LIBS argus::mavlink_gateway_core)

@@ -194,7 +194,7 @@ a=control:trackID=1
 
 | 필드 | 값 |
 |---|---|
-| 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회. 아래 값은 영상 송신부가 발행하는 `video/stream_info` (`process_interfaces.md` 5.1)의 최신 값으로 채운다. 받은 적이 없으면 DENIED 로 응답하고 이 메시지를 보내지 않는다 |
+| 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회. 아래 값은 영상 송신부가 발행하는 `video/stream_info` (`process_interfaces.md` 5.1)의 최신 값으로 채운다. 받은 적이 없으면 DENIED 로 응답하고 이 메시지를 보내지 않는다. 제어권이 없는 통제기의 요청에도 응답하며, 요청한 통제기에만 보낸다 (`param7` 의 응답 대상은 보지 않음. `uri` 의 호스트가 요청한 통제기에 맞춘 값이기 때문) |
 | stream_id / count | 토픽의 stream_id (1 = IR, EO 추가 시 2) / 토픽의 스트림 수 |
 | type | `VIDEO_STREAM_TYPE_RTSP` (0) |
 | flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 은 토픽의 송신 중 여부(`running`: 최근 1 초 안에 프레임을 받아 RTSP 서버로 내보냄)가 참일 때, `VIDEO_STREAM_STATUS_FLAGS_THERMAL` (2) 는 토픽의 센서가 IR 일 때 켠다. IR 이 송신 중이면 3, EO 가 송신 중이면 1. 통제기는 THERMAL 로 열화상 스트림을 구분하고, 영상을 받는지는 RTSP 접속 결과로 판단한다 |
