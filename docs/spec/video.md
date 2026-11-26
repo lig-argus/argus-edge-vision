@@ -188,7 +188,7 @@ a=control:trackID=1
 - 수신을 시작한 후 최초의 RTCP Sender Report 를 받기 전에는 영상 프레임의 UTC 시각을 계산할 수 없다 (측정값 약 2~3 s). 이 구간에는 메타데이터를 프레임에 대응시키지 않고 영상만 박스 없이 표시한다.
 - 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_TRACK_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
 - 선택된 표적(`ARGUS_STATUS.target_id`·`target_generation`)과 `ObjectId`·`argus:Generation` 이 같은 박스는 다른 색으로 강조한다.
-- 영상 정지 표시: 새 영상 프레임이 일정 시간(NUC 공백 0.5 s 보다 길게, 예 1 s) 없으면 "영상 정지" 를 표시한다. 시간은 **[미결 7]**. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
+- 영상 정지 표시: 새 영상 프레임이 1 s 동안 없으면 "영상 정지" 를 표시한다. 1 s 는 NUC 공백 0.5 s 보다 길고, 영상 송신부가 `video/stream_info` 의 `running` 을 판단하는 시간과 같다. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
 
 ## 7. MAVLink 연계 (`VIDEO_STREAM_INFORMATION`, 269)
 
@@ -224,7 +224,7 @@ a=control:trackID=1
 4. 표준에 없는 값을 넣을 XML 요소: `argus:` 네임스페이스와 요소 이름(FrameId, ImageWidth, ImageHeight, ClassId, Label, Generation, State), `tt:Class/tt:Type` 에 넣을 ONVIF 분류명. — 통신·탐지
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
-7. 통제기 "영상 정지" 판단 시간 (NUC 0.5 s 보다 길게). — 통제기
+7. 통제기 "영상 정지" 판단 시간은 1 s 로 확정 (6장). — 통제기
 8. JPEG 를 선택하고 EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
 9. `VIDEO_STREAM_INFORMATION` 의 값은 영상 송신부가 발행하는 `video/stream_info` 로 받는 것으로 확정 (7장, `process_interfaces.md` 5.1). 두 프로세스가 함께 읽는 설정 파일은 두지 않는다. — 통신
 10. IR 모델 v7.3 class_id 표는 8장에 반영함. 모델 교체 때 갱신. — 탐지
