@@ -105,6 +105,10 @@ bool FcControl::release_lock() {
     return step.denial == FcCommandDenial::None;
 }
 
+bool FcControl::sending_setpoints() const { return last_setpoint_kind_ != SetpointKind::None; }
+
+bool FcControl::entering() const { return std::holds_alternative<Entering>(state_); }
+
 core::Subscription FcControl::subscribe_mode_events(ModeEventHandler handler) {
     return mode_event_handlers_.subscribe(std::move(handler));
 }
@@ -186,6 +190,7 @@ void FcControl::send_setpoint(const SetpointChoice& choice, std::int64_t now_ns)
     // 송신에 실패한 경우에도 상태를 바꾸지 않는다. 다음 주기에 다시 송신한다
     offboard_hover_ =
         choice.kind == SetpointKind::Position && std::holds_alternative<Hovering>(state_);
+    last_setpoint_kind_ = choice.kind;
     switch (choice.kind) {
         case SetpointKind::None:
             stream_.reset();

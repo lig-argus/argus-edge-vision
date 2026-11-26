@@ -17,7 +17,9 @@
 #include "argus/core/event_loop.hpp"
 #include "argus/core/subscription.hpp"
 #include "argus/mavlink_gateway/fc_command_lock_release.hpp"
+#include "argus/mavlink_gateway/fc_command_status.hpp"
 #include "argus/mavlink_gateway/fc_control.hpp"
+#include "argus/mavlink_gateway/fc_epoch_source.hpp"
 #include "argus/mavlink_gateway/fc_link_tracker.hpp"
 #include "argus/mavlink_gateway/fc_state_source.hpp"
 #include "argus/mavlink_gateway/fc_state_view.hpp"
@@ -60,10 +62,12 @@ public:
     FcGateway& operator=(FcGateway&&) = delete;
     ~FcGateway() = default;
 
-    // 통제기 명령 처리가 사용한다 (다음 작업). 반환된 참조는 이 객체가 유지되는 동안 유효하다
+    // 통제기 쪽 객체가 사용한다. 반환된 참조는 이 객체가 유지되는 동안 유효하다
     IStopRequester& stop_requester() { return control_; }
     IFcCommandLockRelease& lock_release() { return control_; }
+    const IFcCommandStatus& command_status() const { return control_; }
     const IFcStateSource& fc_state() const { return state_view_; }
+    const IFcEpochSource& fc_epoch_source() const { return link_; }
 
 private:
     FcGateway(IMavlinkConnection& connection, const core::IClock& clock, HealthState& health);

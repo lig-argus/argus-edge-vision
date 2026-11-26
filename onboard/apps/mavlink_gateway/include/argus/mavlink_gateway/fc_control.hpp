@@ -2,7 +2,8 @@
 // 규약: docs/spec/icd.md 4.2, 5장, 6.2, 6.4, 6.6, docs/spec/process_interfaces.md 3장, 5.1, 5.2
 // 사용: BusFlightModeControlServer 와 BusVelocitySetpointSubscriber (vehicle_api_bus)가 추종 제어의
 //      요청과 setpoint 를 전달. FcGateway 가 subscribe_mode_events() 를 fc/mode_event 발행에
-//      연결하고 tick() 을 20 Hz 주기 작업으로 등록
+//      연결하고 tick() 을 20 Hz 주기 작업으로 등록. ControlAuthority 가 IFcCommandStatus 로 송신
+//      상태를 조회
 #ifndef ARGUS_ONBOARD_FC_CONTROL_HPP_
 #define ARGUS_ONBOARD_FC_CONTROL_HPP_
 
@@ -17,6 +18,7 @@
 #include "argus/mavlink_gateway/fc_command_lock_release.hpp"
 #include "argus/mavlink_gateway/fc_command_policy.hpp"
 #include "argus/mavlink_gateway/fc_command_state.hpp"
+#include "argus/mavlink_gateway/fc_command_status.hpp"
 #include "argus/mavlink_gateway/fc_state_source.hpp"
 #include "argus/mavlink_gateway/mavlink_connection.hpp"
 #include "argus/mavlink_gateway/setpoint_inbox.hpp"
@@ -51,7 +53,8 @@ struct FcControlConfig {
 class FcControl : public vehicle_api::IFlightModeControl,
                   public vehicle_api::IVelocitySetpointSink,
                   public IStopRequester,
-                  public IFcCommandLockRelease {
+                  public IFcCommandLockRelease,
+                  public IFcCommandStatus {
 public:
     using ModeEventHandler = std::function<void(const vehicle_api::FlightModeEvent&)>;
 
@@ -68,6 +71,9 @@ public:
 
     bool stop_from_onboard() override;
     bool release_lock() override;
+
+    bool sending_setpoints() const override;
+    bool entering() const override;
 
     // FC 의 실제 모드가 바뀔 때마다 handler 를 호출한다. 현재 fc_epoch 의 비행 상태를 처음 받은
     // 경우와, FC 가 이미 Offboard 인 상태에서 받은 진입 요청을 수락한 경우에도 호출한다.
@@ -113,6 +119,7 @@ private:
     SetpointInbox inbox_;
     SetpointStreamRecord stream_;
     bool offboard_hover_ = false;
+    SetpointKind last_setpoint_kind_ = SetpointKind::None;  // 마지막 tick() 이 고른 setpoint
 
     // 마지막으로 전달한 FC 의 모드와 그 fc_epoch. 전달한 적이 없으면 nullopt
     std::optional<vehicle_api::FlightMode> reported_mode_;

@@ -1,7 +1,7 @@
 // 통제기가 보낸 MAVLink 명령(COMMAND_LONG) 하나를 처리하는 인터페이스
-// 규약: docs/spec/icd.md 4.1 (COMMAND_ACK, 재전송), 4.2 (TRACK_START, TRACK_STOP, SCAN_START)
-// 구현: TrackStartHandler, TrackStopHandler, ScanStartHandler (다음 PR)
-// 사용: MavlinkCommandReceiver 가 MAV_CMD 번호로 handler 를 찾아 부른다
+// 규약: docs/spec/icd.md 4.1 (COMMAND_ACK, 재전송), 4.2 (TRACK_START, TRACK_STOP, SCAN_START), 4.4
+// 구현: RequestOperatorControlHandler, TrackStartHandler, TrackStopHandler, ScanStartHandler (다음
+// 작업) 사용: MavlinkCommandReceiver 가 MAV_CMD 번호로 handler 를 찾아 부른다
 #ifndef ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_
 #define ARGUS_ONBOARD_MAVLINK_COMMAND_HANDLER_HPP_
 
@@ -12,13 +12,13 @@
 #include <utility>
 
 #include "argus/mavlink.h"
+#include "argus/mavlink_gateway/gcs_link.hpp"
 
 namespace argus::mavlink_gateway {
 
 // 받은 명령과 보낸 쪽
 struct CommandRequest {
-    std::uint8_t source_system = 0;     // 보낸 쪽 sysid. 제어권 판정(icd 4.2 조건 ①)에 쓴다
-    std::uint8_t source_component = 0;  // 보낸 쪽 compid
+    GcsPeer sender;  // 보낸 통제기 (sysid, compid, 주소)
     mavlink_command_long_t command{};
 };
 
@@ -31,8 +31,9 @@ struct CommandAck {
     // result 가 IN_PROGRESS 일 때 진행 백분율(0~100). 모르면 kProgressUnknown. 그 외 result 에서는
     // 쓰지 않는다
     std::uint8_t progress = kProgressUnknown;
-    // DENIED, FAILED 의 원인. MavlinkCommandReceiver 가 STATUSTEXT 로 보내 통제기 화면에 표시한다.
-    // 비어 있으면 STATUSTEXT 를 보내지 않는다
+    // 원인. MavlinkCommandReceiver 가 STATUSTEXT 로 보내 통제기 화면에 표시한다. 비어 있으면
+    // STATUSTEXT 를 보내지 않는다. icd 4.1 에 따라 DENIED, FAILED 에만 넣는다 (제어권 없음의
+    // TEMPORARILY_REJECTED 는 MavlinkCommandReceiver 가 넣는다)
     std::string reason;
 };
 
@@ -114,11 +115,10 @@ public:
 
     // 명령 하나를 처리한다. 결과는 반환값이 아니라 responder 로 보낸다. 통제기에 보내는 첫
     // 응답(IN_PROGRESS 또는 DENIED)도 추종 제어의 응답을 받은 뒤에 정해지므로 process_events() 의
-    // 다음 호출에서 나올 수 있다. 재전송(보낸 쪽, MAV_CMD, param7 의 명령 번호가 같음)에는
-    // MavlinkCommandReceiver 가 handler 를 부르지 않고 진행 중이면 IN_PROGRESS 를, 완료 뒤면
-    // 보관한 최종 결과를 다시 보낸다 (보낸 쪽과 MAV_CMD 마다 마지막 번호와 결과를 다음 명령까지
-    // 보관). 진행 중에 같은 MAV_CMD 나 다른 시작 명령이 오면 TEMPORARILY_REJECTED, TRACK_STOP 이
-    // 오면 진행 중 명령을 CANCELLED 로 끝내고 처리한다. 규칙: docs/spec/icd.md 4.1
+    // 다음 호출에서 나올 수 있다. 공통 규칙(icd 4.1, 5.1)은 MavlinkCommandReceiver 가 handler 를
+    // 부르기 전에 처리하므로 handler 는 다루지 않는다: 대상 확인, 재전송, 제어권 확인
+    // (제어권이 없으면 TEMPORARILY_REJECTED), 동시 처리 (TEMPORARILY_REJECTED, 진행 중 명령의
+    // CANCELLED)
     virtual void handle(const CommandRequest& request, CommandResponder responder) = 0;
 };
 

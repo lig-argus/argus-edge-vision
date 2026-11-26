@@ -20,16 +20,26 @@ argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_respo
 
 # main.cpp 를 제외한 mavlink_gateway 의 소스. 실행 파일과 테스트가 링크한다
 add_library(argus_mavlink_gateway_core STATIC
+    src/control_authority.cpp
+    src/control_authority_policy.cpp
     src/fc_command_policy.cpp
     src/fc_control.cpp
     src/fc_gateway.cpp
     src/fc_link_tracker.cpp
     src/fc_telemetry_receiver.cpp
+    src/follow_activity.cpp
+    src/gcs_link_monitor.cpp
+    src/gcs_message_encoding.cpp
+    src/gcs_registry.cpp
+    src/mavlink_command_receiver.cpp
     src/mode_command_encoding.cpp
     src/px4_flight_mode.cpp
+    src/request_operator_control_handler.cpp
     src/setpoint_encoding.cpp
     src/time_sync.cpp
-    src/udp_mavlink_connection.cpp)
+    src/udp_gcs_link.cpp
+    src/udp_mavlink_connection.cpp
+    src/udp_socket.cpp)
 add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
 # FcGateway 가 bus 인터페이스와 vehicle_api 의 bus 어댑터를 사용한다. 통신 구현(bus_zmq)은 링크하지
 # 않는다 (실행 파일만 링크)
@@ -81,3 +91,22 @@ argus_add_test(mavlink_gateway_fc_state_view_test SOURCES test/fc_state_view_tes
 argus_add_test(mavlink_gateway_fc_gateway_test SOURCES test/fc_gateway_test.cpp
                LIBS argus::mavlink_gateway_core argus::bus_testing argus::core_testing
                     argus::protocol_names)
+
+# 통제기 쪽 (통제기 연결, 제어권, 명령 수신, 두절 감시). FakeGcsLink 는 test/ 에 둔다
+# UdpGcsLink 테스트는 loopback UDP 소켓을 실제로 연다
+argus_add_test(mavlink_gateway_udp_gcs_link_test SOURCES test/udp_gcs_link_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_gcs_registry_test SOURCES test/gcs_registry_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_control_authority_policy_test
+               SOURCES test/control_authority_policy_test.cpp LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_control_authority_test SOURCES test/control_authority_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
+argus_add_test(mavlink_gateway_mavlink_command_receiver_test
+               SOURCES test/mavlink_command_receiver_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)
+argus_add_test(mavlink_gateway_request_operator_control_handler_test
+               SOURCES test/request_operator_control_handler_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_gcs_link_monitor_test SOURCES test/gcs_link_monitor_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
