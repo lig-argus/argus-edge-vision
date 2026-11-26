@@ -126,7 +126,7 @@ flowchart LR
 | `video/stream_info` | 영상 송신부 → mavlink_gateway | 1 Hz + 변경 시 | `argus_msg/video_stream_info.proto` (5.1.6). 영상 송신부가 실제로 송신하는 스트림의 정보. `VIDEO_STREAM_INFORMATION` 응답에 사용. 늦게 시작한 구독자도 받도록 1 Hz 로 다시 발행한다 |
 | `fc/mode_event` | mavlink_gateway → 추종 제어 | 변경 시 | 실제 비행 모드, 직전 모드 요청의 command_id, Offboard 이탈 원인(조종사 전환·failsafe 등) **[미결 1]** |
 
-- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
+- 엔드포인트(기본값, 모두 RPi 안 `tcp://127.0.0.1`): FC 상태 PUB(`fc/attitude`, `fc/state`) **6370** mavlink_gateway bind. 제어·상태 PUB(`control/setpoint`, `follow/status`) **6372** 추종 제어 bind. `tracking/tracks`·`tracking/status` 는 **6375** 추적기 bind (기존 6357 에서 변경). 탐지 토픽 4개는 **6374** 탐지(C++ 어댑터) bind (기존 버스 프록시 5555/5556 제거). `fc/mode_event` 는 6370. `video/stream_info` 는 **6376** 영상 송신부 bind. 모든 토픽은 발행자가 bind 하고 구독자가 connect 한다.
 - 보간용 이력(프레임 시각에 맞춘 FC 자세)은 받는 쪽이 보관한다. mavlink_gateway 는 FC 메시지를 그대로 넘긴다.
 - `tracking/tracks` 가 없어도(입력 부재, 프레임 시각에 맞는 `fc/attitude`·`fc/state` 메시지 없음, 지면 투영 실패) 영상 송신부는 영상을 계속 보낸다.
 

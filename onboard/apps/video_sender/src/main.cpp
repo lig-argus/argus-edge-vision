@@ -4,6 +4,8 @@
 // - 기본: bus 의 vision/frame/gray8, perception/observations, tracking/tracks
 //   (docs/spec/process_interfaces.md 5.1). 통신 구현과 실제 시계는 이 파일에서만 생성한다
 // - --test-pattern: 카메라와 탐지 프로세스 없이 시험용 영상과 박스
+// bus 입력일 때 RTSP 스트림의 정보를 bus 의 video/stream_info 로 발행한다 (process_interfaces.md
+// 5.1.6). --test-pattern 은 bus 를 만들지 않으므로 발행하지 않는다.
 // 영상 트랙의 코덱은 --codec 으로 정한다. bus 의 통신 구현은 --bus dds|zmq (기본값 dds.
 // ARGUS_BUILD_BUS_DDS 가 OFF 인 빌드는 zmq 만 사용할 수 있다), DDS domain 은 --dds-domain 으로
 // 정한다. 설정 값은 코드의 기본값(protocol/dds_settings.hpp, protocol/zmq_endpoints.hpp)을 사용한다
@@ -21,6 +23,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <utility>
 #include <zmq.hpp>
 
 #include "argus/bus/bus.hpp"
@@ -36,6 +39,9 @@
 #include "argus/protocol/dds_settings.hpp"
 #include "argus/protocol/topics.hpp"
 #include "argus/protocol/zmq_endpoints.hpp"
+#include "argus/vehicle_api/types.hpp"
+#include "argus/video_api_bus/bus_video_stream_info_publisher.hpp"
+#include "argus/video_api_bus/zmq_codecs.hpp"
 #include "argus/video_sender/collected_frame.hpp"
 #include "argus/video_sender/frame_collector.hpp"
 #include "argus/video_sender/metadata_rtp_packetizer.hpp"
@@ -46,10 +52,12 @@
 #include "argus/video_sender/video_bus_input.hpp"
 #include "argus/video_sender/video_encode_config.hpp"
 #include "argus/video_sender/video_sender.hpp"
+#include "argus/video_sender/video_stream_info_publisher.hpp"
 
 #ifdef ARGUS_HAS_BUS_DDS
 #include "argus/bus_dds/dds_bus.hpp"
 #include "argus/perception_api_bus/dds_types.hpp"
+#include "argus/video_api_bus/dds_types.hpp"
 #endif
 
 namespace {
@@ -58,6 +66,8 @@ namespace bus_zmq = argus::bus_zmq;
 namespace core = argus::core;
 namespace perception_api = argus::perception_api;
 namespace protocol = argus::protocol;
+namespace vehicle_api = argus::vehicle_api;
+namespace video_api_bus = argus::video_api_bus;
 namespace video_sender = argus::video_sender;
 
 // 메타데이터 트랙의 RTP payload type. 동적 번호(96~127) 중 video.md 1장과 5장의 값
@@ -69,6 +79,26 @@ constexpr std::int32_t kTankClassId = 0;
 constexpr const char* kTankOnvifType = "Vehicle";
 
 constexpr std::chrono::milliseconds kFramePeriod{33};  // 30 FPS (video.md 2장)
+
+// video/stream_info 의 발행자 식별 문자열
+constexpr const char* kStreamInfoSource = "argus_video_sender";
+
+// video/stream_info 에 싣는 IR 스트림의 값 (video.md 7장). 화각은 카메라 측정 전이라 0 (모름,
+// icd.md A1). EO 카메라를 추가하면 스트림을 하나 더 둔다
+video_sender::VideoStreamDescription ir_stream_description() {
+    constexpr std::uint32_t kIrStreamId = 1;
+    constexpr std::uint32_t kIrWidth = 640;
+    constexpr std::uint32_t kIrHeight = 480;
+    constexpr double kIrFramerateHz = 30.0;
+    video_sender::VideoStreamDescription description;
+    description.stream_id = kIrStreamId;
+    description.sensor = vehicle_api::Sensor::Ir;
+    description.name = "IR";
+    description.width = kIrWidth;
+    description.height = kIrHeight;
+    description.framerate_hz = kIrFramerateHz;
+    return description;
+}
 
 // FrameCollector::process_timeouts() 의 호출 간격. 대기 시간(100 ms)이 지난 프레임의 출력이 이
 // 간격만큼 늦어질 수 있으므로 대기 시간의 1/10 로 정한다
@@ -227,6 +257,17 @@ public:
         return loop.add_periodic(kTimeoutCheckPeriod, [this] { collector_.process_timeouts(); });
     }
 
+    // RTSP 서버의 포트와 통계로 video/stream_info 를 발행하는 주기 작업. publisher 는 반환한
+    // 타이머보다 오래 유지되어야 한다
+    [[nodiscard]] core::PeriodicTimer start_stream_info(
+        core::EventLoop& loop, video_api_bus::BusVideoStreamInfoPublisher& publisher,
+        const core::IClock& clock) {
+        stream_info_.emplace(publisher, clock, kStreamInfoSource, ir_stream_description(),
+                             server_config_.path, server_config_.video);
+        return loop.add_periodic(video_sender::VideoStreamInfoPublisher::kCheckPeriod,
+                                 [this] { stream_info_->tick(server_.port(), server_.stats()); });
+    }
+
 private:
     static video_sender::RtspServerConfig make_server_config(video_sender::VideoCodec codec) {
         video_sender::RtspServerConfig config{random_metadata_rtp_config()};
@@ -239,6 +280,7 @@ private:
     video_sender::VideoSender sender_;
     video_sender::FrameCollector collector_;
     core::Subscription collected_;
+    std::optional<video_sender::VideoStreamInfoPublisher> stream_info_;  // start_stream_info() 뒤
 };
 
 std::int32_t run_with_test_pattern(video_sender::VideoCodec codec) {
@@ -268,13 +310,16 @@ std::int32_t run_with_test_pattern(video_sender::VideoCodec codec) {
     return EXIT_SUCCESS;
 }
 
-// 영상 송신부가 구독하는 이름의 ZeroMQ 엔드포인트 (process_interfaces.md 5.1). 모두 connect 한다
+// 영상 송신부가 구독하고 발행하는 이름의 ZeroMQ 엔드포인트 (process_interfaces.md 5.1). 구독은
+// connect, 발행(video/stream_info)은 bind 한다
 bus_zmq::ZmqEndpointTable endpoints() {
     const std::string vision{protocol::kDefaultVisionEndpoint};
     return {
         {std::string(protocol::kVisionFrameGray8), vision},
         {std::string(protocol::kPerceptionObservations), vision},
         {std::string(protocol::kTrackingTracks), std::string(protocol::kDefaultTrackingEndpoint)},
+        {std::string(protocol::kVideoStreamInfo),
+         std::string(protocol::kDefaultVideoStreamInfoEndpoint)},
     };
 }
 
@@ -283,13 +328,18 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
                                            bus_zmq::ZmqPoller& poller, const core::IClock& clock,
                                            const bus_zmq::ZmqEndpointTable& table) {
     if (options.bus == BusKind::Zmq) {
-        return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table,
-                                                 argus::perception_api_bus::zmq_codecs());
+        bus_zmq::ZmqCodecTable codecs = argus::perception_api_bus::zmq_codecs();
+        bus_zmq::ZmqCodecTable video_codecs = video_api_bus::zmq_codecs();
+        codecs.merge(video_codecs);
+        return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table, std::move(codecs));
     }
 #ifdef ARGUS_HAS_BUS_DDS
+    argus::bus_dds::DdsTypeTable types = argus::perception_api_bus::dds_types();
+    argus::bus_dds::DdsTypeTable video_types = video_api_bus::dds_types();
+    types.merge(video_types);
     // 원인은 DdsBus 가 기록한다
     return argus::bus_dds::DdsBus::create(poller, poller, clock, options.dds_domain,
-                                          argus::perception_api_bus::dds_types());
+                                          std::move(types));
 #else
     std::cerr << kLogPrefix << "DDS 없이 빌드됨 (ARGUS_BUILD_BUS_DDS=OFF). " << kBusOption << " "
               << kBusZmq << " 로 실행해야 한다\n";
@@ -321,6 +371,16 @@ std::int32_t run_with_bus(const Options& options) {
         return EXIT_FAILURE;  // 원인은 bus 구현이 기록한다
     }
     const core::PeriodicTimer timeout_timer = pipeline.start_timeout_checks(loop);
+    // 발행자를 만들지 못해도 영상 송신은 계속한다. mavlink_gateway 는 받은 적이 없는 값을 DENIED 로
+    // 응답한다 (video.md 7장)
+    const std::unique_ptr<video_api_bus::BusVideoStreamInfoPublisher> info_publisher =
+        video_api_bus::BusVideoStreamInfoPublisher::create(*bus);
+    core::PeriodicTimer stream_info_timer;
+    if (info_publisher) {
+        stream_info_timer = pipeline.start_stream_info(loop, *info_publisher, clock);
+    } else {
+        std::cerr << kLogPrefix << protocol::kVideoStreamInfo << " 를 발행하지 않는다\n";
+    }
     if (options.bus == BusKind::Dds) {
         std::cout << kLogPrefix << "bus DDS domain " << options.dds_domain << "\n";
     } else {
