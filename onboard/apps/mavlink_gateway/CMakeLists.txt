@@ -20,6 +20,7 @@ argus_add_test(mavlink_gateway_command_responder_test SOURCES test/command_respo
 
 # main.cpp 를 제외한 mavlink_gateway 의 소스. 실행 파일과 테스트가 링크한다
 add_library(argus_mavlink_gateway_core STATIC
+    src/argus_sensor_status_reporter.cpp
     src/argus_status_policy.cpp
     src/argus_status_reporter.cpp
     src/control_authority.cpp
@@ -38,6 +39,7 @@ add_library(argus_mavlink_gateway_core STATIC
     src/px4_flight_mode.cpp
     src/request_message_handler.cpp
     src/request_operator_control_handler.cpp
+    src/sensor_status_policy.cpp
     src/setpoint_encoding.cpp
     src/sysfs_cpu_temperature.cpp
     src/time_sync.cpp
@@ -50,7 +52,7 @@ add_library(argus::mavlink_gateway_core ALIAS argus_mavlink_gateway_core)
 # video_api 의 조회 인터페이스로 값을 읽는다. 통신 구현(bus_zmq)은 링크하지 않는다 (실행 파일만 링크)
 target_link_libraries(argus_mavlink_gateway_core
     PUBLIC argus::mavlink_gateway_interfaces argus::vehicle_api argus::bus argus::vehicle_api_bus
-           argus::video_api
+           argus::video_api argus::perception_api
            argus_onboard_warnings)
 
 # 통신 구현(DDS 또는 ZeroMQ, UDP)과 실제 시계는 main.cpp 에서만 생성한다
@@ -61,12 +63,14 @@ add_executable(argus_mavlink_gateway src/main.cpp)
 # Homebrew 는 /opt/homebrew/include)에 다른 버전의 Fast DDS 헤더가 있으면 그 헤더가 먼저 잡힌다
 if(ARGUS_BUILD_BUS_DDS)
     target_link_libraries(argus_mavlink_gateway
-                          PRIVATE argus::vehicle_api_bus_dds argus::video_api_bus_dds)
+                          PRIVATE argus::vehicle_api_bus_dds argus::video_api_bus_dds
+                                  argus::perception_api_bus_dds)
     target_compile_definitions(argus_mavlink_gateway PRIVATE ARGUS_HAS_BUS_DDS)
 endif()
 target_link_libraries(argus_mavlink_gateway
     PRIVATE argus::mavlink_gateway_core argus::vehicle_api_bus_zmq argus::video_api_bus_zmq
-            argus::protocol_names argus_onboard_warnings)
+            argus::perception_api_bus argus::perception_api_bus_zmq argus::protocol_names
+            argus_onboard_warnings)
 
 argus_add_test(mavlink_gateway_health_state_test SOURCES test/health_state_test.cpp
                LIBS argus::mavlink_gateway_interfaces)
@@ -131,3 +135,8 @@ argus_add_test(mavlink_gateway_argus_status_reporter_test
                LIBS argus::mavlink_gateway_core argus::core_testing argus::vehicle_api_testing)
 argus_add_test(mavlink_gateway_sysfs_cpu_temperature_test
                SOURCES test/sysfs_cpu_temperature_test.cpp LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_sensor_status_policy_test SOURCES test/sensor_status_policy_test.cpp
+               LIBS argus::mavlink_gateway_core)
+argus_add_test(mavlink_gateway_argus_sensor_status_reporter_test
+               SOURCES test/argus_sensor_status_reporter_test.cpp
+               LIBS argus::mavlink_gateway_core argus::core_testing)

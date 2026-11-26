@@ -8,6 +8,7 @@
 #include "argus_msg/perception_observations.pb.h"
 #include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
+#include "argus_msg/vision_status.pb.h"
 
 namespace argus::protocol {
 namespace {
@@ -177,6 +178,34 @@ TEST(ProtoTest, TrackingStatusParsesToSameValues) {
     EXPECT_TRUE(received.fc_fresh());
     EXPECT_FALSE(received.cmc_valid());
     EXPECT_DOUBLE_EQ(received.fps(), 29.5);
+}
+
+TEST(ProtoTest, VisionStatusParsesToSameValues) {
+    msg::VisionStatus sent;
+    sent.set_source("camera-ir");
+    sent.set_seq(3);
+    sent.set_published_monotonic_ns(5'000'000'000);
+    sent.set_camera_ok(true);
+    sent.set_inference_ok(false);
+    sent.set_infer_fps(14.5);
+    sent.set_model_ver(7);
+    sent.set_image_width(640);
+    sent.set_image_height(512);
+
+    std::string bytes;
+    ASSERT_TRUE(sent.SerializeToString(&bytes));
+
+    msg::VisionStatus received;
+    ASSERT_TRUE(received.ParseFromString(bytes));
+    EXPECT_EQ(received.source(), "camera-ir");
+    EXPECT_EQ(received.seq(), 3U);
+    EXPECT_EQ(received.published_monotonic_ns(), 5'000'000'000);
+    EXPECT_TRUE(received.camera_ok());
+    EXPECT_FALSE(received.inference_ok());
+    EXPECT_DOUBLE_EQ(received.infer_fps(), 14.5);
+    EXPECT_EQ(received.model_ver(), 7U);
+    EXPECT_EQ(received.image_width(), 640U);
+    EXPECT_EQ(received.image_height(), 512U);
 }
 
 // 값이 없을 수 있는 필드(selected, scan, command_results[].target, scan.remaining_s)는 has_ 로

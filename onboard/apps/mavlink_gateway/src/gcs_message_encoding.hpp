@@ -1,4 +1,4 @@
-// 통제기로 송신하는 COMMAND_ACK, STATUSTEXT, ARGUS_STATUS 메시지의 구성
+// 통제기로 송신하는 COMMAND_ACK, STATUSTEXT, ARGUS_STATUS, ARGUS_SENSOR_STATUS 메시지의 구성
 // 규약: docs/spec/icd.md 3.1 (ARGUS_STATUS), 4.1 (COMMAND_ACK, STATUSTEXT), 5.1 (sysid 겹침 경고)
 // 송신자는 mavlink_gateway 의 명령 compid (sysid 1, compid 195). 모듈 밖에서는 include 하지 않는다
 #ifndef ARGUS_ONBOARD_SRC_GCS_MESSAGE_ENCODING_HPP_
@@ -20,6 +20,8 @@ mavlink_message_t encode_command_ack(std::uint16_t command, MAV_RESULT result,
 mavlink_message_t encode_statustext(MAV_SEVERITY severity, const std::string& text);
 
 mavlink_message_t encode_argus_status(const mavlink_argus_status_t& status);
+
+mavlink_message_t encode_argus_sensor_status(const mavlink_argus_sensor_status_t& status);
 
 }  // namespace argus::mavlink_gateway::detail
 

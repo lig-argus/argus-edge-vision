@@ -31,6 +31,7 @@
 #include "argus/bus_zmq/zmq_poller.hpp"
 #include "argus/core/event_loop.hpp"
 #include "argus/core/steady_clock.hpp"
+#include "argus/mavlink_gateway/argus_sensor_status_reporter.hpp"
 #include "argus/mavlink_gateway/argus_status_reporter.hpp"
 #include "argus/mavlink_gateway/command_activity.hpp"
 #include "argus/mavlink_gateway/control_authority.hpp"
@@ -43,10 +44,14 @@
 #include "argus/mavlink_gateway/request_header_factory.hpp"
 #include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
+#include "argus/mavlink_gateway/sensor_source_map.hpp"
 #include "argus/mavlink_gateway/sysfs_cpu_temperature.hpp"
 #include "argus/mavlink_gateway/udp_gcs_link.hpp"
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
 #include "argus/mavlink_gateway/video_stream_information.hpp"
+#include "argus/perception_api_bus/bus_tracking_status_subscriber.hpp"
+#include "argus/perception_api_bus/bus_vision_status_subscriber.hpp"
+#include "argus/perception_api_bus/zmq_codecs.hpp"
 #include "argus/protocol/dds_settings.hpp"
 #include "argus/protocol/topics.hpp"
 #include "argus/protocol/zmq_endpoints.hpp"
@@ -58,6 +63,7 @@
 
 #ifdef ARGUS_HAS_BUS_DDS
 #include "argus/bus_dds/dds_bus.hpp"
+#include "argus/perception_api_bus/dds_types.hpp"
 #include "argus/vehicle_api_bus/dds_types.hpp"
 #include "argus/video_api_bus/dds_types.hpp"
 #endif
@@ -186,6 +192,8 @@ bus_zmq::ZmqEndpointTable endpoints() {
          std::string(protocol::kDefaultFollowCommandEndpoint)},
         {std::string(protocol::kVideoStreamInfo),
          std::string(protocol::kDefaultVideoStreamInfoEndpoint)},
+        {std::string(protocol::kTrackingStatus), std::string(protocol::kDefaultTrackingEndpoint)},
+        {std::string(protocol::kVisionStatus), std::string(protocol::kDefaultVisionEndpoint)},
     };
 }
 
@@ -214,13 +222,17 @@ std::unique_ptr<argus::bus::IBus> make_bus(const Options& options, zmq::context_
     if (options.bus == BusKind::Zmq) {
         bus_zmq::ZmqCodecTable codecs = argus::vehicle_api_bus::zmq_codecs();
         bus_zmq::ZmqCodecTable video_codecs = argus::video_api_bus::zmq_codecs();
+        bus_zmq::ZmqCodecTable perception_codecs = argus::perception_api_bus::zmq_codecs();
         codecs.merge(video_codecs);
+        codecs.merge(perception_codecs);
         return std::make_unique<bus_zmq::ZmqBus>(context, poller, clock, table, std::move(codecs));
     }
 #ifdef ARGUS_HAS_BUS_DDS
     argus::bus_dds::DdsTypeTable types = argus::vehicle_api_bus::dds_types();
     argus::bus_dds::DdsTypeTable video_types = argus::video_api_bus::dds_types();
+    argus::bus_dds::DdsTypeTable perception_types = argus::perception_api_bus::dds_types();
     types.merge(video_types);
+    types.merge(perception_types);
     // 원인은 DdsBus 가 기록한다
     return argus::bus_dds::DdsBus::create(poller, poller, clock, options.dds_domain,
                                           std::move(types));
@@ -248,9 +260,14 @@ struct GcsSide {
     std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
     mavlink_gateway::SysfsCpuTemperature cpu_temperature;
     std::unique_ptr<mavlink_gateway::ArgusStatusReporter> status_reporter;
+    std::unique_ptr<argus::perception_api_bus::BusTrackingStatusSubscriber> tracking_status;
+    std::unique_ptr<argus::perception_api_bus::BusVisionStatusSubscriber> vision_status;
+    mavlink_gateway::SensorSourceMap sensors = mavlink_gateway::SensorSourceMap::default_map();
+    std::unique_ptr<mavlink_gateway::ArgusSensorStatusReporter> sensor_status_reporter;
     core::PeriodicTimer receiver_timer;
     core::PeriodicTimer monitor_timer;
     core::PeriodicTimer status_timer;
+    core::PeriodicTimer sensor_status_timer;
 };
 
 // 통제기 쪽 객체를 만들어 연결하고 주기 작업을 등록한다. 하나라도 만들지 못하면 false (원인은
@@ -308,6 +325,21 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
     mavlink_gateway::ArgusStatusReporter* const status_reporter = gcs.status_reporter.get();
     gcs.status_timer = loop.add_periodic(mavlink_gateway::kArgusStatusCheckPeriod,
                                          [status_reporter] { status_reporter->tick(); });
+
+    gcs.tracking_status =
+        argus::perception_api_bus::BusTrackingStatusSubscriber::create(bus, clock);
+    gcs.vision_status = argus::perception_api_bus::BusVisionStatusSubscriber::create(bus, clock);
+    if (!gcs.tracking_status || !gcs.vision_status) {
+        return false;
+    }
+    gcs.sensor_status_reporter = std::make_unique<mavlink_gateway::ArgusSensorStatusReporter>(
+        mavlink_gateway::ArgusSensorStatusReporterInputs{*gcs.link, clock, *gcs.tracking_status,
+                                                         *gcs.vision_status, gcs.sensors});
+    mavlink_gateway::ArgusSensorStatusReporter* const sensor_status_reporter =
+        gcs.sensor_status_reporter.get();
+    gcs.sensor_status_timer =
+        loop.add_periodic(mavlink_gateway::kSensorStatusCheckPeriod,
+                          [sensor_status_reporter] { sensor_status_reporter->tick(); });
     return true;
 }
 

@@ -27,6 +27,9 @@ inline constexpr std::int32_t kVisionOverlayJpegQueueDepth = kDefaultQueueDepth;
 // 진단용, process_interfaces.md 5.1)
 inline constexpr std::string_view kVisionNpuInputJpeg = "vision/npu_input/jpeg";
 inline constexpr std::int32_t kVisionNpuInputJpegQueueDepth = kDefaultQueueDepth;
+// 탐지 → mavlink_gateway (카메라마다 1 Hz, ARGUS_SENSOR_STATUS 보고)
+inline constexpr std::string_view kVisionStatus = "vision/status";
+inline constexpr std::int32_t kVisionStatusQueueDepth = kDefaultQueueDepth;
 // 탐지 → 추적기, 영상 송신부
 inline constexpr std::string_view kPerceptionObservations = "perception/observations";
 inline constexpr std::int32_t kPerceptionObservationsQueueDepth = kDefaultQueueDepth;

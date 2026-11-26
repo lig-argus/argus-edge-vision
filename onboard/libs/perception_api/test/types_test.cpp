@@ -7,6 +7,7 @@
 // 인터페이스 헤더가 bus 와 통신 구현 없이 각각 컴파일되는지 함께 확인한다
 #include "argus/perception_api/tracking_status_events.hpp"
 #include "argus/perception_api/tracking_status_source.hpp"
+#include "argus/perception_api/vision_status_source.hpp"
 
 namespace argus::perception_api {
 namespace {
