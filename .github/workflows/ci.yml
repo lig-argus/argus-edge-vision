@@ -9,13 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  # runner 는 ubuntu-24.04 로 고정한다: apt 패키지 버전(GStreamer 1.24, protoc 3.21.12)을 RPi(Ubuntu 24.04)와 맞춘다.
+  # ubuntu-latest 는 GitHub 가 새 버전으로 옮기면 패키지 버전이 함께 바뀐다
+
   # PR 에서 바뀐 경로를 보고 빌드 작업(gcs, onboard)을 건너뛸지 정한다. push(develop, main)는 모두 실행한다.
   # 워크플로의 paths 조건으로 실행 자체를 건너뛰면 필수 검사가 대기 상태로 남아 머지가 막힌다.
   # 작업의 if 조건으로 건너뛴 작업은 성공으로 보고되므로 필수 검사를 그대로 둘 수 있다.
   # 이 작업이 실패하면 빌드 작업을 모두 실행한다 (건너뛰어 검사 없이 통과하지 않게)
   changes:
     name: changed paths
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       onboard: ${{ steps.filter.outputs.onboard }}
       gcs: ${{ steps.filter.outputs.gcs }}
@@ -42,7 +45,7 @@ jobs:
 
   format:
     name: clang-format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -56,7 +59,7 @@ jobs:
 
   python:
     name: python lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -77,7 +80,7 @@ jobs:
 
   mavlink:
     name: mavlink headers up to date
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -90,13 +93,25 @@ jobs:
 
   proto:
     name: proto python up to date
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      # 내려받은 .deb 캐시: Ubuntu 미러 다운로드가 느린 실행에서 apt 설치가 수 분 걸리므로 내려받기를 건너뛴다.
+      # 이 파일이 바뀌면(설치 패키지 변경) 이전 캐시를 받아 바뀐 패키지만 내려받고 새 key 로 저장한다
+      # 설치 단계는 apt 가 이 폴더에 내려받게 하고(-o Dir::Cache::Archives), root 소유 파일(lock, partial)이 캐시 저장을
+      # 막지 않게 소유자를 runner 로 바꾼다
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: apt-ubuntu-24.04-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-ubuntu-24.04-${{ github.job }}-
       # RPi 와 같은 apt protoc 3.21.12 로 다시 생성해 커밋본과 다르면 실패 (tools/generate_proto.sh)
       - run: |
+          mkdir -p ~/apt-archives/partial
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends protobuf-compiler
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" protobuf-compiler
+          sudo chown -R "$USER" ~/apt-archives
       - run: tools/generate_proto.sh
       - run: git add -N onboard/libs/protocol/python && git diff --exit-code --stat -- onboard/libs/protocol/python
 
@@ -104,22 +119,31 @@ jobs:
     name: gcs build · test · clang-tidy
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gcs == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # 내려받은 .deb 캐시 (proto 작업의 설명과 같음)
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: apt-ubuntu-24.04-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-ubuntu-24.04-${{ github.job }}-
       - name: Install dependencies
         # Qt 6.9.3: Ubuntu 24.04 apt 의 Qt 는 6.4 이고 Quick3D 가 없어 aqtinstall 로 받는다 (gcs/CMakeLists.txt).
         #   기본 설치에 Core·Gui·Network·Qml·Quick·Svg·Test 가 있고, Quick3D 와 ShaderTools 는 -m 으로 더한다
         # GStreamer 1.24 (apt): 개발 패키지와, RTSP 수신에 쓰는 rtspsrc(plugins-good), avdec_h264(libav)
         # OpenGL, EGL, xkbcommon 헤더: Qt Gui 의 CMake 설정이 찾는다
         run: |
+          mkdir -p ~/apt-archives/partial
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config \
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" cmake ninja-build pkg-config \
             libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-libav
+          sudo chown -R "$USER" ~/apt-archives
           pip install clang-tidy==22.1.8 aqtinstall==3.3.0
           aqt install-qt linux desktop 6.9.3 linux_gcc_64 -m qtquick3d qtshadertools -O "$HOME/Qt"
       - name: Configure
@@ -139,19 +163,28 @@ jobs:
     name: onboard build · test · clang-tidy
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.onboard == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # 내려받은 .deb 캐시 (proto 작업의 설명과 같음)
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: apt-ubuntu-24.04-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-ubuntu-24.04-${{ github.job }}-
       - name: Install dependencies
         # Ubuntu 24.04 apt: ZeroMQ + cppzmq(C++ 바인딩), protobuf(런타임, protoc 3.21.12), gtest. RPi(Ubuntu 24.04)와 같은 패키지
         # GStreamer 1.24 (영상 송신부): 개발 패키지 3개와, 테스트가 실행하는 요소(jpegenc, rtpjpegpay, rtppassthroughpay, rtspsrc 등)가 있는 plugins-base, plugins-good
         run: |
+          mkdir -p ~/apt-archives/partial
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
-          sudo apt-get install -y --no-install-recommends pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
+          sudo chown -R "$USER" ~/apt-archives
           pip install clang-tidy==22.1.8
       - name: Configure
         # 설정은 onboard/CMakePresets.json 의 linux preset (빌드 폴더 build/onboard)
@@ -173,30 +206,39 @@ jobs:
           fi
 
   # bus 인터페이스의 Fast DDS 구현 (onboard/libs/bus_dds). Ubuntu 24.04 apt 에 Fast DDS 3.6 이 없으므로 소스
-  # 빌드하여 캐시한다 (버전이 바뀌면 key 를 바꾼다). 버전은 README.md 의 Fast DDS 설치와 같다
+  # 빌드하여 캐시한다 (버전이나 runner 이미지가 바뀌면 key 를 바꾼다). 버전은 README.md 의 Fast DDS 설치와 같다
   onboard-dds:
     name: onboard bus_dds (Fast DDS) build, test, clang-tidy
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.onboard == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # 내려받은 .deb 캐시 (proto 작업의 설명과 같음)
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: apt-ubuntu-24.04-${{ github.job }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-ubuntu-24.04-${{ github.job }}-
       - name: Install dependencies
         # onboard 작업과 같은 패키지 + Fast DDS 빌드에 사용하는 libtinyxml2-dev
         run: |
+          mkdir -p ~/apt-archives/partial
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev libtinyxml2-dev
-          sudo apt-get install -y --no-install-recommends pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" cmake ninja-build libzmq3-dev cppzmq-dev libprotobuf-dev protobuf-compiler libgtest-dev libtinyxml2-dev
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
+          sudo chown -R "$USER" ~/apt-archives
           pip install clang-tidy==22.1.8
       - name: Cache Fast DDS
         id: cache-fastdds
         uses: actions/cache@v6
         with:
           path: ~/.local/fastdds
-          key: fastdds-3.6.2-fastcdr-2.3.7-foonathan-1.4.1-${{ runner.os }}
+          key: fastdds-3.6.2-fastcdr-2.3.7-foonathan-1.4.1-ubuntu-24.04
       - name: Build Fast DDS
         if: steps.cache-fastdds.outputs.cache-hit != 'true'
         # 설치 위치는 onboard/CMakePresets.json 의 linux-dds preset 이 찾는 $HOME/.local/fastdds
