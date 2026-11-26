@@ -1,0 +1,3 @@
+# 2026-11-26 외부 코드(제조사 SDK, MAVLink 생성 헤더, 의존 라이브러리)는 원본 형식을 유지한다.
+DisableFormat: true
+SortIncludes: Never

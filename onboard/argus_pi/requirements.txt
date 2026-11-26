@@ -1,0 +1,5 @@
+# Common legacy constraints only. Deployment roles use requirements/*.lock and setup_environment.sh.
+msgpack>=1.0,<2
+numpy>=1.24,<2
+opencv-python-headless>=4.6,<5
+pyzmq>=24,<28

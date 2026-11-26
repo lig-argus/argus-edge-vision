@@ -1,0 +1,19 @@
+{
+  "schema": "argus.deployment.v1",
+  "endpoints": {
+    "fc_state": "tcp://127.0.0.1:6370",
+    "mode_rpc": "tcp://127.0.0.1:6371",
+    "control": "tcp://127.0.0.1:6372",
+    "operator": "tcp://127.0.0.1:6373",
+    "vision": "tcp://127.0.0.1:6374",
+    "tracks": "tcp://127.0.0.1:6375"
+  },
+  "paths": {
+    "moving": "config/follow/moving.config",
+    "yaw": "config/follow/yaw.config",
+    "camera": "config/device/camera.json",
+    "measurement": "config/tracking/measurement.json",
+    "ucmc": "config/tracking/ucmc.json",
+    "v2_1": "config/follow/v2_1.json"
+  }
+}

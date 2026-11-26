@@ -1,0 +1,11 @@
+{
+  "schema": "argus.flight.recording.config.v1",
+  "enabled": false,
+  "retain_sessions": 10,
+  "minimum_free_bytes": 4294967296,
+  "prebuffer_seconds": 2.0,
+  "prebuffer_bytes": 67108864,
+  "landed_disarmed_confirm_seconds": 1.0,
+  "postflight_seconds": 5.0,
+  "compression_level": 1
+}

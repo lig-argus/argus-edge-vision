@@ -1,0 +1,9 @@
+{
+  "expected_fc_uid": "000600000000353733323333511700280027",
+  "expected_fc_system_id": 1,
+  "expected_fc_component_id": 1,
+  "uart_device": "/dev/ttyACM0",
+  "uart_baud": 921600,
+  "router_gateway_port": 14560,
+  "router_legacy_port": 14540
+}
