@@ -1,0 +1,43 @@
+// video/stream_info: 영상 송신부 → mavlink_gateway, 1 Hz 와 변경 시 (docs/spec/process_interfaces.md 5.1,
+// 5.1.6). 영상 송신부가 실제로 송신하는 스트림의 정보이며, mavlink_gateway 가 VIDEO_STREAM_INFORMATION
+// 으로 통제기에 알린다 (docs/spec/video.md 7장). 영상 송신부가 이 값의 원천이다.
+// 필드 번호는 바꾸지 않는다. 필드를 지우면 번호를 reserved 로 남긴다.
+syntax = "proto3";
+
+package argus.msg;
+
+import "argus_msg/follow_command.proto";
+
+// 영상 트랙의 코덱 (docs/spec/video.md 2장)
+enum VideoCodec {
+  VIDEO_CODEC_UNSPECIFIED = 0;
+  VIDEO_CODEC_H264 = 1;
+  VIDEO_CODEC_JPEG = 2;
+}
+
+message VideoStreamInfo {
+  // 스트림 하나 (VIDEO_STREAM_INFORMATION 하나에 대응)
+  message Stream {
+    uint32 stream_id = 1;  // 1부터. VIDEO_STREAM_INFORMATION.stream_id
+    Sensor sensor = 2;     // 영상의 센서 (IR, EO)
+    string name = 3;       // 스트림 이름. VIDEO_STREAM_INFORMATION.name
+    // RTSP 서버가 실제로 연 포트와 경로. 주소의 호스트는 넣지 않는다 (통제기가 접속할 주소는
+    // mavlink_gateway 가 통제기 쪽 네트워크로 정한다)
+    uint32 rtsp_port = 4;
+    string rtsp_path = 5;  // "/" 로 시작
+    uint32 width = 6;      // 송신 해상도 (픽셀)
+    uint32 height = 7;
+    double framerate_hz = 8;  // 송신 FPS
+    VideoCodec codec = 9;
+    uint32 bitrate_bps = 10;  // 인코더 설정의 비트 전송률. 모르면 0
+    double hfov_deg = 11;     // 수평 화각. 모르면 0
+    // 송신 중. 최근 1 초 안에 bus 에서 프레임을 받아 RTSP 서버로 내보냈으면 true. 서버만 열려 있고
+    // 프레임이 오지 않으면 false. 1 초는 통제기의 영상 정지 판단(video.md 미결 7)과 같은 값
+    bool running = 12;
+  }
+
+  string source = 1;                 // 발행자 식별 문자열 (3장 공통 필드)
+  uint64 seq = 2;                    // 발행마다 1 증가 (3장 공통 필드)
+  int64 published_monotonic_ns = 3;  // 발행 시각 (CLOCK_MONOTONIC)
+  repeated Stream streams = 4;       // 송신하는 스트림 전부
+}
