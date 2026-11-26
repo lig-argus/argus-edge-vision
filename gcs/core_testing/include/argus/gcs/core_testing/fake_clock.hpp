@@ -1,14 +1,14 @@
 // 테스트용 IClock. 테스트가 시각을 직접 지정한다. 뒤로 가지 않는다
-#ifndef ARGUS_GCS_TEST_FAKE_CLOCK_HPP_
-#define ARGUS_GCS_TEST_FAKE_CLOCK_HPP_
+#ifndef ARGUS_GCS_CORE_TESTING_FAKE_CLOCK_HPP_
+#define ARGUS_GCS_CORE_TESTING_FAKE_CLOCK_HPP_
 
 #include <QtGlobal>
 
-#include "argus/gcs/clock.hpp"
+#include "argus/gcs/core/clock.hpp"
 
-namespace argus::gcs {
+namespace argus::gcs::core_testing {
 
-class FakeClock : public IClock {
+class FakeClock : public core::IClock {
 public:
     explicit FakeClock(qint64 startNs = 0) : nowNs_(startNs) {}
 
@@ -25,6 +25,6 @@ private:
     qint64 nowNs_;
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::core_testing
 
-#endif  // ARGUS_GCS_TEST_FAKE_CLOCK_HPP_
+#endif  // ARGUS_GCS_CORE_TESTING_FAKE_CLOCK_HPP_

@@ -1,10 +1,10 @@
 // 통제기의 MAVLink 연결 인터페이스 (mavlink-router 와 UDP 14550 으로 주고받음)
 // 규약: docs/spec/icd.md 1.2 (RPi 라우터 ↔ 통제기), 2장, 3장, 4장
 // 구현: (다음 PR) UdpMavlinkConnection — 통제기가 먼저 보내야 라우터가 통제기 주소를 안다,
-//      테스트용 FakeMavlinkConnection (gcs/test)
+//      테스트용 FakeMavlinkConnection (gcs/mavlink_connection_testing)
 // 사용: TelemetryModel, ArgusStatusModel, CommandSender, ManualControl
-#ifndef ARGUS_GCS_MAVLINK_CONNECTION_HPP_
-#define ARGUS_GCS_MAVLINK_CONNECTION_HPP_
+#ifndef ARGUS_GCS_MAVLINK_CONNECTION_MAVLINK_CONNECTION_HPP_
+#define ARGUS_GCS_MAVLINK_CONNECTION_MAVLINK_CONNECTION_HPP_
 
 #include <QObject>
 
@@ -12,7 +12,7 @@
 
 Q_DECLARE_METATYPE(mavlink_message_t)
 
-namespace argus::gcs {
+namespace argus::gcs::mavlink_connection {
 
 // 메시지는 Qt signal 로 전달한다. TelemetryModel, ArgusStatusModel, CommandSender 가 connect() 로
 // messageReceived 를 연결하고 msgid 는 slot 안에서 필터링한다. 연결한 QObject 가 소멸하면 Qt 가
@@ -32,6 +32,6 @@ signals:
     void messageReceived(const mavlink_message_t& message);
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::mavlink_connection
 
-#endif  // ARGUS_GCS_MAVLINK_CONNECTION_HPP_
+#endif  // ARGUS_GCS_MAVLINK_CONNECTION_MAVLINK_CONNECTION_HPP_

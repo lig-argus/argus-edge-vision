@@ -104,22 +104,37 @@ build/onboard/apps/mavlink_gateway/argus_mavlink_gateway --bus zmq          # Ze
 
 ## 통제기 빌드 (`gcs/`)
 
-Qt 6.2 이상(Widgets, Network, Test)이 필요하다. onboard와 별도 CMake 프로젝트다.
+Qt 6.9 이상(Core, Gui, Network, Qml, Quick, Quick3D, Svg, ShaderTools, Test)과 GStreamer 1.24 이상(RTSP 영상 수신)이 필요하다. onboard와 별도 CMake 프로젝트다.
 
 ```
 gcs/
-  include/argus/gcs/   # 인터페이스와 작은 구현 (IMavlinkConnection, IClock, SteadyClock)
-  src/                 # 실행 파일과 구현
-  test/                # 테스트용 구현 (FakeMavlinkConnection, FakeClock)과 Qt Test
+  CMakeLists.txt                # 상위 CMake 프로젝트 하나, 실행 파일 argus_gcs
+  cmake/                        # 모듈 함수(ArgusGcsModule.cmake), 모듈별 허용 의존(module_rules.cmake), include 검사
+  core/                         # IClock, SteadyClock
+  core_testing/                 # core 의 테스트용 구현 (FakeClock)
+  mavlink_connection/           # IMavlinkConnection (MAVLink 연결 인터페이스)
+  mavlink_connection_testing/   # FakeMavlinkConnection
+  app/                          # 실행 파일. 구체 구현을 만들어 다른 모듈에 넘긴다
 ```
 
-통제기는 실행 파일 하나라 onboard 와 달리 모듈을 나누지 않는다 (CONTRIBUTING 0.4).
+모듈 폴더는 onboard 와 같은 `include/ src/ test/` 이고, 모듈 사이 의존은 `gcs/cmake/module_rules.cmake` 가 정한다 (CONTRIBUTING 0.4).
 
 ```bash
-cmake -S gcs -B build/gcs -DCMAKE_PREFIX_PATH=/opt/homebrew   # macOS (brew install qt). Windows: C:/Qt/6.x/msvc2022_64
+# macOS: brew install qt gstreamer
+cmake -S gcs -B build/gcs -DCMAKE_PREFIX_PATH=/opt/homebrew   # Windows: C:/Qt/6.9.3/msvc2022_64
 cmake --build build/gcs
 ctest --test-dir build/gcs
 ./build/gcs/argus_gcs
+```
+
+Ubuntu 24.04 의 apt Qt 는 6.4 라서 Qt 를 따로 설치한다. CI(`.github/workflows/ci.yml` 의 gcs 작업)와 같은 명령:
+
+```bash
+sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev pkg-config \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-libav
+pip install aqtinstall==3.3.0
+aqt install-qt linux desktop 6.9.3 linux_gcc_64 -m qtquick3d qtshadertools -O ~/Qt
+cmake -S gcs -B build/gcs -DCMAKE_PREFIX_PATH=~/Qt/6.9.3/gcc_64
 ```
 
 ## MAVLink 메시지 (`common/mavlink/`)

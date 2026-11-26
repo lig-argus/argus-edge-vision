@@ -1,12 +1,12 @@
 // 현재 시각(monotonic clock)을 읽는 인터페이스. onboard 의 core::IClock 과 이름, 단위가 같다
-// 구현: SteadyClock (std::chrono::steady_clock), 테스트용 FakeClock (gcs/test)
+// 구현: SteadyClock (std::chrono::steady_clock), 테스트용 FakeClock (gcs/core_testing)
 // 사용: TelemetryModel (지연, 연결 끊김 판정), CommandSender (ACK 1 s, IN_PROGRESS 뒤 3 s)
-#ifndef ARGUS_GCS_CLOCK_HPP_
-#define ARGUS_GCS_CLOCK_HPP_
+#ifndef ARGUS_GCS_CORE_CLOCK_HPP_
+#define ARGUS_GCS_CORE_CLOCK_HPP_
 
 #include <QtGlobal>
 
-namespace argus::gcs {
+namespace argus::gcs::core {
 
 class IClock {
 public:
@@ -27,6 +27,6 @@ public:
     qint64 nowMonotonicNs() const override;
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::core
 
-#endif  // ARGUS_GCS_CLOCK_HPP_
+#endif  // ARGUS_GCS_CORE_CLOCK_HPP_

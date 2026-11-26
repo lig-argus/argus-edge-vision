@@ -2,11 +2,13 @@
 #include <QtTest>
 #include <cstdint>
 
+#include "argus/gcs/mavlink_connection_testing/fake_mavlink_connection.hpp"
 #include "argus/mavlink.h"
-#include "fake_mavlink_connection.hpp"
 
-namespace argus::gcs {
+namespace argus::gcs::mavlink_connection {
 namespace {
+
+using mavlink_connection_testing::FakeMavlinkConnection;
 
 constexpr quint8 kFcSysid = 1;
 constexpr quint8 kOnboardCompid = 195;
@@ -76,7 +78,7 @@ private slots:
     }
 };
 
-}  // namespace argus::gcs
+}  // namespace argus::gcs::mavlink_connection
 
-QTEST_MAIN(argus::gcs::MavlinkConnectionTest)
+QTEST_MAIN(argus::gcs::mavlink_connection::MavlinkConnectionTest)
 #include "mavlink_connection_test.moc"
