@@ -9,6 +9,37 @@ permissions:
   contents: read
 
 jobs:
+  # PR 에서 바뀐 경로를 보고 빌드 작업(gcs, onboard)을 건너뛸지 정한다. push(develop, main)는 모두 실행한다.
+  # 워크플로의 paths 조건으로 실행 자체를 건너뛰면 필수 검사가 대기 상태로 남아 머지가 막힌다.
+  # 작업의 if 조건으로 건너뛴 작업은 성공으로 보고되므로 필수 검사를 그대로 둘 수 있다.
+  # 이 작업이 실패하면 빌드 작업을 모두 실행한다 (건너뛰어 검사 없이 통과하지 않게)
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      onboard: ${{ steps.filter.outputs.onboard }}
+      gcs: ${{ steps.filter.outputs.gcs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        # 두 빌드가 함께 쓰는 경로: MAVLink 정의와 생성 헤더(common), 생성 스크립트(tools), 검사 설정, 이 파일
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "onboard=true" >> "$GITHUB_OUTPUT"
+            echo "gcs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+          shared='common/|tools/|\.clang-tidy$|\.github/workflows/ci\.yml$'
+          touches() { if printf '%s\n' "$changed" | grep -qE "^($1|$shared)"; then echo true; else echo false; fi; }
+          echo "onboard=$(touches 'onboard/')" >> "$GITHUB_OUTPUT"
+          echo "gcs=$(touches 'gcs/')" >> "$GITHUB_OUTPUT"
+
   format:
     name: clang-format
     runs-on: ubuntu-latest
@@ -71,6 +102,8 @@ jobs:
 
   gcs:
     name: gcs build · test · clang-tidy
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gcs == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -104,6 +137,8 @@ jobs:
 
   onboard:
     name: onboard build · test · clang-tidy
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.onboard == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -141,6 +176,8 @@ jobs:
   # 빌드하여 캐시한다 (버전이 바뀌면 key 를 바꾼다). 버전은 README.md 의 Fast DDS 설치와 같다
   onboard-dds:
     name: onboard bus_dds (Fast DDS) build, test, clang-tidy
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.onboard == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
