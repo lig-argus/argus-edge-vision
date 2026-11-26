@@ -1,0 +1,14 @@
+// tracking/status: 추적기 → mavlink_gateway, 1 Hz (tracking_status.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여)
+module argus {
+    module idl {
+        struct TrackingStatus {
+            string source;                 // 카메라 식별 문자열
+            int64 published_monotonic_ns;  // 발행 시각 (CLOCK_MONOTONIC)
+            uint32 generation;  // 현재 추적기 세대. 1~16,777,215. tracking/tracks 와 같은 값
+            boolean fc_fresh;   // 프레임 시각에 맞는 FC 메시지가 있는지
+            boolean cmc_valid;  // 카메라 회전 보상이 유효한지
+            double fps;         // 처리 FPS
+        };
+    };
+};

@@ -1,0 +1,84 @@
+// follow/status: 추종 제어 → mavlink_gateway, 1 Hz 와 변경 시 (follow_status.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여). .proto 의 중첩 메시지는 module 범위의
+// 구조체로 정의하고 FollowStatus_ 를 붙인다 (메시지이름_역할 규칙)
+#include "follow_command.idl"
+
+module argus {
+    module idl {
+        // 임무 상태. ARGUS_STATUS.mission_state 에 대응하며 MAVLink 값보다 1 크다 (0 = UNSPECIFIED)
+        enum MissionState {
+            MISSION_STATE_UNSPECIFIED,
+            MISSION_STATE_IDLE,
+            MISSION_STATE_PREPARING,
+            MISSION_STATE_FOLLOW_ACTIVE,
+            MISSION_STATE_HOLD_TRANSITION,
+            MISSION_STATE_HOLD_WAIT,
+            MISSION_STATE_SCAN_ACTIVE,
+            MISSION_STATE_MANUAL,
+            MISSION_STATE_FAULT
+        };
+
+        // 표적 상태. ARGUS_STATUS.target_state 에 대응하며 MAVLink 값보다 1 크다 (0 = UNSPECIFIED)
+        enum TargetState {
+            TARGET_STATE_UNSPECIFIED,
+            TARGET_STATE_NONE,
+            TARGET_STATE_CONFIRMED,
+            TARGET_STATE_PREDICTED,
+            TARGET_STATE_LOST
+        };
+
+        // follow/command 의 명령 종류 (follow_command.proto 의 FollowCommand.action)
+        enum FollowAction {
+            FOLLOW_ACTION_UNSPECIFIED,
+            FOLLOW_ACTION_TRACK_START,
+            FOLLOW_ACTION_STOP,
+            FOLLOW_ACTION_SEARCH
+        };
+
+        // 추종 표적 하나. 추적기의 트랙을 가리킨다
+        struct FollowStatus_Target {
+            uint32 generation;  // 1~16,777,215
+            uint32 track_id;    // 1~16,777,215
+            int32 class_id;
+            string label;
+            Sensor sensor;
+        };
+
+        // 명령 하나의 최근 결과
+        struct FollowStatus_CommandResult {
+            uint64 command_id;
+            FollowAction action;
+            FollowOutcome outcome;
+            boolean request_accepted;  // 처음에 수락했는지. 수락 뒤 실패해도 true 로 남는다
+            string reason;             // 거부와 실패의 원인. 판정에는 사용하지 않는다
+            @optional FollowStatus_Target target;  // track_start 의 표적
+        };
+
+        // Scan 의 진행. Scan 중이 아니면 없다
+        struct FollowStatus_Scan {
+            double yaw_rate_rad_s;  // 부호 포함 (양수 = 시계 방향)
+            double sweep_rad;
+            double timeout_s;
+            double progress_deg;
+            @optional double remaining_s;  // 남은 시간. 계산하지 않으면 없다
+        };
+
+        struct FollowStatus {
+            string source;              // 발행자 식별 문자열
+            string session_id;          // 이 메시지 발행자의 세션
+            string controller_session;  // 추종 제어 프로세스가 시작할 때 만드는 세션
+            string client_session;      // 추종 제어가 mavlink_gateway 에 요청할 때의 세션
+            string onboard_session;     // 상대 mavlink_gateway 의 세션
+            string uid;                 // 설정된 대상 FC 의 UID
+            uint64 fc_epoch;            // FC 연결의 epoch
+            int64 received_monotonic_ns;
+            MissionState mission_state;
+            TargetState target_state;
+            @optional FollowStatus_Target selected;  // 선택 표적
+            sequence<FollowStatus_CommandResult> command_results;  // 최근 명령 결과. 최대 32개
+            uint64 command_epoch;
+            boolean command_sent;
+            @optional FollowStatus_Scan scan;
+        };
+    };
+};

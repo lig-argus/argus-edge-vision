@@ -1,7 +1,11 @@
 // follow/command: mavlink_gateway → 추종 제어 요청과 응답 follow/result (follow_command.proto 에 대응)
-// .proto 와 다른 점: oneof action 을 판별 enum(FollowActionKind)의 union 으로 정의
+// .proto 와 다른 점: oneof action 을 판별 enum(FollowCommand_ActionCase)의 union(FollowCommand_Action)으로
+// 정의. 메시지에 딸린 타입은 module 범위에 메시지이름_역할 로 둔다 (protoc 가 만드는 C++ 이름과 같은 규칙)
 // TrackStart, Stop, Search 는 .proto 의 중첩 메시지를 module 범위로 꺼낸 것이라 FollowCommand_ 를 붙인다
 // (union 멤버 이름 track_start, stop, search 와 대소문자만 다른 타입 이름은 IDL 에서 충돌한다)
+#ifndef ARGUS_MSG_FOLLOW_COMMAND_IDL
+#define ARGUS_MSG_FOLLOW_COMMAND_IDL
+
 #include "common.idl"
 
 module argus {
@@ -45,24 +49,24 @@ module argus {
             double timeout_s;
         };
 
-        enum FollowActionKind {
-            FOLLOW_ACTION_KIND_TRACK_START,
-            FOLLOW_ACTION_KIND_STOP,
-            FOLLOW_ACTION_KIND_SEARCH
+        enum FollowCommand_ActionCase {
+            FOLLOW_COMMAND_ACTION_CASE_TRACK_START,
+            FOLLOW_COMMAND_ACTION_CASE_STOP,
+            FOLLOW_COMMAND_ACTION_CASE_SEARCH
         };
 
-        union FollowAction switch (FollowActionKind) {
-            case FOLLOW_ACTION_KIND_TRACK_START:
+        union FollowCommand_Action switch (FollowCommand_ActionCase) {
+            case FOLLOW_COMMAND_ACTION_CASE_TRACK_START:
                 FollowCommand_TrackStart track_start;
-            case FOLLOW_ACTION_KIND_STOP:
+            case FOLLOW_COMMAND_ACTION_CASE_STOP:
                 FollowCommand_Stop stop;
-            case FOLLOW_ACTION_KIND_SEARCH:
+            case FOLLOW_COMMAND_ACTION_CASE_SEARCH:
                 FollowCommand_Search search;
         };
 
         struct FollowCommand {
             RequestHeader header;
-            FollowAction action;
+            FollowCommand_Action action;
         };
 
         struct FollowResult {
@@ -73,3 +77,5 @@ module argus {
         };
     };
 };
+
+#endif /* ARGUS_MSG_FOLLOW_COMMAND_IDL */

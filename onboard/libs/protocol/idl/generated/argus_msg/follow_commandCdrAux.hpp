@@ -36,9 +36,9 @@ constexpr uint32_t argus_idl_FollowCommand_TrackStart_max_key_cdr_typesize {0UL}
 
 
 
-
 constexpr uint32_t argus_idl_FollowCommand_max_cdr_typesize {600UL};
 constexpr uint32_t argus_idl_FollowCommand_max_key_cdr_typesize {0UL};
+
 
 
 constexpr uint32_t argus_idl_FollowResult_max_cdr_typesize {564UL};

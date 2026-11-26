@@ -600,127 +600,127 @@ void register_FollowCommand_Search_type_identifier(
                     "argus::idl::FollowCommand_Search already registered in TypeObjectRegistry for a different type.");
         }
     }
-}void register_FollowActionKind_type_identifier(
-        TypeIdentifierPair& type_ids_FollowActionKind)
+}void register_FollowCommand_ActionCase_type_identifier(
+        TypeIdentifierPair& type_ids_FollowCommand_ActionCase)
 {
-    ReturnCode_t return_code_FollowActionKind {eprosima::fastdds::dds::RETCODE_OK};
-    return_code_FollowActionKind =
+    ReturnCode_t return_code_FollowCommand_ActionCase {eprosima::fastdds::dds::RETCODE_OK};
+    return_code_FollowCommand_ActionCase =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "argus::idl::FollowActionKind", type_ids_FollowActionKind);
-    if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowActionKind)
+        "argus::idl::FollowCommand_ActionCase", type_ids_FollowCommand_ActionCase);
+    if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowCommand_ActionCase)
     {
-        EnumTypeFlag enum_flags_FollowActionKind = 0;
-        BitBound bit_bound_FollowActionKind = 32;
-        CommonEnumeratedHeader common_FollowActionKind = TypeObjectUtils::build_common_enumerated_header(bit_bound_FollowActionKind);
-        QualifiedTypeName type_name_FollowActionKind = "argus::idl::FollowActionKind";
-        eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FollowActionKind;
-        eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FollowActionKind;
-        CompleteTypeDetail detail_FollowActionKind = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FollowActionKind, ann_custom_FollowActionKind, type_name_FollowActionKind.to_string());
-        CompleteEnumeratedHeader header_FollowActionKind = TypeObjectUtils::build_complete_enumerated_header(common_FollowActionKind, detail_FollowActionKind);
-        CompleteEnumeratedLiteralSeq literal_seq_FollowActionKind;
+        EnumTypeFlag enum_flags_FollowCommand_ActionCase = 0;
+        BitBound bit_bound_FollowCommand_ActionCase = 32;
+        CommonEnumeratedHeader common_FollowCommand_ActionCase = TypeObjectUtils::build_common_enumerated_header(bit_bound_FollowCommand_ActionCase);
+        QualifiedTypeName type_name_FollowCommand_ActionCase = "argus::idl::FollowCommand_ActionCase";
+        eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FollowCommand_ActionCase;
+        eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FollowCommand_ActionCase;
+        CompleteTypeDetail detail_FollowCommand_ActionCase = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FollowCommand_ActionCase, ann_custom_FollowCommand_ActionCase, type_name_FollowCommand_ActionCase.to_string());
+        CompleteEnumeratedHeader header_FollowCommand_ActionCase = TypeObjectUtils::build_complete_enumerated_header(common_FollowCommand_ActionCase, detail_FollowCommand_ActionCase);
+        CompleteEnumeratedLiteralSeq literal_seq_FollowCommand_ActionCase;
         {
-            EnumeratedLiteralFlag flags_FOLLOW_ACTION_KIND_TRACK_START = TypeObjectUtils::build_enumerated_literal_flag(false);
-            CommonEnumeratedLiteral common_FOLLOW_ACTION_KIND_TRACK_START = TypeObjectUtils::build_common_enumerated_literal(0, flags_FOLLOW_ACTION_KIND_TRACK_START);
-            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_ACTION_KIND_TRACK_START;
-            ann_custom_FollowActionKind.reset();
-            MemberName name_FOLLOW_ACTION_KIND_TRACK_START = "FOLLOW_ACTION_KIND_TRACK_START";
-            CompleteMemberDetail detail_FOLLOW_ACTION_KIND_TRACK_START = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_ACTION_KIND_TRACK_START, member_ann_builtin_FOLLOW_ACTION_KIND_TRACK_START, ann_custom_FollowActionKind);
-            CompleteEnumeratedLiteral literal_FOLLOW_ACTION_KIND_TRACK_START = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_ACTION_KIND_TRACK_START, detail_FOLLOW_ACTION_KIND_TRACK_START);
-            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowActionKind, literal_FOLLOW_ACTION_KIND_TRACK_START);
+            EnumeratedLiteralFlag flags_FOLLOW_COMMAND_ACTION_CASE_TRACK_START = TypeObjectUtils::build_enumerated_literal_flag(false);
+            CommonEnumeratedLiteral common_FOLLOW_COMMAND_ACTION_CASE_TRACK_START = TypeObjectUtils::build_common_enumerated_literal(0, flags_FOLLOW_COMMAND_ACTION_CASE_TRACK_START);
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_TRACK_START;
+            ann_custom_FollowCommand_ActionCase.reset();
+            MemberName name_FOLLOW_COMMAND_ACTION_CASE_TRACK_START = "FOLLOW_COMMAND_ACTION_CASE_TRACK_START";
+            CompleteMemberDetail detail_FOLLOW_COMMAND_ACTION_CASE_TRACK_START = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_COMMAND_ACTION_CASE_TRACK_START, member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_TRACK_START, ann_custom_FollowCommand_ActionCase);
+            CompleteEnumeratedLiteral literal_FOLLOW_COMMAND_ACTION_CASE_TRACK_START = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_COMMAND_ACTION_CASE_TRACK_START, detail_FOLLOW_COMMAND_ACTION_CASE_TRACK_START);
+            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowCommand_ActionCase, literal_FOLLOW_COMMAND_ACTION_CASE_TRACK_START);
         }
         {
-            EnumeratedLiteralFlag flags_FOLLOW_ACTION_KIND_STOP = TypeObjectUtils::build_enumerated_literal_flag(false);
-            CommonEnumeratedLiteral common_FOLLOW_ACTION_KIND_STOP = TypeObjectUtils::build_common_enumerated_literal(1, flags_FOLLOW_ACTION_KIND_STOP);
-            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_ACTION_KIND_STOP;
-            ann_custom_FollowActionKind.reset();
-            MemberName name_FOLLOW_ACTION_KIND_STOP = "FOLLOW_ACTION_KIND_STOP";
-            CompleteMemberDetail detail_FOLLOW_ACTION_KIND_STOP = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_ACTION_KIND_STOP, member_ann_builtin_FOLLOW_ACTION_KIND_STOP, ann_custom_FollowActionKind);
-            CompleteEnumeratedLiteral literal_FOLLOW_ACTION_KIND_STOP = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_ACTION_KIND_STOP, detail_FOLLOW_ACTION_KIND_STOP);
-            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowActionKind, literal_FOLLOW_ACTION_KIND_STOP);
+            EnumeratedLiteralFlag flags_FOLLOW_COMMAND_ACTION_CASE_STOP = TypeObjectUtils::build_enumerated_literal_flag(false);
+            CommonEnumeratedLiteral common_FOLLOW_COMMAND_ACTION_CASE_STOP = TypeObjectUtils::build_common_enumerated_literal(1, flags_FOLLOW_COMMAND_ACTION_CASE_STOP);
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_STOP;
+            ann_custom_FollowCommand_ActionCase.reset();
+            MemberName name_FOLLOW_COMMAND_ACTION_CASE_STOP = "FOLLOW_COMMAND_ACTION_CASE_STOP";
+            CompleteMemberDetail detail_FOLLOW_COMMAND_ACTION_CASE_STOP = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_COMMAND_ACTION_CASE_STOP, member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_STOP, ann_custom_FollowCommand_ActionCase);
+            CompleteEnumeratedLiteral literal_FOLLOW_COMMAND_ACTION_CASE_STOP = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_COMMAND_ACTION_CASE_STOP, detail_FOLLOW_COMMAND_ACTION_CASE_STOP);
+            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowCommand_ActionCase, literal_FOLLOW_COMMAND_ACTION_CASE_STOP);
         }
         {
-            EnumeratedLiteralFlag flags_FOLLOW_ACTION_KIND_SEARCH = TypeObjectUtils::build_enumerated_literal_flag(false);
-            CommonEnumeratedLiteral common_FOLLOW_ACTION_KIND_SEARCH = TypeObjectUtils::build_common_enumerated_literal(2, flags_FOLLOW_ACTION_KIND_SEARCH);
-            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_ACTION_KIND_SEARCH;
-            ann_custom_FollowActionKind.reset();
-            MemberName name_FOLLOW_ACTION_KIND_SEARCH = "FOLLOW_ACTION_KIND_SEARCH";
-            CompleteMemberDetail detail_FOLLOW_ACTION_KIND_SEARCH = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_ACTION_KIND_SEARCH, member_ann_builtin_FOLLOW_ACTION_KIND_SEARCH, ann_custom_FollowActionKind);
-            CompleteEnumeratedLiteral literal_FOLLOW_ACTION_KIND_SEARCH = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_ACTION_KIND_SEARCH, detail_FOLLOW_ACTION_KIND_SEARCH);
-            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowActionKind, literal_FOLLOW_ACTION_KIND_SEARCH);
+            EnumeratedLiteralFlag flags_FOLLOW_COMMAND_ACTION_CASE_SEARCH = TypeObjectUtils::build_enumerated_literal_flag(false);
+            CommonEnumeratedLiteral common_FOLLOW_COMMAND_ACTION_CASE_SEARCH = TypeObjectUtils::build_common_enumerated_literal(2, flags_FOLLOW_COMMAND_ACTION_CASE_SEARCH);
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_SEARCH;
+            ann_custom_FollowCommand_ActionCase.reset();
+            MemberName name_FOLLOW_COMMAND_ACTION_CASE_SEARCH = "FOLLOW_COMMAND_ACTION_CASE_SEARCH";
+            CompleteMemberDetail detail_FOLLOW_COMMAND_ACTION_CASE_SEARCH = TypeObjectUtils::build_complete_member_detail(name_FOLLOW_COMMAND_ACTION_CASE_SEARCH, member_ann_builtin_FOLLOW_COMMAND_ACTION_CASE_SEARCH, ann_custom_FollowCommand_ActionCase);
+            CompleteEnumeratedLiteral literal_FOLLOW_COMMAND_ACTION_CASE_SEARCH = TypeObjectUtils::build_complete_enumerated_literal(common_FOLLOW_COMMAND_ACTION_CASE_SEARCH, detail_FOLLOW_COMMAND_ACTION_CASE_SEARCH);
+            TypeObjectUtils::add_complete_enumerated_literal(literal_seq_FollowCommand_ActionCase, literal_FOLLOW_COMMAND_ACTION_CASE_SEARCH);
         }
-        CompleteEnumeratedType enumerated_type_FollowActionKind = TypeObjectUtils::build_complete_enumerated_type(enum_flags_FollowActionKind, header_FollowActionKind,
-                literal_seq_FollowActionKind);
+        CompleteEnumeratedType enumerated_type_FollowCommand_ActionCase = TypeObjectUtils::build_complete_enumerated_type(enum_flags_FollowCommand_ActionCase, header_FollowCommand_ActionCase,
+                literal_seq_FollowCommand_ActionCase);
         if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
-                TypeObjectUtils::build_and_register_enumerated_type_object(enumerated_type_FollowActionKind, type_name_FollowActionKind.to_string(), type_ids_FollowActionKind))
+                TypeObjectUtils::build_and_register_enumerated_type_object(enumerated_type_FollowCommand_ActionCase, type_name_FollowCommand_ActionCase.to_string(), type_ids_FollowCommand_ActionCase))
         {
             EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
-                "argus::idl::FollowActionKind already registered in TypeObjectRegistry for a different type.");
+                "argus::idl::FollowCommand_ActionCase already registered in TypeObjectRegistry for a different type.");
         }
     }
 }// TypeIdentifier is returned by reference: dependent structures/unions are registered in this same method
-void register_FollowAction_type_identifier(
-        TypeIdentifierPair& type_ids_FollowAction)
+void register_FollowCommand_Action_type_identifier(
+        TypeIdentifierPair& type_ids_FollowCommand_Action)
 {
-    ReturnCode_t return_code_FollowAction {eprosima::fastdds::dds::RETCODE_OK};
-    return_code_FollowAction =
+    ReturnCode_t return_code_FollowCommand_Action {eprosima::fastdds::dds::RETCODE_OK};
+    return_code_FollowCommand_Action =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "argus::idl::FollowAction", type_ids_FollowAction);
-    if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowAction)
+        "argus::idl::FollowCommand_Action", type_ids_FollowCommand_Action);
+    if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowCommand_Action)
     {
-        UnionTypeFlag union_flags_FollowAction = TypeObjectUtils::build_union_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        UnionTypeFlag union_flags_FollowCommand_Action = TypeObjectUtils::build_union_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
                 false, false);
-        QualifiedTypeName type_name_FollowAction = "argus::idl::FollowAction";
-        eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FollowAction;
-        eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FollowAction;
-        CompleteTypeDetail detail_FollowAction = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FollowAction, ann_custom_FollowAction, type_name_FollowAction.to_string());
-        CompleteUnionHeader header_FollowAction = TypeObjectUtils::build_complete_union_header(detail_FollowAction);
-        UnionDiscriminatorFlag member_flags_FollowAction = TypeObjectUtils::build_union_discriminator_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+        QualifiedTypeName type_name_FollowCommand_Action = "argus::idl::FollowCommand_Action";
+        eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FollowCommand_Action;
+        eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FollowCommand_Action;
+        CompleteTypeDetail detail_FollowCommand_Action = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FollowCommand_Action, ann_custom_FollowCommand_Action, type_name_FollowCommand_Action.to_string());
+        CompleteUnionHeader header_FollowCommand_Action = TypeObjectUtils::build_complete_union_header(detail_FollowCommand_Action);
+        UnionDiscriminatorFlag member_flags_FollowCommand_Action = TypeObjectUtils::build_union_discriminator_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
                 false);
-        return_code_FollowAction =
+        return_code_FollowCommand_Action =
             eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-            "argus::idl::FollowActionKind", type_ids_FollowAction);
+            "argus::idl::FollowCommand_ActionCase", type_ids_FollowCommand_Action);
 
-        if (return_code_FollowAction != eprosima::fastdds::dds::RETCODE_OK)
+        if (return_code_FollowCommand_Action != eprosima::fastdds::dds::RETCODE_OK)
         {
-            ::argus::idl::register_FollowActionKind_type_identifier(type_ids_FollowAction);
+            ::argus::idl::register_FollowCommand_ActionCase_type_identifier(type_ids_FollowCommand_Action);
         }
-        CommonDiscriminatorMember common_FollowAction;
-        if (EK_COMPLETE == type_ids_FollowAction.type_identifier1()._d() || TK_NONE == type_ids_FollowAction.type_identifier2()._d())
+        CommonDiscriminatorMember common_FollowCommand_Action;
+        if (EK_COMPLETE == type_ids_FollowCommand_Action.type_identifier1()._d() || TK_NONE == type_ids_FollowCommand_Action.type_identifier2()._d())
         {
-            common_FollowAction = TypeObjectUtils::build_common_discriminator_member(member_flags_FollowAction, type_ids_FollowAction.type_identifier1());
+            common_FollowCommand_Action = TypeObjectUtils::build_common_discriminator_member(member_flags_FollowCommand_Action, type_ids_FollowCommand_Action.type_identifier1());
         }
-        else if (EK_COMPLETE == type_ids_FollowAction.type_identifier2()._d())
+        else if (EK_COMPLETE == type_ids_FollowCommand_Action.type_identifier2()._d())
         {
-            common_FollowAction = TypeObjectUtils::build_common_discriminator_member(member_flags_FollowAction, type_ids_FollowAction.type_identifier2());
+            common_FollowCommand_Action = TypeObjectUtils::build_common_discriminator_member(member_flags_FollowCommand_Action, type_ids_FollowCommand_Action.type_identifier2());
         }
         else
         {
             EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
-                    "argus::idl::FollowAction discriminator TypeIdentifier inconsistent.");
+                    "argus::idl::FollowCommand_Action discriminator TypeIdentifier inconsistent.");
             return;
         }
-        type_ann_builtin_FollowAction.reset();
-        ann_custom_FollowAction.reset();
-        CompleteDiscriminatorMember discriminator_FollowAction = TypeObjectUtils::build_complete_discriminator_member(common_FollowAction,
-                type_ann_builtin_FollowAction, ann_custom_FollowAction);
-        CompleteUnionMemberSeq member_seq_FollowAction;
+        type_ann_builtin_FollowCommand_Action.reset();
+        ann_custom_FollowCommand_Action.reset();
+        CompleteDiscriminatorMember discriminator_FollowCommand_Action = TypeObjectUtils::build_complete_discriminator_member(common_FollowCommand_Action,
+                type_ann_builtin_FollowCommand_Action, ann_custom_FollowCommand_Action);
+        CompleteUnionMemberSeq member_seq_FollowCommand_Action;
         {
-            return_code_FollowAction =
+            return_code_FollowCommand_Action =
                 eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-                "argus::idl::FollowCommand_TrackStart", type_ids_FollowAction);
+                "argus::idl::FollowCommand_TrackStart", type_ids_FollowCommand_Action);
 
-            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowAction)
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowCommand_Action)
             {
-                ::argus::idl::register_FollowCommand_TrackStart_type_identifier(type_ids_FollowAction);
+                ::argus::idl::register_FollowCommand_TrackStart_type_identifier(type_ids_FollowCommand_Action);
             }
             UnionMemberFlag member_flags_track_start = TypeObjectUtils::build_union_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
                     false, false);
             UnionCaseLabelSeq label_seq_track_start;
-            TypeObjectUtils::add_union_case_label(label_seq_track_start, static_cast<int32_t>(argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_TRACK_START));
+            TypeObjectUtils::add_union_case_label(label_seq_track_start, static_cast<int32_t>(argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_TRACK_START));
             MemberId member_id_track_start = 0x00000001;
             bool common_track_start_ec {false};
             CommonUnionMember common_track_start {TypeObjectUtils::build_common_union_member(member_id_track_start,
-                    member_flags_track_start, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowAction,
+                    member_flags_track_start, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowCommand_Action,
                         common_track_start_ec), label_seq_track_start)};
             if (!common_track_start_ec)
             {
@@ -729,28 +729,28 @@ void register_FollowAction_type_identifier(
             }
             MemberName name_track_start = "track_start";
             eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_track_start;
-            ann_custom_FollowAction.reset();
-            CompleteMemberDetail detail_track_start = TypeObjectUtils::build_complete_member_detail(name_track_start, member_ann_builtin_track_start, ann_custom_FollowAction);
+            ann_custom_FollowCommand_Action.reset();
+            CompleteMemberDetail detail_track_start = TypeObjectUtils::build_complete_member_detail(name_track_start, member_ann_builtin_track_start, ann_custom_FollowCommand_Action);
             CompleteUnionMember member_track_start = TypeObjectUtils::build_complete_union_member(common_track_start, detail_track_start);
-            TypeObjectUtils::add_complete_union_member(member_seq_FollowAction, member_track_start);
+            TypeObjectUtils::add_complete_union_member(member_seq_FollowCommand_Action, member_track_start);
         }
         {
-            return_code_FollowAction =
+            return_code_FollowCommand_Action =
                 eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-                "argus::idl::FollowCommand_Stop", type_ids_FollowAction);
+                "argus::idl::FollowCommand_Stop", type_ids_FollowCommand_Action);
 
-            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowAction)
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowCommand_Action)
             {
-                ::argus::idl::register_FollowCommand_Stop_type_identifier(type_ids_FollowAction);
+                ::argus::idl::register_FollowCommand_Stop_type_identifier(type_ids_FollowCommand_Action);
             }
             UnionMemberFlag member_flags_stop = TypeObjectUtils::build_union_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
                     false, false);
             UnionCaseLabelSeq label_seq_stop;
-            TypeObjectUtils::add_union_case_label(label_seq_stop, static_cast<int32_t>(argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_STOP));
+            TypeObjectUtils::add_union_case_label(label_seq_stop, static_cast<int32_t>(argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_STOP));
             MemberId member_id_stop = 0x00000002;
             bool common_stop_ec {false};
             CommonUnionMember common_stop {TypeObjectUtils::build_common_union_member(member_id_stop,
-                    member_flags_stop, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowAction,
+                    member_flags_stop, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowCommand_Action,
                         common_stop_ec), label_seq_stop)};
             if (!common_stop_ec)
             {
@@ -759,28 +759,28 @@ void register_FollowAction_type_identifier(
             }
             MemberName name_stop = "stop";
             eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_stop;
-            ann_custom_FollowAction.reset();
-            CompleteMemberDetail detail_stop = TypeObjectUtils::build_complete_member_detail(name_stop, member_ann_builtin_stop, ann_custom_FollowAction);
+            ann_custom_FollowCommand_Action.reset();
+            CompleteMemberDetail detail_stop = TypeObjectUtils::build_complete_member_detail(name_stop, member_ann_builtin_stop, ann_custom_FollowCommand_Action);
             CompleteUnionMember member_stop = TypeObjectUtils::build_complete_union_member(common_stop, detail_stop);
-            TypeObjectUtils::add_complete_union_member(member_seq_FollowAction, member_stop);
+            TypeObjectUtils::add_complete_union_member(member_seq_FollowCommand_Action, member_stop);
         }
         {
-            return_code_FollowAction =
+            return_code_FollowCommand_Action =
                 eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-                "argus::idl::FollowCommand_Search", type_ids_FollowAction);
+                "argus::idl::FollowCommand_Search", type_ids_FollowCommand_Action);
 
-            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowAction)
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_FollowCommand_Action)
             {
-                ::argus::idl::register_FollowCommand_Search_type_identifier(type_ids_FollowAction);
+                ::argus::idl::register_FollowCommand_Search_type_identifier(type_ids_FollowCommand_Action);
             }
             UnionMemberFlag member_flags_search = TypeObjectUtils::build_union_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
                     false, false);
             UnionCaseLabelSeq label_seq_search;
-            TypeObjectUtils::add_union_case_label(label_seq_search, static_cast<int32_t>(argus::idl::FollowActionKind::FOLLOW_ACTION_KIND_SEARCH));
+            TypeObjectUtils::add_union_case_label(label_seq_search, static_cast<int32_t>(argus::idl::FollowCommand_ActionCase::FOLLOW_COMMAND_ACTION_CASE_SEARCH));
             MemberId member_id_search = 0x00000003;
             bool common_search_ec {false};
             CommonUnionMember common_search {TypeObjectUtils::build_common_union_member(member_id_search,
-                    member_flags_search, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowAction,
+                    member_flags_search, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_FollowCommand_Action,
                         common_search_ec), label_seq_search)};
             if (!common_search_ec)
             {
@@ -789,18 +789,18 @@ void register_FollowAction_type_identifier(
             }
             MemberName name_search = "search";
             eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_search;
-            ann_custom_FollowAction.reset();
-            CompleteMemberDetail detail_search = TypeObjectUtils::build_complete_member_detail(name_search, member_ann_builtin_search, ann_custom_FollowAction);
+            ann_custom_FollowCommand_Action.reset();
+            CompleteMemberDetail detail_search = TypeObjectUtils::build_complete_member_detail(name_search, member_ann_builtin_search, ann_custom_FollowCommand_Action);
             CompleteUnionMember member_search = TypeObjectUtils::build_complete_union_member(common_search, detail_search);
-            TypeObjectUtils::add_complete_union_member(member_seq_FollowAction, member_search);
+            TypeObjectUtils::add_complete_union_member(member_seq_FollowCommand_Action, member_search);
         }
-        CompleteUnionType union_type_FollowAction = TypeObjectUtils::build_complete_union_type(union_flags_FollowAction, header_FollowAction, discriminator_FollowAction,
-                member_seq_FollowAction);
+        CompleteUnionType union_type_FollowCommand_Action = TypeObjectUtils::build_complete_union_type(union_flags_FollowCommand_Action, header_FollowCommand_Action, discriminator_FollowCommand_Action,
+                member_seq_FollowCommand_Action);
         if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
-                TypeObjectUtils::build_and_register_union_type_object(union_type_FollowAction, type_name_FollowAction.to_string(), type_ids_FollowAction))
+                TypeObjectUtils::build_and_register_union_type_object(union_type_FollowCommand_Action, type_name_FollowCommand_Action.to_string(), type_ids_FollowCommand_Action))
         {
             EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
-                    "argus::idl::FollowAction already registered in TypeObjectRegistry for a different type.");
+                    "argus::idl::FollowCommand_Action already registered in TypeObjectRegistry for a different type.");
         }
     }
 }// TypeIdentifier is returned by reference: dependent structures/unions are registered in this same method
@@ -856,11 +856,11 @@ void register_FollowCommand_type_identifier(
             ReturnCode_t return_code_action {eprosima::fastdds::dds::RETCODE_OK};
             return_code_action =
                 eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-                "argus::idl::FollowAction", type_ids_action);
+                "argus::idl::FollowCommand_Action", type_ids_action);
 
             if (eprosima::fastdds::dds::RETCODE_OK != return_code_action)
             {
-                ::argus::idl::register_FollowAction_type_identifier(type_ids_action);
+                ::argus::idl::register_FollowCommand_Action_type_identifier(type_ids_action);
             }
             StructMemberFlag member_flags_action = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
                     false, false, false, false);
