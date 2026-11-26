@@ -1,0 +1,19 @@
+// vision/frame/gray8: 탐지 프로세스 → 영상 송신부 (vision_frame_gray8.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여). 픽셀은 ZeroMQ 의 바이너리 프레임 대신
+// pixels 멤버로 표본 안에 둔다 (stride × height 바이트)
+module argus {
+    module idl {
+        struct VisionFrameGray8 {
+            string source;      // 카메라 식별 문자열. perception/observations 와 같은 값
+            string session_id;  // 탐지 프로세스가 시작할 때마다 새로 만드는 값
+            uint64 frame_id;    // perception/observations 와 같은 frame_id
+            int64 unix_ns;      // RPi 가 프레임을 받은 시각 (wall clock)
+            int64 received_monotonic_ns;  // RPi 가 프레임을 받은 시각 (CLOCK_MONOTONIC). 노출 시각이 아니다
+            uint32 width;
+            uint32 height;
+            uint32 stride;      // 한 줄의 바이트 수
+            string preprocess;  // 전처리 이름
+            sequence<octet> pixels;
+        };
+    };
+};

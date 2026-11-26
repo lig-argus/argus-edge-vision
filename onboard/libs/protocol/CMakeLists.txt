@@ -57,8 +57,8 @@ argus_add_test(protocol_proto_test SOURCES test/proto_test.cpp LIBS argus::proto
 if(ARGUS_BUILD_BUS_DDS)
     find_package(fastcdr 2 REQUIRED)
     find_package(fastdds 3 REQUIRED)
-    set(argus_idl_names common control_mode_request control_setpoint fc_attitude fc_mode_event fc_state
-                        follow_command)
+    set(argus_idl_names common control_mode_request control_setpoint detection fc_attitude fc_mode_event
+                        fc_state follow_command perception_observations tracking_tracks vision_frame_gray8)
     set(argus_idl_sources "")
     foreach(name IN LISTS argus_idl_names)
         list(APPEND argus_idl_sources idl/generated/argus_msg/${name}PubSubTypes.cxx

@@ -177,11 +177,12 @@ jobs:
         run: >-
           cmake --build build/onboard --target bus_dds_test bus_dds_transport_test
           vehicle_api_bus_dds_types_test vehicle_api_bus_dds_end_to_end_test
+          perception_api_bus_dds_types_test perception_api_bus_dds_end_to_end_test
       - name: Test
         run: ctest --test-dir build/onboard --output-on-failure -R "DdsBus|FastDdsServiceApi|DdsTypes|DdsEndToEnd"
       - name: clang-tidy
-        # bus_dds 와 vehicle_api_bus 의 DDS 변환 소스만 검사한다 (나머지는 onboard 작업이 검사).
+        # bus_dds 와 vehicle_api_bus, perception_api_bus 의 DDS 변환 소스만 검사한다 (나머지는 onboard 작업이 검사).
         # fastddsgen 생성 소스(generated/)는 제외
         run: >-
           run-clang-tidy.py -p build/onboard -quiet -warnings-as-errors='*'
-          'bus_dds/(src|test)/[a-z_]+\.cpp|vehicle_api_bus/(src|test)/(dds_[a-z_]+|[a-z_]+_idl|idl_common)\.cpp'
+          'bus_dds/(src|test)/[a-z_]+\.cpp|vehicle_api_bus/(src|test)/(dds_[a-z_]+|[a-z_]+_idl|idl_common)\.cpp|perception_api_bus/(src|test)/dds_[a-z_]+\.cpp'

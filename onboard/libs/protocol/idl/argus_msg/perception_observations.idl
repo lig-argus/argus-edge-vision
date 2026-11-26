@@ -1,0 +1,23 @@
+// perception/observations: 탐지 프로세스 → 추적기, 영상 송신부 (perception_observations.proto 에 대응)
+// .proto 와 다른 점: seq 없음 (순번은 DDS 가 표본마다 부여)
+#include "detection.idl"
+
+module argus {
+    module idl {
+        struct PerceptionObservations {
+            string source;      // 카메라 식별 문자열. vision/frame/gray8, tracking/tracks 와 같은 값
+            string session_id;  // vision/frame/gray8 의 session_id 와 같은 값
+            uint64 frame_id;    // vision/frame/gray8 의 frame_id 와 같은 값
+            uint32 image_width;   // 원본 영상 크기. 모델 입력 크기가 아니다
+            uint32 image_height;
+            string model;         // 추론한 모델(HEF) 이름
+            double inference_ms;  // NPU 추론 시간 (진단용)
+            int64 received_unix_ns;       // RPi 가 프레임을 받은 시각 (wall clock)
+            int64 received_monotonic_ns;  // RPi 가 프레임을 받은 시각 (CLOCK_MONOTONIC). 추적기의 표본 시각
+            @optional int64 source_receive_monotonic_ns;  // 카메라 수신 helper 가 프레임 읽기를 마친 시각
+            @optional int64 exposure_monotonic_ns;        // 센서 노출 시각
+            int64 published_monotonic_ns;                  // 발행 시각
+            sequence<Detection> detections;                // 원본 영상 픽셀 좌표
+        };
+    };
+};
