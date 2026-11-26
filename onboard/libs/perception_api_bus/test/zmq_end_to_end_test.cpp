@@ -15,6 +15,7 @@
 #include "argus/core/subscription.hpp"
 #include "argus/core_testing/fake_clock.hpp"
 #include "argus/perception_api/types.hpp"
+#include "argus/perception_api_bus/bus_tracking_status_subscriber.hpp"
 #include "argus/perception_api_bus/message_types.hpp"
 #include "argus/perception_api_bus/subscribers.hpp"
 #include "argus/perception_api_bus/zmq_codecs.hpp"
@@ -105,6 +106,29 @@ TEST_F(ZmqEndToEndTest, TracksArriveFromTrackingTracksTopic) {
     EXPECT_EQ(received[0].frame_id, 42U);
     ASSERT_EQ(received[0].tracks.size(), 1U);
     EXPECT_EQ(received[0].tracks[0].track_id, 17U);
+}
+
+TEST_F(ZmqEndToEndTest, TrackingStatusArrivesPerCamera) {
+    bus_zmq::ZmqBus bus(context_, poller_, clock_,
+                        {{std::string(protocol::kTrackingStatus), endpoint()}}, zmq_codecs());
+    // 추적기의 발행 클래스는 이 모듈에 없으므로 typed 발행자로 보낸다
+    const auto publisher = bus::make_publisher<perception_api::TrackingStatus>(
+        bus, protocol::kTrackingStatus, kTrackingStatusType, kDepth);
+    const auto subscriber = BusTrackingStatusSubscriber::create(bus, clock_);
+    ASSERT_NE(publisher, nullptr);
+    ASSERT_NE(subscriber, nullptr);
+    perception_api::TrackingStatus status;
+    status.source = "ir";
+    status.generation = 3;
+    status.fps = 30.0;
+
+    ASSERT_TRUE(publish_until([&] { publisher->publish(status); },
+                              [&] { return subscriber->latest("ir").has_value(); }));
+
+    const perception_api::ReceivedTrackingStatus received =
+        subscriber->latest("ir").value_or(perception_api::ReceivedTrackingStatus{});
+    EXPECT_EQ(received.status.generation, 3U);
+    EXPECT_DOUBLE_EQ(received.status.fps, 30.0);
 }
 
 }  // namespace

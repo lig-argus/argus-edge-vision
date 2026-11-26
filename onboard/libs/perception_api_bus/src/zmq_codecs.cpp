@@ -9,6 +9,7 @@
 
 #include "argus/perception_api/types.hpp"
 #include "argus_msg/perception_observations.pb.h"
+#include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
 #include "argus_msg/vision_frame_gray8.pb.h"
 
@@ -278,6 +279,35 @@ std::optional<perception_api::Tracks> decode_tracks(const Bytes& body, std::uint
     return tracks;
 }
 
+Bytes encode_tracking_status(const perception_api::TrackingStatus& status, std::uint64_t seq) {
+    msg::TrackingStatus message;
+    message.set_source(status.source);
+    message.set_seq(seq);
+    message.set_published_monotonic_ns(status.published_monotonic_ns);
+    message.set_generation(status.generation);
+    message.set_fc_fresh(status.fc_fresh);
+    message.set_cmc_valid(status.cmc_valid);
+    message.set_fps(status.fps);
+    return to_bytes(message);
+}
+
+std::optional<perception_api::TrackingStatus> decode_tracking_status(const Bytes& body,
+                                                                     std::uint64_t& seq) {
+    msg::TrackingStatus message;
+    if (!parse(body, message)) {
+        return std::nullopt;
+    }
+    seq = message.seq();
+    perception_api::TrackingStatus status;
+    status.source = message.source();
+    status.published_monotonic_ns = message.published_monotonic_ns();
+    status.generation = message.generation();
+    status.fc_fresh = message.fc_fresh();
+    status.cmc_valid = message.cmc_valid();
+    status.fps = message.fps();
+    return status;
+}
+
 // 본문만 있는 토픽 메시지. 발행 번호를 본문의 seq 에 싣는다. 바이너리가 있는 메시지는 형식이 맞지
 // 않는 것이다
 template <typename T>
@@ -310,6 +340,8 @@ bus_zmq::ZmqCodecTable zmq_codecs() {
     add_body_only_codec<perception_api::Observations>(table, encode_observations,
                                                       decode_observations);
     add_body_only_codec<perception_api::Tracks>(table, encode_tracks, decode_tracks);
+    add_body_only_codec<perception_api::TrackingStatus>(table, encode_tracking_status,
+                                                        decode_tracking_status);
     return table;
 }
 

@@ -11,6 +11,7 @@
 #include "argus/bus_zmq/zmq_codec.hpp"
 #include "argus/perception_api/types.hpp"
 #include "argus_msg/perception_observations.pb.h"
+#include "argus_msg/tracking_status.pb.h"
 #include "argus_msg/tracking_tracks.pb.h"
 #include "argus_msg/vision_frame_gray8.pb.h"
 
@@ -193,6 +194,8 @@ TEST_F(ZmqCodecsTest, MessagesWithBinaryOrBrokenBodyAreRejected) {
 
     EXPECT_FALSE(decode<perception_api::Observations>(body, Bytes{1}).has_value());
     EXPECT_FALSE(decode<perception_api::Tracks>(body, Bytes{1}).has_value());
+    EXPECT_FALSE(decode<perception_api::TrackingStatus>(body, Bytes{1}).has_value());
+    EXPECT_FALSE(decode<perception_api::TrackingStatus>(broken, Bytes{}).has_value());
     EXPECT_FALSE(decode<perception_api::Observations>(broken, Bytes{}).has_value());
     EXPECT_FALSE(decode<perception_api::Frame>(broken, Bytes{}).has_value());
 }
@@ -256,6 +259,36 @@ TEST_F(ZmqCodecsTest, TracksWithUnspecifiedTrackStateAreRejected) {
     message.add_tracks()->set_state(msg::TRACK_STATE_UNSPECIFIED);
 
     EXPECT_FALSE(decode<perception_api::Tracks>(to_bytes(message), Bytes{}).has_value());
+}
+
+TEST_F(ZmqCodecsTest, TrackingStatusRoundTripKeepsEveryFieldAndSequence) {
+    perception_api::TrackingStatus status;
+    status.source = "ir";
+    status.published_monotonic_ns = 5'000'000'000;
+    status.generation = 3;
+    status.fc_fresh = true;
+    status.cmc_valid = true;
+    status.fps = 29.5;
+    Bytes body;
+    Bytes binary;
+    ASSERT_TRUE(encode(status, 9, body, binary));
+    EXPECT_TRUE(binary.empty());
+    msg::TrackingStatus message;
+    ASSERT_TRUE(message.ParseFromArray(body.data(), static_cast<std::int32_t>(body.size())));
+    EXPECT_EQ(message.seq(), 9U);
+
+    std::uint64_t sequence = 0;
+    const perception_api::TrackingStatus value =
+        decode<perception_api::TrackingStatus>(body, binary, &sequence)
+            .value_or(perception_api::TrackingStatus{});
+
+    EXPECT_EQ(sequence, 9U);
+    EXPECT_EQ(value.source, "ir");
+    EXPECT_EQ(value.published_monotonic_ns, 5'000'000'000);
+    EXPECT_EQ(value.generation, 3U);
+    EXPECT_TRUE(value.fc_fresh);
+    EXPECT_TRUE(value.cmc_valid);
+    EXPECT_DOUBLE_EQ(value.fps, 29.5);
 }
 
 }  // namespace
