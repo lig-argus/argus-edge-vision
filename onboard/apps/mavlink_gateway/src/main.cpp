@@ -31,6 +31,7 @@
 #include "argus/bus_zmq/zmq_poller.hpp"
 #include "argus/core/event_loop.hpp"
 #include "argus/core/steady_clock.hpp"
+#include "argus/mavlink_gateway/argus_status_reporter.hpp"
 #include "argus/mavlink_gateway/command_activity.hpp"
 #include "argus/mavlink_gateway/control_authority.hpp"
 #include "argus/mavlink_gateway/fc_gateway.hpp"
@@ -42,6 +43,7 @@
 #include "argus/mavlink_gateway/request_header_factory.hpp"
 #include "argus/mavlink_gateway/request_message_handler.hpp"
 #include "argus/mavlink_gateway/request_operator_control_handler.hpp"
+#include "argus/mavlink_gateway/sysfs_cpu_temperature.hpp"
 #include "argus/mavlink_gateway/udp_gcs_link.hpp"
 #include "argus/mavlink_gateway/udp_mavlink_connection.hpp"
 #include "argus/mavlink_gateway/video_stream_information.hpp"
@@ -244,8 +246,11 @@ struct GcsSide {
     std::unique_ptr<mavlink_gateway::RequestMessageHandler> request_message_handler;
     std::unique_ptr<mavlink_gateway::MavlinkCommandReceiver> receiver;
     std::unique_ptr<mavlink_gateway::GcsLinkMonitor> monitor;
+    mavlink_gateway::SysfsCpuTemperature cpu_temperature;
+    std::unique_ptr<mavlink_gateway::ArgusStatusReporter> status_reporter;
     core::PeriodicTimer receiver_timer;
     core::PeriodicTimer monitor_timer;
+    core::PeriodicTimer status_timer;
 };
 
 // 통제기 쪽 객체를 만들어 연결하고 주기 작업을 등록한다. 하나라도 만들지 못하면 false (원인은
@@ -290,12 +295,19 @@ bool create_gcs_side(GcsSide& gcs, const mavlink_gateway::UdpGcsConfig& config,
         std::make_unique<mavlink_gateway::GcsLinkMonitor>(mavlink_gateway::GcsLinkMonitorInputs{
             *gcs.registry, *gcs.authority, clock, *gcs.follow_status, *gcs.follow_control,
             *gcs.request_headers, health});
+    gcs.status_reporter = std::make_unique<mavlink_gateway::ArgusStatusReporter>(
+        mavlink_gateway::ArgusStatusReporterInputs{
+            *gcs.link, clock, *gcs.follow_status, *gcs.follow_status, *gcs.authority, health,
+            fc.command_status(), fc.stop_requester(), gcs.cpu_temperature});
     mavlink_gateway::MavlinkCommandReceiver* const receiver = gcs.receiver.get();
     mavlink_gateway::GcsLinkMonitor* const monitor = gcs.monitor.get();
     gcs.receiver_timer = loop.add_periodic(mavlink_gateway::kCommandReceiverTickPeriod,
                                            [receiver] { receiver->tick(); });
     gcs.monitor_timer =
         loop.add_periodic(mavlink_gateway::kGcsLinkCheckPeriod, [monitor] { monitor->tick(); });
+    mavlink_gateway::ArgusStatusReporter* const status_reporter = gcs.status_reporter.get();
+    gcs.status_timer = loop.add_periodic(mavlink_gateway::kArgusStatusCheckPeriod,
+                                         [status_reporter] { status_reporter->tick(); });
     return true;
 }
 

@@ -38,6 +38,9 @@ struct FcCommandEffects {
     std::optional<vehicle_api::FlightMode> exited_to;
 
     const char* entry_failure = nullptr;  // 진입 실패의 원인 (로그)
+
+    // 추종 중 setpoint 의 유효 시간이 지나 정지함 (icd 6.4 ⓐ. mission_state FAULT 보고에 사용)
+    bool setpoint_timed_out = false;
 };
 
 struct FcCommandStep {

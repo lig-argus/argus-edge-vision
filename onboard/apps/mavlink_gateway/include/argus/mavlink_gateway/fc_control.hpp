@@ -74,6 +74,9 @@ public:
 
     bool sending_setpoints() const override;
     bool entering() const override;
+    std::optional<std::int64_t> last_setpoint_timeout_ns() const override {
+        return last_setpoint_timeout_ns_;
+    }
 
     // FC 의 실제 모드가 바뀔 때마다 handler 를 호출한다. 현재 fc_epoch 의 비행 상태를 처음 받은
     // 경우와, FC 가 이미 Offboard 인 상태에서 받은 진입 요청을 수락한 경우에도 호출한다.
@@ -120,6 +123,7 @@ private:
     SetpointStreamRecord stream_;
     bool offboard_hover_ = false;
     SetpointKind last_setpoint_kind_ = SetpointKind::None;  // 마지막 tick() 이 고른 setpoint
+    std::optional<std::int64_t> last_setpoint_timeout_ns_;
 
     // 마지막으로 전달한 FC 의 모드와 그 fc_epoch. 전달한 적이 없으면 nullopt
     std::optional<vehicle_api::FlightMode> reported_mode_;

@@ -51,4 +51,11 @@ mavlink_message_t encode_statustext(MAV_SEVERITY severity, const std::string& te
     return message;
 }
 
+mavlink_message_t encode_argus_status(const mavlink_argus_status_t& status) {
+    mavlink_message_t message{};
+    mavlink_msg_argus_status_encode_chan(kVehicleSysid, kOnboardCommandCompid, kCommandChannel,
+                                         &message, &status);
+    return message;
+}
+
 }  // namespace argus::mavlink_gateway::detail

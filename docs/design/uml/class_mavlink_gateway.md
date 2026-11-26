@@ -209,6 +209,7 @@ classDiagram
         <<interface>>
         +sending_setpoints() bool
         +entering() bool
+        +last_setpoint_timeout_ns() optional~int64~
     }
     class IFcLandingRelease {
         <<interface>>
@@ -308,7 +309,7 @@ classDiagram
 | `FcControl` | `IFlightModeControl`, `IVelocitySetpointSink`, `IStopRequester`, `IFcCommandLockRelease`, `IFcCommandStatus` 구현. `FcCommandState` 하나를 보관하고, 요청과 주기 작업(20 Hz)마다 입력을 모아 `fc_command_policy` 를 부른 뒤 결과를 실행한다: Offboard 진입 명령(DO_SET_MODE)과 setpoint(SET_POSITION_TARGET_LOCAL_NED)의 인코드와 송신, FC 의 응답(COMMAND_ACK) 수신, `subscribe_mode_events` 로 FC 의 모드 변경 전달. 입력은 주기 작업과 요청 처리의 시작에서 새로 읽는다 (요청을 지난 주기의 FC 모드로 판단하지 않음). 주기마다 setpoint 를 하나만 보내며, `Entering`, `Following`, `CancellingEntry`, `Hovering` 에서는 반드시 하나를 보낸다. `offboard_hover()` 는 `Hovering` 에서 위치 setpoint 를 보낸 주기에만 true 다 (`fc/state` 의 `offboard_hover`) | icd 4.2, 4.3, 부록 A, pi 3장, 5.1, 5.2 |
 | `IStopRequester` | mavlink_gateway 가 스스로 정지를 요청하는 인터페이스 (통제기의 TRACK_STOP, 추종 제어 상태 보고 두절). 통제기 두절은 추종 제어에 정지를 요청한다 (3절 `GcsLinkMonitor`). 세션과 `fc_epoch` 값이 없고 송신권을 확인하지 않는다. bus 로는 호출할 수 없다 | icd 6.1, 6.4 |
 | `IFcCommandLockRelease` | `Locked` 를 해제하는 인터페이스. 운용자의 명시적 TRACK_STOP 을 처리하는 통제기 명령 handler 가 호출한다. FC 의 비행 상태가 최신일 때만 해제한다 | icd 4.2, 6장 |
-| `IFcCommandStatus` | mavlink_gateway 가 FC 로 setpoint 를 보내는 중인지(마지막 주기 작업이 setpoint 를 골랐는지. Offboard 진입 전의 사전 송신 포함), Offboard 진입 중인지 조회하는 인터페이스. 통제기 쪽 판단(제어권 부여, FC 전달 조건)이 `FcControl` 의 구체 클래스를 알지 않고 상태만 읽는다 | icd 5.1, 5.2 |
+| `IFcCommandStatus` | mavlink_gateway 가 FC 로 setpoint 를 보내는 중인지(마지막 주기 작업이 setpoint 를 골랐는지. Offboard 진입 전의 사전 송신 포함), Offboard 진입 중인지, 추종 중 setpoint 유효 시간 경과로 마지막에 정지한 시각(icd 6.4 ⓐ)을 조회하는 인터페이스. 통제기 쪽 판단(제어권 부여, FC 전달 조건)이 `FcControl` 의 구체 클래스를 알지 않고 상태만 읽는다 | icd 5.1, 5.2 |
 | `IFcLandingRelease` | 통제기의 착륙 명령을 FC 로 전달할 때 진행 중인 명령을 취소하고 setpoint 송신을 멈추는 인터페이스. `LandingLock`(3절)이 호출한다. `FcCommandState` 에 이 요청의 전환을 추가한다 | icd 5.3 |
 | `SetpointInbox` | 추종 제어가 보낸 가장 최근의 setpoint 하나를 보관. 유효 시간이 지난 값과 유한하지 않은 값은 받지 않고, `valid_until_monotonic_ns` 가 1 s 보다 먼 값은 1 s 로 줄인다 | pi 5.1, icd 6.4 ⓐ |
 | `SetpointStreamRecord` | 추종 제어의 setpoint 를 FC 로 끊기지 않고 송신해 온 시간. 송신 간격이 0.2 s 를 넘으면 끊긴 것으로 본다. Offboard 진입 요청의 조건(1 s 이상 연속 송신)에 쓴다 | icd 4.2 |
@@ -318,7 +319,7 @@ classDiagram
 - `request_hold` 는 FC 의 Hold 모드가 아니라 정지 요청을 뜻한다. 정지는 Offboard 를 유지한 채 `Hovering` 의 setpoint 로 한다 (`icd.md` 4.2 정지 상태).
 - SET_POSITION_TARGET_LOCAL_NED 를 송신하는 곳은 `FcControl::tick` 하나다. 주기마다 `select_setpoint` 가 고른 하나만 보내므로 추종 제어의 속도와 정지 setpoint 가 같은 주기에 함께 나가지 않고, 주기 작업의 등록 순서에 따라 결과가 달라지지 않는다.
 - setpoint 의 송신을 끝내는 전환은 둘뿐이다: `CancellingEntry` → `Idle`(진입 기한 후에 받은 비행 상태가 Offboard 가 아님), `Following` 또는 `Hovering` → `Locked`(FC 가 Offboard 를 벗어남). 수신이 끊기거나 FC 연결이 다시 된 것만으로는 끝내지 않는다.
-- 호출하는 쪽은 `FcControl` 을 인터페이스 중 필요한 것으로만 참조한다: bus 어댑터는 `IFlightModeControl` 과 `IVelocitySetpointSink`, 통제기 명령 handler 는 `IStopRequester` 와 `IFcCommandLockRelease`, `ControlAuthority` 는 `IFcCommandStatus`.
+- 호출하는 쪽은 `FcControl` 을 인터페이스 중 필요한 것으로만 참조한다: bus 어댑터는 `IFlightModeControl` 과 `IVelocitySetpointSink`, 통제기 명령 handler 는 `IStopRequester` 와 `IFcCommandLockRelease`, `ControlAuthority` 와 `ArgusStatusReporter` 는 `IFcCommandStatus`.
 - 전환표와 선택표는 `onboard/apps/mavlink_gateway/test/fc_command_policy_test.cpp` 의 표가 행마다 확인한다. 상태 그림은 `state_machine.md` 3절.
 
 ## 3. 통제기 통신 (UDP 14550, compid 195)
@@ -392,8 +393,18 @@ classDiagram
         +tick()
     }
     class ArgusStatusReporter {
-        +tick() 1 Hz
+        +tick() 100 ms
     }
+    class argus_status_policy {
+        <<function>>
+        +follow_fault(StatusObservation) FollowFault
+        +compose_argus_status(StatusObservation) ARGUS_STATUS
+    }
+    class ICpuTemperature {
+        <<interface>>
+        +celsius() optional~double~
+    }
+    class SysfsCpuTemperature
     class ArgusSensorStatusReporter {
         +tick() 1 Hz
     }
@@ -473,9 +484,15 @@ classDiagram
     GcsLinkMonitor ..> RequestHeaderFactory
     GcsLinkMonitor ..> IFollowStatusSource : 추종, 스캔 중
     GcsLinkMonitor --> HealthState : GCS_LINK
+    ArgusStatusReporter ..> argus_status_policy : 값 구성, 두절 판단
     ArgusStatusReporter ..> IControlAuthority : control_sysid
-    ArgusStatusReporter ..> IFollowStatusEvents : 임무 상태, 표적, 스캔 (변경 시 보고)
+    ArgusStatusReporter ..> IFollowStatusSource : 임무 상태, 표적, 스캔
+    ArgusStatusReporter ..> IFollowStatusEvents : 받을 때 변경 확인
+    ArgusStatusReporter ..> IFcCommandStatus : setpoint 유효 시간 경과 정지
+    ArgusStatusReporter ..> IStopRequester : follow/status 두절 시 정지
+    ArgusStatusReporter ..> ICpuTemperature : cpu_temp
     ArgusStatusReporter ..> IGcsLink : ARGUS_STATUS broadcast
+    ICpuTemperature <|.. SysfsCpuTemperature
     ArgusSensorStatusReporter ..> IGcsLink : ARGUS_SENSOR_STATUS broadcast
     ArgusSensorStatusReporter ..> SensorSourceMap
     GcsFcForwarder ..> gcs_forward_policy : 판단
@@ -500,7 +517,7 @@ classDiagram
 | `IMavlinkCommandHandler`, `CommandResponder` | MAV_CMD 하나를 처리. `handle(request, responder)` 로 받고 결과는 `responder.send()` 로 보낸다 (비동기). `CommandRequest` 는 보낸 통제기(`GcsPeer`)를 가진다. 공통 규칙(재전송, 제어권, 동시 처리)은 `MavlinkCommandReceiver` 가 handler 를 부르기 전에 처리한다. `CommandResponder` 는 IN_PROGRESS 는 여러 번, 그 외 결과는 최종으로 한 번만 보내며, 최종을 보내지 않고 사라지면 소멸자가 FAILED 를 보낸다 | B | icd 4.1 |
 | `RequestOperatorControlHandler` | 45010. p1(0 해제, 1 요청)과 p4(0 또는 보낸 통제기의 sysid) 검사 뒤 `IControlRequests` 에 요청 또는 해제를 넘긴다. 제어권이 없는 통제기도 보낼 수 있도록 제어권 필요 없음으로 등록한다 | B | icd 4.4 |
 | `GcsLinkMonitor`, `RequestHeaderFactory` | 주인의 HEARTBEAT 3 s 두절 → `GCS_LINK = 0`. 두절이 시작될 때 추종 또는 스캔 중이면 `IFollowControlClient::stop(LinkLoss)` 로 추종 제어에 정지를 요청한다 (TRACK_STOP 과 같은 절차). 다시 받으면 비트만 복구. 두절 판단의 시각은 `IGcsPresence`. 추종 제어에 보내는 요청의 공통 필드(command_id, session_id, seq, fc_epoch, valid_until)는 `RequestHeaderFactory` 가 만든다 (D 단계의 명령 handler 도 사용) | B | icd 6.1, pi 3장 |
-| `ArgusStatusReporter` | `follow/status` 의 임무 상태, 표적 상태, 선택 표적, 스캔 진행과 `IControlAuthority::controller()`(→ `control_sysid`), `HealthState` 로 ARGUS_STATUS 를 모든 통제기에 1 Hz + 변경 시. `follow/status` 3 s 두절 → FAULT 보고와 정지 요청 | C | icd 3.1, 6.4 |
+| `ArgusStatusReporter`, `argus_status_policy` (함수), `ICpuTemperature`, `SysfsCpuTemperature` | ARGUS_STATUS 를 모든 통제기에 1 Hz 와 `mission_state`, `target_state`, `health`, `active_sensor` 가 바뀔 때 송신. 값은 `argus_status_policy` 가 `follow/status`(`IFollowStatusSource`), `IControlAuthority::controller()`(→ `control_sysid`), `HealthState`, `ICpuTemperature`(Linux thermal zone 파일)로 구성한다. `active_sensor` 는 PREPARING, FOLLOW_ACTIVE 일 때만 선택 표적의 센서. 추종 제어 두절: `follow/status` 3 s 없음(icd 6.4 ⓑ) → FAULT, 마지막 값이 추종 또는 스캔 중이었으면 `IStopRequester` 로 정지, 두절 뒤 새로 받은 값으로 풀림. setpoint 유효 시간 경과 정지(ⓐ, `IFcCommandStatus::last_setpoint_timeout_ns()`) → 그 뒤의 `follow/status` 가 FOLLOW_ACTIVE, SCAN_ACTIVE 가 아니게 될 때까지 FAULT. 해석하지 못한 `mission_state` 도 FAULT | C | icd 3.1, 6.4, pi 6장 |
 | `ArgusSensorStatusReporter`, `SensorSourceMap` | `tracking/status` 를 ARGUS_SENSOR_STATUS 로 센서마다 1 Hz + flags 변경 시. `source` 문자열 ↔ `ARGUS_SENSOR` 대응은 `SensorSourceMap`(mavlink_gateway 설정) | C | icd 3.1, pi 3장 |
 | `IFollowStatusSource`, `IFollowStatusEvents`, `BusFollowStatusSubscriber` | `follow/status` 를 구독해 최신 값과 받은 시각(mavlink_gateway 의 시계) 보관(`IFollowStatusSource::latest()`), 받을 때마다 handler 호출(`IFollowStatusEvents::subscribe()`). 조회와 알림을 인터페이스 둘로 나눠, 최신 값만 조회하는 `ControlAuthority`, `GcsLinkMonitor`(추종, 스캔 중 판단)는 알림에 의존하지 않는다 (`vehicle_api`, `vehicle_api_bus` 모듈) | B | pi 5.1.2 |
 | `BusTrackingStatusSubscriber` | `tracking/status` 를 구독해 최신 값 보관과 전달 (`perception_api_bus` 모듈. `BusVehicleTelemetrySubscriber` 와 같은 모양) | C | pi 5.1.3 |
