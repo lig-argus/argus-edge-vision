@@ -178,7 +178,7 @@ a=control:trackID=1
 - IR 카메라 NUC(셔터 보정) 동안 약 0.5 s 프레임이 없다. 송신부는 아무것도 보내지 않으며 RTSP 세션은 유지한다.
 - RTSP 클라이언트가 없을 때도 서버는 떠 있고, 토픽 구독은 계속한다(연결 즉시 최신 프레임부터 송신). 클라이언트가 없는 동안 받은 프레임은 폐기한다. 클라이언트가 모두 끊으면 송신 파이프라인을 삭제하고 다시 접속하면 새로 생성한다.
 - 영상과 메타데이터 버퍼의 PTS 는 같은 값으로 지정한다. 값은 프레임을 RPi 가 수신한 시각(`received_monotonic_ns`)에 해당하는 파이프라인의 running time 이다. RTCP Sender Report 가 running time 을 wall clock 에 대응시키므로, 통제기가 계산한 영상 프레임의 UTC 시각이 그 프레임의 `unix_ns` 와 같아진다 (4장).
-- 송신하지 못한 프레임은 폐기하고 횟수를 원인별(클라이언트 없음, 재생 상태 아님, 프레임 크기 오류, 송신 실패)로 센다. mavlink_gateway 가 송신부 상태를 받는 방법(미결 9)의 입력으로 사용한다.
+- 송신하지 못한 프레임은 폐기하고 횟수를 원인별(클라이언트 없음, 재생 상태 아님, 프레임 크기 오류, 송신 실패)로 센다.
 - 구현: gst-rtsp-server 에 파이프라인 문자열을 등록한다 (`!` 는 GStreamer 에서 요소를 이어 주는 기호다). 영상 트랙 `appsrc name=video ! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 ! rtph264pay aggregate-mode=zero-latency config-interval=-1 name=pay0 pt=96`, 메타데이터 트랙 `appsrc name=meta ! rtppassthroughpay name=pay1 pt=107`. 메타데이터 RTP 패킷(헤더 12 바이트 + XML 조각, 마지막 조각 marker=1)은 송신부가 만들어 `meta` appsrc 에 넣는다 (ONVIF 전용 페이로더 `rtponvifmetadatapay` 는 Rust 플러그인이라 Ubuntu 에 패키지가 없음). 코덱을 JPEG 로 선택하면 영상 트랙의 x264enc 와 rtph264pay 가 `jpegenc ! rtpjpegpay name=pay0 pt=26` 으로 바뀐다 (2.1). 메타데이터 트랙과 그 밖의 송신부 코드는 코덱과 무관하다.
 
 ## 6. 통제기 동작
@@ -188,25 +188,23 @@ a=control:trackID=1
 - 수신을 시작한 후 최초의 RTCP Sender Report 를 받기 전에는 영상 프레임의 UTC 시각을 계산할 수 없다 (측정값 약 2~3 s). 이 구간에는 메타데이터를 프레임에 대응시키지 않고 영상만 박스 없이 표시한다.
 - 박스 클릭: 클릭 좌표를 정규화 좌표로 바꿔 포함하는 박스(여럿이면 가장 작은 것)를 고른다. 그 객체의 (`Source` → sensor, `argus:Generation`, `argus:ClassId`, `ObjectId`)로 `MAV_CMD_ARGUS_TRACK_START` 를 보낸다 (`docs/spec/icd.md` 4.2). 판정은 **클릭 시점에 화면에 표시된 프레임**의 메타데이터로 한다.
 - 선택된 표적(`ARGUS_STATUS.target_id`·`target_generation`)과 `ObjectId`·`argus:Generation` 이 같은 박스는 다른 색으로 강조한다.
-- 영상 정지 표시: 새 영상 프레임이 일정 시간(NUC 공백 0.5 s 보다 길게, 예 1 s) 없으면 "영상 정지" 를 표시한다. 시간은 **[미결 7]**. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
+- 영상 정지 표시: 새 영상 프레임이 1 s 동안 없으면 "영상 정지" 를 표시한다. 1 s 는 NUC 공백 0.5 s 보다 길고, 영상 송신부가 `video/stream_info` 의 `running` 을 판단하는 시간과 같다. 메타데이터만 끊긴 경우(추적기 미발행)는 박스가 사라지는 것으로 보이며 별도 표시는 `ARGUS_SENSOR_STATUS` 로 한다.
 
 ## 7. MAVLink 연계 (`VIDEO_STREAM_INFORMATION`, 269)
 
 | 필드 | 값 |
 |---|---|
-| 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회 |
-| stream_id / count | 1 = IR (EO 추가 시 2) / 스트림 수 |
+| 송신 | mavlink_gateway (compid 195). 통제기가 `MAV_CMD_REQUEST_MESSAGE`(param1 = 269) 로 요청하면 스트림마다 1회. 아래 값은 영상 송신부가 발행하는 `video/stream_info` (`process_interfaces.md` 5.1)의 최신 값으로 채운다. 받은 적이 없으면 DENIED 로 응답하고 이 메시지를 보내지 않는다 |
+| stream_id / count | 토픽의 stream_id (1 = IR, EO 추가 시 2) / 토픽의 스트림 수 |
 | type | `VIDEO_STREAM_TYPE_RTSP` (0) |
-| flags | IR 은 `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 과 `VIDEO_STREAM_STATUS_FLAGS_THERMAL` (2) 을 합친 3, EO 는 `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1). 값은 고정이며 mavlink_gateway 는 영상 송신부의 실행 여부를 확인하지 않는다. 통제기는 영상 송신 여부를 RTSP 접속 결과로 판단하고, THERMAL 로 열화상 스트림을 구분한다 |
-| framerate / resolution_h / resolution_v | 30 / 640 / 480 |
-| bitrate | 송신부의 비트 전송률 설정값 (bit/s). 설정값이 없으면 0 |
-| rotation / hfov | 0 / 카메라 화각 측정 뒤 (`icd.md` A1). 모르면 0 |
-| name | `IR` |
-| uri | `rtsp://<RPi 주소>:8554/argus/ir` |
-| encoding | `VIDEO_STREAM_ENCODING_H264` (1). 코덱이 JPEG 인 경우 `VIDEO_STREAM_ENCODING_UNKNOWN` (0) (MAVLink 에 JPEG 값이 없음). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP(`a=rtpmap`)에서 읽는다 (1장) |
+| flags | `VIDEO_STREAM_STATUS_FLAGS_RUNNING` (1) 은 토픽의 송신 중 여부(`running`: 최근 1 초 안에 프레임을 받아 RTSP 서버로 내보냄)가 참일 때, `VIDEO_STREAM_STATUS_FLAGS_THERMAL` (2) 는 토픽의 센서가 IR 일 때 켠다. IR 이 송신 중이면 3, EO 가 송신 중이면 1. 통제기는 THERMAL 로 열화상 스트림을 구분하고, 영상을 받는지는 RTSP 접속 결과로 판단한다 |
+| framerate / resolution_h / resolution_v | 토픽의 FPS / 가로 해상도 / 세로 해상도 (IR 은 30 / 640 / 480) |
+| bitrate | 토픽의 비트 전송률 (bit/s). 송신부에 설정값이 없으면 0 |
+| rotation / hfov | 0 / 토픽의 화각. 모르면 0 (화각은 카메라 측정 뒤, `icd.md` A1) |
+| name | 토픽의 이름 (IR 은 `IR`) |
+| uri | `rtsp://<호스트>:<포트><경로>`. 호스트는 mavlink_gateway 가 요청한 통제기에 응답할 때 쓰는 자기 주소(`IGcsLink::local_address()`), 포트와 경로는 토픽 값. IR 은 `rtsp://<호스트>:8554/argus/ir` |
+| encoding | 토픽의 코덱이 H.264 이면 `VIDEO_STREAM_ENCODING_H264` (1). 코덱이 JPEG 인 경우 `VIDEO_STREAM_ENCODING_UNKNOWN` (0) (MAVLink 에 JPEG 값이 없음). 통제기는 코덱을 RTSP `DESCRIBE` 응답의 SDP(`a=rtpmap`)에서 읽는다 (1장) |
 | camera_device_id | 0 |
-
-mavlink_gateway 가 송신부의 상태(실행 여부, 주소)를 아는 방법은 `process_interfaces.md` 에 추가한다 **[미결 9]**.
 
 ## 8. class_id 표
 
@@ -226,9 +224,9 @@ mavlink_gateway 가 송신부의 상태(실행 여부, 주소)를 아는 방법�
 4. 표준에 없는 값을 넣을 XML 요소: `argus:` 네임스페이스와 요소 이름(FrameId, ImageWidth, ImageHeight, ClassId, Label, Generation, State), `tt:Class/tt:Type` 에 넣을 ONVIF 분류명. — 통신·탐지
 5. 포트 8554, 경로 `/argus/<센서>` 확정. — 통신
 6. RPi 시계 UTC 동기(NTP) 여부. 영상·메타데이터 동기화에는 불필요하고, 녹화 파일과 다른 장비 로그의 시각을 맞출 때 필요. — 통신
-7. 통제기 "영상 정지" 판단 시간 (NUC 0.5 s 보다 길게). — 통제기
+7. 통제기 "영상 정지" 판단 시간은 1 s 로 확정 (6장). — 통제기
 8. JPEG 를 선택하고 EO 카메라 해상도가 2040 px 를 넘을 때 ONVIF JPEG RTP 헤더 확장 적용 여부와 수신 지원. — 통신·탐지
-9. `VIDEO_STREAM_INFORMATION` 의 `flags` 는 고정값으로 확정 (7장). mavlink_gateway 가 영상 송신부의 상태를 받는 연결은 두지 않는다. 남은 것: 7장의 값 중 영상 송신부의 설정과 같아야 하는 값(framerate, resolution_h, resolution_v, uri 의 포트와 경로)을 두 프로세스가 함께 읽는 설정 파일의 위치와 형식. — 통신
+9. `VIDEO_STREAM_INFORMATION` 의 값은 영상 송신부가 발행하는 `video/stream_info` 로 받는 것으로 확정 (7장, `process_interfaces.md` 5.1). 두 프로세스가 함께 읽는 설정 파일은 두지 않는다. — 통신
 10. IR 모델 v7.3 class_id 표는 8장에 반영함. 모델 교체 때 갱신. — 탐지
 11. RPi–통제기 Wi-Fi 의 실제 처리량과 손실률 측정 (영상 + 메타데이터 + MAVLink). 부족하면 비트 전송률과 FPS 조정. — 통신
 12. H.264 비트 전송률: RPi 5 에서 x264 인코딩의 CPU 사용률과 프레임당 인코딩 시간, 비트 전송률별 화질(PSNR, 육안)을 측정해 정함. Wi-Fi 처리량(11)과 함께 판단. JPEG 를 선택하는 경우 품질값(75, 90, 95)도 같은 방법으로 정함. — 통신·탐지
